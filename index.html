@@ -249,18 +249,18 @@
     </div>
 
     <script>
+      // 변수명 충돌 완벽 해결 버전 (client 사용)
       const SUPABASE_URL = "https://qdnpeliqtxdglqewbvgg.supabase.co";
       const SUPABASE_ANON_KEY =
         "sb_publishable_mwYlhge63nnNjL9lAFhxRw_fxRtRGvO";
-      // @ 기호가 들어간 부분을 지우고 window.supabase를 사용합니다.
-      const supabase = window.supabase.createClient(
+      const client = window.supabase.createClient(
         SUPABASE_URL,
         SUPABASE_ANON_KEY,
       );
 
       // 피드 가져오기 (신고 5회 미만 글만 최신순 정렬)
       async function fetchPosts() {
-        const { data, error } = await supabase
+        const { data, error } = await client
           .from("posts")
           .select("*")
           .lt("reports_count", 5)
@@ -268,7 +268,7 @@
 
         if (error) {
           document.getElementById("postFeed").innerHTML =
-            `<div style="height:100vh; display:flex; justify-content:center; align-items:center; color:#ff3b30;">데이터 로드 오류</div>`;
+            `<div style="height:100vh; display:flex; justify-content:center; align-items:center; color:#ff3b30;">데이터 로드 오류: ${error.message}</div>`;
           return;
         }
 
@@ -306,18 +306,18 @@
         });
       }
 
-      // 좋아요 / 싫어요 실시간 증가 반영 (단순화 프로토타입 버전)
+      // 좋아요 / 싫어요 실시간 증가 반영
       async function incrementMetric(postId, column, element) {
         const countSpan = element.querySelector(".action-count");
         let currentCount = parseInt(countSpan.innerText);
         countSpan.innerText = currentCount + 1; // UI 선반영
 
-        const { data } = await supabase
+        const { data } = await client
           .from("posts")
           .select(column)
           .eq("id", postId)
           .single();
-        await supabase
+        await client
           .from("posts")
           .update({ [column]: (data[column] || 0) + 1 })
           .eq("id", postId);
@@ -332,14 +332,14 @@
         )
           return;
 
-        const { data } = await supabase
+        const { data } = await client
           .from("posts")
           .select("reports_count")
           .eq("id", postId)
           .single();
         const newReportCount = (data.reports_count || 0) + 1;
 
-        await supabase
+        await client
           .from("posts")
           .update({ reports_count: newReportCount })
           .eq("id", postId);
@@ -359,7 +359,7 @@
           return;
         }
 
-        const { error } = await supabase
+        const { error } = await client
           .from("posts")
           .insert([{ content: content }]);
 
