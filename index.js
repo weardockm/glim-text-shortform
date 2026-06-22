@@ -1069,7 +1069,6 @@ function closeContextPostFeed() {
 function addInteractiveSwipeBack(view, getPreviousViewId, onBack, options = {}) {
   let touchStartX = 0;
   let touchStartY = 0;
-  let touchStartedAt = 0;
   let swipeDistance = 0;
   let previousView = null;
   let isDragging = false;
@@ -1114,7 +1113,6 @@ function addInteractiveSwipeBack(view, getPreviousViewId, onBack, options = {}) 
       if (isAnimating) return;
       touchStartX = event.touches[0].clientX;
       touchStartY = event.touches[0].clientY;
-      touchStartedAt = Date.now();
       swipeDistance = 0;
     },
     { passive: true },
@@ -1154,10 +1152,7 @@ function addInteractiveSwipeBack(view, getPreviousViewId, onBack, options = {}) 
     "touchend",
     () => {
       if (!isDragging || isAnimating) return;
-      const isQuickSwipe =
-        swipeDistance > 55 && Date.now() - touchStartedAt < 280;
-      const shouldGoBack =
-        swipeDistance > window.innerWidth * 0.28 || isQuickSwipe;
+      const shouldGoBack = swipeDistance >= window.innerWidth * 0.5;
 
       if (shouldGoBack) {
         isAnimating = true;
