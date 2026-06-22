@@ -17,10 +17,8 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0,0"
     />
-
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="index.js" defer></script>
-
     <style>
       * {
         box-sizing: border-box;
@@ -35,7 +33,6 @@
         font-family: "Noto Serif KR", serif;
         overflow: hidden;
       }
-
       .header {
         position: fixed;
         top: 0;
@@ -56,7 +53,6 @@
         color: #fff;
         text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
       }
-
       .app-view {
         display: none;
         height: 100vh;
@@ -77,6 +73,7 @@
         }
       }
 
+      /* 홈 탭 */
       #view-home {
         padding-bottom: 0;
         overflow-y: scroll;
@@ -87,7 +84,6 @@
       #view-home::-webkit-scrollbar {
         display: none;
       }
-
       .post {
         height: 100vh;
         scroll-snap-align: start;
@@ -116,7 +112,6 @@
         opacity: 1;
         transform: translateY(0);
       }
-
       .author-info {
         position: absolute;
         bottom: 90px;
@@ -133,7 +128,6 @@
         color: #aaa;
         letter-spacing: 1px;
       }
-
       .side-actions {
         position: absolute;
         right: 15px;
@@ -144,6 +138,7 @@
         align-items: center;
         opacity: 0;
         transition: opacity 1.5s ease-out 0.3s;
+        z-index: 30;
       }
       .post.is-visible .side-actions {
         opacity: 1;
@@ -159,6 +154,7 @@
         transition:
           color 0.3s ease,
           transform 0.2s ease;
+        position: relative;
       }
       .action-btn:active {
         transform: scale(0.8);
@@ -172,7 +168,45 @@
         color: #888;
         font-family: -apple-system, sans-serif;
       }
+      .more-menu-wrapper {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .more-menu {
+        display: none;
+        position: absolute;
+        bottom: 40px;
+        right: 0;
+        background: #151515;
+        border: 1px solid #333;
+        border-radius: 8px;
+        width: 120px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+        z-index: 40;
+      }
+      .more-menu.show {
+        display: block;
+        animation: fadeIn 0.15s ease;
+      }
+      .more-menu-item {
+        width: 100%;
+        background: none;
+        border: none;
+        color: #ff3b30;
+        padding: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: center;
+        font-family: -apple-system, sans-serif;
+      }
+      .more-menu-item:active {
+        background: rgba(255, 59, 48, 0.1);
+      }
 
+      /* 내비게이션 */
       .bottom-nav {
         position: fixed;
         bottom: 0;
@@ -240,6 +274,92 @@
         text-align: left;
       }
 
+      /* 탐색 & 프로필 그리드 공통 */
+      .explore-header {
+        position: sticky;
+        top: 0;
+        padding: 20px 15px 15px 15px;
+        background: #050505;
+        z-index: 20;
+      }
+      .search-wrapper {
+        position: relative;
+        width: 100%;
+      }
+      .search-bar {
+        width: 100%;
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-radius: 12px;
+        color: #fff;
+        padding: 12px 40px 12px 15px;
+        font-size: 1rem;
+        outline: none;
+        font-family: -apple-system, sans-serif;
+      }
+      .search-bar:focus {
+        border-color: #666;
+      }
+      .search-icon {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #666;
+        cursor: pointer;
+      }
+      .explore-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2px;
+        padding-bottom: 20px;
+      }
+      .grid-item {
+        aspect-ratio: 1 / 1;
+        background: #111;
+        padding: 12px;
+        position: relative;
+        overflow: hidden;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        border: 1px solid #1a1a1a;
+      }
+      .grid-item:active {
+        opacity: 0.7;
+      }
+      .grid-text {
+        font-size: 0.8rem;
+        color: #ddd;
+        line-height: 1.5;
+        display: -webkit-box;
+        -webkit-line-clamp: 4;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        word-break: keep-all;
+        font-weight: 300;
+        text-align: left;
+        width: 100%;
+      }
+      .grid-stats {
+        position: absolute;
+        bottom: 6px;
+        right: 8px;
+        display: flex;
+        gap: 4px;
+        font-size: 0.7rem;
+        color: #888;
+        font-family: -apple-system, sans-serif;
+        align-items: center;
+      }
+      .grid-stats .material-symbols-outlined {
+        font-size: 0.8rem;
+      }
+
+      /* 글쓰기 */
       .textarea-wrapper {
         position: relative;
         width: 100%;
@@ -272,22 +392,17 @@
         font-family: -apple-system, sans-serif;
       }
 
-      .auth-container {
-        width: 100%;
-        max-width: 400px;
-        display: flex;
-        flex-direction: column;
-      }
+      /* 로그인 폼 */
       .social-btn {
         display: flex;
         align-items: center;
         justify-content: center;
         width: 100%;
         border: none;
-        padding: 14px 16px;
-        border-radius: 12px;
-        font-weight: 500;
-        font-size: 1.05rem;
+        padding: 18px 16px;
+        border-radius: 14px;
+        font-weight: 600;
+        font-size: 1.1rem;
         cursor: pointer;
         margin-bottom: 12px;
         font-family: -apple-system, sans-serif;
@@ -298,43 +413,20 @@
         transform: scale(0.98);
       }
       .social-icon {
-        width: 20px;
-        height: 20px;
+        width: 22px;
+        height: 22px;
         position: absolute;
-        left: 20px;
+        left: 24px;
+      }
+      .kakao-btn {
+        background: #fee500;
+        color: rgba(0, 0, 0, 0.85);
       }
       .google-btn {
         background: #ffffff;
         color: #3c4043;
         border: 1px solid #dadce0;
       }
-      .kakao-btn {
-        background: #fee500;
-        color: rgba(0, 0, 0, 0.85);
-      }
-
-      .divider {
-        display: flex;
-        align-items: center;
-        text-align: center;
-        color: #555;
-        margin: 20px 0;
-        font-family: -apple-system, sans-serif;
-        font-size: 0.9rem;
-      }
-      .divider::before,
-      .divider::after {
-        content: "";
-        flex: 1;
-        border-bottom: 1px solid #333;
-      }
-      .divider:not(:empty)::before {
-        margin-right: 0.25em;
-      }
-      .divider:not(:empty)::after {
-        margin-left: 0.25em;
-      }
-
       .auth-input {
         width: 100%;
         background: #0a0a0a;
@@ -369,65 +461,135 @@
       .secondary-btn {
         background: #222;
         color: #fff;
-        margin-top: 15px;
       }
 
-      #profileInfo {
-        display: none;
-        text-align: center;
-        width: 100%;
+      /* 프로필 탭 전면 개편 */
+      #view-profile {
+        padding: 0;
+        background: #050505;
+        font-family: -apple-system, sans-serif;
       }
-      .user-email {
-        font-size: 1.4rem;
-        margin-bottom: 30px;
-        color: #ddd;
-        font-weight: 300;
-      }
-
-      /* 💡 프로필 - 내가 쓴 글 리스트 스타일 */
-      .my-posts-header {
-        text-align: left;
-        font-size: 1.1rem;
-        color: #fff;
-        margin: 30px 0 15px 0;
-        border-bottom: 1px solid #333;
-        padding-bottom: 10px;
-      }
-      #myPostsList {
-        width: 100%;
-        text-align: left;
-        display: flex;
-        flex-direction: column;
-        gap: 15px;
-        padding-bottom: 50px;
-      }
-      .my-post-item {
-        background: #111;
-        border: 1px solid #222;
-        border-radius: 12px;
-        padding: 15px;
+      .profile-topbar {
+        position: sticky;
+        top: 0;
+        padding: 20px;
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
+        align-items: center;
+        background: #050505;
+        z-index: 20;
       }
-      .my-post-content {
-        font-size: 0.95rem;
-        color: #ccc;
-        line-height: 1.5;
-        width: 85%;
-        white-space: pre-wrap;
-      }
-      .delete-post-btn {
-        background: none;
-        border: none;
-        color: #ff3b30;
-        cursor: pointer;
-        padding: 5px;
-        font-family: -apple-system, sans-serif;
-        font-size: 0.85rem;
+      .profile-title {
+        color: #fff;
+        font-size: 1.2rem;
+        font-weight: 700;
+        font-family: "Noto Serif KR", serif;
       }
 
-      /* 공통 바텀 시트 */
+      .profile-info-header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 10px 20px 20px 20px;
+      }
+      .profile-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: #222;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 15px;
+        overflow: hidden;
+        border: 1px solid #333;
+      }
+      .profile-name {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 4px;
+      }
+      .profile-id {
+        font-size: 0.85rem;
+        color: #888;
+        margin-bottom: 20px;
+      }
+
+      .profile-stats {
+        display: flex;
+        justify-content: center;
+        gap: 40px;
+        width: 100%;
+        margin-bottom: 20px;
+      }
+      .stat-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .stat-num {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 4px;
+      }
+      .stat-label {
+        font-size: 0.75rem;
+        color: #888;
+      }
+
+      .profile-edit-btn {
+        background: #222;
+        color: #fff;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        width: 100%;
+        max-width: 200px;
+        transition: background 0.2s;
+      }
+      .profile-edit-btn:active {
+        background: #333;
+      }
+
+      /* 프로필 네비게이션 탭 (3열) */
+      .profile-tabs {
+        display: flex;
+        border-top: 1px solid #222;
+        border-bottom: 1px solid #222;
+        margin-top: 10px;
+      }
+      .p-tab {
+        flex: 1;
+        padding: 12px 0;
+        text-align: center;
+        color: #666;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s;
+      }
+      .p-tab.active {
+        color: #fff;
+        border-bottom: 2px solid #fff;
+      }
+      .p-tab .material-symbols-outlined {
+        font-size: 1.5rem;
+      }
+
+      .profile-login-card {
+        width: 100%;
+        background: #111;
+        border: 1px solid #222;
+        border-radius: 20px;
+        padding: 20px;
+        margin-top: 20px;
+      }
+
+      /* 바텀 시트 (댓글 & 설정 공통) */
       .bottom-sheet {
         position: fixed;
         bottom: -100%;
@@ -437,15 +599,26 @@
         background-color: #111;
         border-radius: 24px 24px 0 0;
         z-index: 100;
-        transition: bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1);
         padding: 30px 25px;
         box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.8);
         border-top: 1px solid #333;
         display: flex;
         flex-direction: column;
+        touch-action: none;
+        transition: bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1);
       }
       .bottom-sheet.open {
         bottom: 0;
+      }
+      .sheet-handle {
+        width: 40px;
+        height: 5px;
+        background: #333;
+        border-radius: 3px;
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
       }
       .sheet-header {
         display: flex;
@@ -458,6 +631,7 @@
         font-size: 1.2rem;
         font-weight: 400;
         color: #ddd;
+        font-family: "Noto Serif KR", serif;
       }
       .close-btn {
         font-size: 1.5rem;
@@ -468,7 +642,7 @@
         transition: color 0.2s;
       }
 
-      /* 💡 댓글창 특화 스타일 */
+      /* 댓글 전용 */
       .comment-list {
         flex-grow: 1;
         overflow-y: auto;
@@ -477,6 +651,7 @@
         gap: 20px;
         padding-bottom: 20px;
         margin-bottom: 15px;
+        touch-action: pan-y;
       }
       .comment-list::-webkit-scrollbar {
         display: none;
@@ -501,6 +676,7 @@
         gap: 10px;
         flex-shrink: 0;
         padding-bottom: env(safe-area-inset-bottom);
+        touch-action: none;
       }
       .comment-input {
         flex-grow: 1;
@@ -512,10 +688,6 @@
         font-size: 0.95rem;
         font-family: -apple-system, sans-serif;
       }
-      .comment-input:focus {
-        outline: none;
-        border-color: #666;
-      }
       .comment-submit-btn {
         background: #fff;
         color: #000;
@@ -526,22 +698,32 @@
         cursor: pointer;
       }
 
-      .coming-soon {
-        height: 100%;
+      /* 설정 전용 */
+      .profile-menu-row {
         display: flex;
-        justify-content: center;
         align-items: center;
-        color: #555;
-        font-size: 1.1rem;
-        text-align: center;
-        line-height: 1.6;
+        justify-content: space-between;
+        min-height: 56px;
+        padding: 0 10px;
+        color: #f6f6f6;
+        font-size: 1.05rem;
+        border-bottom: 1px solid #222;
+        cursor: pointer;
+      }
+      .profile-menu-row:active {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      .profile-menu-chevron {
+        color: #aaa;
+        font-size: 1.5rem;
+      }
+      .logout-text {
+        color: #ff3b30;
       }
     </style>
   </head>
   <body>
-    <div class="header">
-      <div class="logo">글림</div>
-    </div>
+    <div class="header"><div class="logo">글림</div></div>
 
     <div id="view-home" class="app-view active">
       <div id="postFeed">
@@ -561,7 +743,23 @@
     </div>
 
     <div id="view-explore" class="app-view">
-      <div class="coming-soon">탐색 기능은 준비 중입니다.</div>
+      <div class="explore-header">
+        <div class="search-wrapper">
+          <input
+            type="text"
+            class="search-bar"
+            id="searchInput"
+            placeholder="사유 검색"
+            onkeyup="if (event.keyCode === 13) searchPosts();"
+          />
+          <span
+            class="material-symbols-outlined search-icon"
+            onclick="searchPosts()"
+            >search</span
+          >
+        </div>
+      </div>
+      <div class="explore-grid" id="exploreGrid"></div>
     </div>
 
     <div id="view-write" class="app-view">
@@ -582,14 +780,56 @@
     </div>
 
     <div id="view-noti" class="app-view">
-      <div class="coming-soon">알림 기능은 준비 중입니다.</div>
+      <div
+        style="
+          height: 100%;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          color: #555;
+        "
+      >
+        알림 기능은 준비 중입니다.
+      </div>
     </div>
 
     <div id="view-profile" class="app-view">
-      <div class="page-container">
-        <div class="page-title" id="authTitle">글림 시작하기</div>
-
-        <div class="auth-container" id="authForm">
+      <div
+        id="authContainer"
+        style="padding: 20px; padding-top: 80px; display: none"
+      >
+        <h2
+          style="
+            color: #fff;
+            margin-bottom: 20px;
+            font-family: &quot;Noto Serif KR&quot;, serif;
+          "
+        >
+          로그인이 필요합니다
+        </h2>
+        <section id="authForm" class="profile-login-card">
+          <p
+            style="
+              text-align: center;
+              color: #aaa;
+              margin-bottom: 20px;
+              font-size: 0.9rem;
+            "
+          >
+            글림의 깊은 사유를 함께 나누어보세요.
+          </p>
+          <button
+            class="social-btn kakao-btn"
+            onclick="handleSocialLogin('kakao')"
+          >
+            <svg class="social-icon" viewBox="0 0 24 24">
+              <path
+                d="M12 3c-5.52 0-10 3.58-10 8 0 2.82 1.83 5.3 4.58 6.71L5.5 22.5l5.24-3.53c.41.05.82.08 1.26.08 5.52 0 10-3.58 10-8s-4.48-8-10-8z"
+                fill="#000000"
+              />
+            </svg>
+            카카오로 계속하기
+          </button>
           <button
             class="social-btn google-btn"
             onclick="handleSocialLogin('google')"
@@ -610,71 +850,83 @@
               <path
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 fill="#EA4335"
-              /></svg
-            >Google로 계속하기
+              />
+            </svg>
+            Google로 계속하기
           </button>
-          <button
-            class="social-btn kakao-btn"
-            onclick="handleSocialLogin('kakao')"
+        </section>
+      </div>
+
+      <div id="profileContainer" style="display: none">
+        <header class="profile-topbar">
+          <h1 class="profile-title">MY</h1>
+          <span
+            class="material-symbols-outlined"
+            style="color: #fff; font-size: 1.8rem; cursor: pointer"
+            onclick="openSheet('settingsSheet')"
+            >menu</span
           >
-            <svg class="social-icon" viewBox="0 0 24 24">
-              <path
-                d="M12 3c-5.52 0-10 3.58-10 8 0 2.82 1.83 5.3 4.58 6.71L5.5 22.5l5.24-3.53c.41.05.82.08 1.26.08 5.52 0 10-3.58 10-8s-4.48-8-10-8z"
-                fill="#000000"
-              /></svg
-            >카카오 로그인
-          </button>
-          <div class="divider">또는 이메일로 시작하기</div>
-          <input
-            type="email"
-            id="emailInput"
-            class="auth-input"
-            placeholder="이메일 주소"
-          />
-          <input
-            type="password"
-            id="passwordInput"
-            class="auth-input"
-            placeholder="비밀번호 (6자리 이상)"
-          />
-          <button class="submit-btn" onclick="handleSignIn()">
-            이메일 로그인
-          </button>
-          <button class="submit-btn secondary-btn" onclick="handleSignUp()">
-            10초 만에 가입하기
+        </header>
+
+        <div class="profile-info-header">
+          <div class="profile-avatar" id="profileAvatar">
+            <span
+              class="material-symbols-outlined"
+              style="font-size: 3rem; color: #555"
+              >person</span
+            >
+          </div>
+          <div class="profile-name" id="profileName">이름</div>
+          <div class="profile-id" id="profileId">@id</div>
+
+          <div class="profile-stats">
+            <div class="stat-item">
+              <span class="stat-num" id="statPosts">0</span>
+              <span class="stat-label">게시글</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num">0</span>
+              <span class="stat-label">팔로워</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num">0</span>
+              <span class="stat-label">팔로잉</span>
+            </div>
+          </div>
+
+          <button
+            class="profile-edit-btn"
+            onclick="alert('프로필 수정 기능은 준비 중입니다.')"
+          >
+            프로필 편집
           </button>
         </div>
 
-        <div class="auth-container" id="profileInfo">
-          <div class="user-email" id="userEmailDisplay"></div>
-          <button class="submit-btn secondary-btn" onclick="handleSignOut()">
-            로그아웃
-          </button>
-
-          <div class="my-posts-header">내가 남긴 사유들</div>
-          <div id="myPostsList"></div>
+        <div class="profile-tabs">
+          <div
+            class="p-tab active"
+            id="tab-my"
+            onclick="switchProfileTab('my')"
+          >
+            <span class="material-symbols-outlined">grid_on</span>
+          </div>
+          <div
+            class="p-tab"
+            id="tab-bookmark"
+            onclick="switchProfileTab('bookmark')"
+          >
+            <span class="material-symbols-outlined">bookmark</span>
+          </div>
+          <div class="p-tab" id="tab-like" onclick="switchProfileTab('like')">
+            <span class="material-symbols-outlined">favorite</span>
+          </div>
         </div>
-      </div>
-    </div>
 
-    <div class="bottom-sheet" id="commentSheet">
-      <div class="sheet-header">
-        <div class="sheet-title">사유 나누기</div>
-        <button class="close-btn" onclick="closeSheet('commentSheet')">
-          ✕
-        </button>
-      </div>
-      <div class="comment-list" id="commentList"></div>
-      <div class="comment-input-area">
-        <input
-          type="text"
-          id="commentInput"
-          class="comment-input"
-          placeholder="공감이나 의견을 남겨주세요."
-        />
-        <button class="comment-submit-btn" onclick="submitComment()">
-          등록
-        </button>
+        <div
+          id="profileGrid"
+          class="explore-grid"
+          style="padding-top: 2px"
+        ></div>
       </div>
     </div>
 
@@ -704,5 +956,70 @@
         ><span class="nav-text">프로필</span>
       </div>
     </nav>
+
+    <div class="bottom-sheet" id="commentSheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title">사유 나누기</div>
+        <button class="close-btn" onclick="closeSheet('commentSheet')">
+          ✕
+        </button>
+      </div>
+      <div class="comment-list" id="commentList"></div>
+      <div class="comment-input-area">
+        <input
+          type="text"
+          id="commentInput"
+          class="comment-input"
+          placeholder="조심스러운 사유를 남겨주세요."
+        />
+        <button class="comment-submit-btn" onclick="submitComment()">
+          등록
+        </button>
+      </div>
+    </div>
+
+    <div class="bottom-sheet" id="settingsSheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title">설정 및 고객지원</div>
+        <button class="close-btn" onclick="closeSheet('settingsSheet')">
+          ✕
+        </button>
+      </div>
+      <div style="flex-grow: 1; overflow-y: auto">
+        <div class="profile-menu-row">
+          <span>공지사항</span
+          ><span class="material-symbols-outlined profile-menu-chevron"
+            >chevron_right</span
+          >
+        </div>
+        <div class="profile-menu-row">
+          <span>다크모드 설정</span
+          ><span class="material-symbols-outlined profile-menu-chevron"
+            >chevron_right</span
+          >
+        </div>
+        <div class="profile-menu-row">
+          <span>알림 설정</span
+          ><span class="material-symbols-outlined profile-menu-chevron"
+            >chevron_right</span
+          >
+        </div>
+        <div class="profile-menu-row">
+          <span>FAQ / 고객센터</span
+          ><span class="material-symbols-outlined profile-menu-chevron"
+            >chevron_right</span
+          >
+        </div>
+        <div
+          class="profile-menu-row"
+          style="margin-top: 20px; border-top: 1px solid #222"
+          onclick="handleSignOut()"
+        >
+          <span class="logout-text">로그아웃</span>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

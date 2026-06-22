@@ -3,7 +3,8 @@ const SUPABASE_ANON_KEY = "sb_publishable_mwYlhge63nnNjL9lAFhxRw_fxRtRGvO";
 const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
-let currentPostIdForComment = null; // 현재 댓글을 달고 있는 게시물 ID 기억
+let currentPostIdForComment = null;
+let currentProfileTab = "my";
 
 const observerOptions = {
   root: document.querySelector("#view-home"),
@@ -22,20 +23,21 @@ function switchTab(tabName) {
     switchTab("profile");
     return;
   }
-
   document
     .querySelectorAll(".app-view")
     .forEach((view) => view.classList.remove("active"));
   document
     .querySelectorAll(".nav-item")
     .forEach((nav) => nav.classList.remove("active"));
-
   document.getElementById(`view-${tabName}`).classList.add("active");
   document.getElementById(`nav-${tabName}`).classList.add("active");
 
   if (tabName === "home") fetchPosts();
-  // 💡 프로필 탭으로 갈 때마다 내가 쓴 글 업데이트
-  if (tabName === "profile" && currentUser) fetchUserPosts();
+  if (tabName === "explore") fetchExplorePosts();
+  if (tabName === "profile") {
+    updateAuthUI();
+    if (currentUser) loadProfileGrid(currentProfileTab);
+  }
 }
 
 async function init() {
@@ -44,127 +46,185 @@ async function init() {
   } = await client.auth.getSession();
   currentUser = session?.user || null;
   updateAuthUI();
-  fetchPosts();
+  await fetchPosts();
 
   client.auth.onAuthStateChange((_event, session) => {
     currentUser = session?.user || null;
     updateAuthUI();
   });
+
+  // 바텀 시트 드래그 로직 공통 적용
+  ["commentSheet", "settingsSheet"].forEach((sheetId) => {
+    const sheet = document.getElementById(sheetId);
+    let touchStartY = 0;
+    let touchCurrentY = 0;
+    let isDraggingSheet = false;
+    sheet.addEventListener(
+      "touchstart",
+      (e) => {
+        if (
+          e.target.closest(".comment-list") ||
+          e.target.closest(".profile-menu-row")
+        )
+          return;
+        touchStartY = e.touches[0].clientY;
+        isDraggingSheet = false;
+      },
+      { passive: true },
+    );
+    sheet.addEventListener(
+      "touchmove",
+      (e) => {
+        touchCurrentY = e.touches[0].clientY;
+        const deltaY = touchCurrentY - touchStartY;
+        if (deltaY > 0) {
+          isDraggingSheet = true;
+          sheet.style.transition = "none";
+          sheet.style.transform = `translateY(${deltaY}px)`;
+        }
+      },
+      { passive: true },
+    );
+    sheet.addEventListener("touchend", (e) => {
+      if (!isDraggingSheet) return;
+      const deltaY = touchCurrentY - touchStartY;
+      sheet.style.transition =
+        "bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1), transform 0.2s ease";
+      sheet.style.transform = "";
+      if (deltaY > 100) closeSheet(sheetId);
+      touchStartY = 0;
+      touchCurrentY = 0;
+      isDraggingSheet = false;
+    });
+  });
 }
 
 function updateAuthUI() {
-  const authForm = document.getElementById("authForm");
-  const profileInfo = document.getElementById("profileInfo");
-  const authTitle = document.getElementById("authTitle");
+  const authContainer = document.getElementById("authContainer");
+  const profileContainer = document.getElementById("profileContainer");
 
   if (currentUser) {
-    authForm.style.display = "none";
-    profileInfo.style.display = "flex";
-    profileInfo.style.flexDirection = "column";
-    authTitle.innerText = "내 공간";
+    authContainer.style.display = "none";
+    profileContainer.style.display = "block";
 
     const displayName =
       currentUser.user_metadata?.full_name ||
       currentUser.user_metadata?.name ||
       currentUser.email.split("@")[0];
-    document.getElementById("userEmailDisplay").innerText =
-      `@${displayName} 님`;
+    const displayId = currentUser.email.split("@")[0];
+    const avatarUrl = currentUser.user_metadata?.avatar_url;
 
-    // 로그인 상태면 내가 쓴 글 불러오기 실행
-    fetchUserPosts();
+    document.getElementById("profileName").innerText = displayName;
+    document.getElementById("profileId").innerText = `@${displayId}`;
+
+    if (avatarUrl) {
+      document.getElementById("profileAvatar").innerHTML =
+        `<img src="${avatarUrl}" style="width:100%; height:100%; object-fit:cover;">`;
+    }
+
+    // 게시글 수 계산 (내가 쓴 글 개수)
+    client
+      .from("posts")
+      .select("id", { count: "exact" })
+      .eq("author", displayName)
+      .then(({ count }) => {
+        document.getElementById("statPosts").innerText = count || 0;
+      });
   } else {
-    authForm.style.display = "flex";
-    profileInfo.style.display = "none";
-    authTitle.innerText = "글림 시작하기";
-    document.getElementById("myPostsList").innerHTML = ""; // 초기화
+    authContainer.style.display = "block";
+    profileContainer.style.display = "none";
   }
 }
 
-// 소셜 및 이메일 로그인 로직 유지
 async function handleSocialLogin(provider) {
   const { error } = await client.auth.signInWithOAuth({
     provider: provider,
     options: { redirectTo: window.location.origin },
   });
-  if (error) alert(provider + " 로그인 중 오류가 발생했습니다.");
-}
-
-async function handleSignUp() {
-  const email = document.getElementById("emailInput").value;
-  const password = document.getElementById("passwordInput").value;
-  if (!email || password.length < 6)
-    return alert("이메일과 6자리 이상의 비밀번호를 입력해주세요.");
-  const { error } = await client.auth.signUp({ email, password });
-  if (error) alert("가입 오류: " + error.message);
-  else alert("환영합니다! 가입이 완료되었습니다.");
-}
-
-async function handleSignIn() {
-  const email = document.getElementById("emailInput").value;
-  const password = document.getElementById("passwordInput").value;
-  const { error } = await client.auth.signInWithPassword({ email, password });
-  if (error) alert("로그인 실패: 이메일이나 비밀번호를 확인해주세요.");
-  else switchTab("home");
+  if (error) alert(provider + " 로그인 실패");
 }
 
 async function handleSignOut() {
   await client.auth.signOut();
+  closeSheet("settingsSheet");
   alert("로그아웃 되었습니다.");
   switchTab("home");
 }
 
-// 💡 1. [프로필] 내가 쓴 글 불러오기 & 삭제 기능
-async function fetchUserPosts() {
-  if (!currentUser) return;
-  const displayName =
-    currentUser.user_metadata?.full_name ||
-    currentUser.user_metadata?.name ||
-    currentUser.email.split("@")[0];
+/* 프로필 탭 기능 */
+function switchProfileTab(tabType) {
+  currentProfileTab = tabType;
+  document
+    .querySelectorAll(".p-tab")
+    .forEach((t) => t.classList.remove("active"));
+  document.getElementById(`tab-${tabType}`).classList.add("active");
+  loadProfileGrid(tabType);
+}
 
-  const { data, error } = await client
+async function loadProfileGrid(tabType) {
+  const grid = document.getElementById("profileGrid");
+  grid.innerHTML =
+    '<div style="grid-column: 1 / -1; padding: 50px 0; text-align: center; color: #555;">불러오는 중...</div>';
+
+  let query = client
     .from("posts")
     .select("*")
-    .eq("author", displayName)
     .order("created_at", { ascending: false });
-  const container = document.getElementById("myPostsList");
+  const userKey = currentUser.id;
+  let targetIds = [];
 
-  if (error) {
-    container.innerHTML = "불러오기 실패";
-    return;
-  }
-  if (data.length === 0) {
-    container.innerHTML =
-      '<div class="coming-soon">아직 남긴 조각이 없습니다.</div>';
-    return;
+  if (tabType === "my") {
+    const displayName =
+      currentUser.user_metadata?.full_name ||
+      currentUser.user_metadata?.name ||
+      currentUser.email.split("@")[0];
+    query = query.eq("author", displayName);
+  } else if (tabType === "bookmark") {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith(`bookmarked_${userKey}_`))
+        targetIds.push(key.replace(`bookmarked_${userKey}_`, ""));
+    }
+    if (targetIds.length === 0)
+      return (grid.innerHTML =
+        '<div style="grid-column: 1 / -1; text-align: center; color: #555; padding: 50px 0;">저장된 사유가 없습니다.</div>');
+    query = query.in("id", targetIds);
+  } else if (tabType === "like") {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith(`liked_${userKey}_`))
+        targetIds.push(key.replace(`liked_${userKey}_`, ""));
+    }
+    if (targetIds.length === 0)
+      return (grid.innerHTML =
+        '<div style="grid-column: 1 / -1; text-align: center; color: #555; padding: 50px 0;">좋아요한 사유가 없습니다.</div>');
+    query = query.in("id", targetIds);
   }
 
-  container.innerHTML = data
+  const { data, error } = await query;
+  if (error)
+    return (grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #ff3b30;">오류</div>`);
+  if (data.length === 0)
+    return (grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #555; padding: 50px 0;">기록이 없습니다.</div>`);
+
+  grid.innerHTML = data
     .map(
       (post) => `
-        <div class="my-post-item">
-            <div class="my-post-content">${post.content}</div>
-            <button class="delete-post-btn" onclick="deletePost('${post.id}')">삭제</button>
+        <div class="grid-item" onclick="viewGridPost('${encodeURIComponent(post.content)}')">
+            <div class="grid-text">${post.content}</div>
         </div>
     `,
     )
     .join("");
 }
 
-async function deletePost(postId) {
-  if (!confirm("이 글을 영구적으로 삭제하시겠습니까?")) return;
-  await client.from("posts").delete().eq("id", postId);
-  fetchUserPosts(); // 리스트 새로고침
-  fetchPosts(); // 홈 피드 새로고침
-}
-
-// 피드 가져오기
+/* 게시물 관련 기능 (기존 동일 유지) */
 async function fetchPosts() {
   const { data, error } = await client
     .from("posts")
-    .lt("reports_count", 5)
+    .select("*")
     .order("created_at", { ascending: false });
   const feedContainer = document.getElementById("postFeed");
-
   if (error)
     return (feedContainer.innerHTML = `<div style="height:100vh; display:flex; justify-content:center; align-items:center;">데이터 오류</div>`);
   feedContainer.innerHTML = "";
@@ -174,27 +234,37 @@ async function fetchPosts() {
   data.forEach((post) => {
     const postElement = document.createElement("div");
     postElement.className = "post";
-    // 💡 수정됨: 말풍선 아이콘 클릭 시 openCommentSheet 함수 실행
+
+    const userKey = currentUser ? currentUser.id : "guest";
+    const hasLiked = localStorage.getItem(`liked_${userKey}_${post.id}`)
+      ? "font-variation-settings: 'FILL' 1; color: #ff3b30;"
+      : "";
+    const hasBookmarked = localStorage.getItem(
+      `bookmarked_${userKey}_${post.id}`,
+    )
+      ? "font-variation-settings: 'FILL' 1; color: #FFCC00;"
+      : "";
+    const bookmarkText = localStorage.getItem(
+      `bookmarked_${userKey}_${post.id}`,
+    )
+      ? "담김"
+      : "저장";
+
     postElement.innerHTML = `
         <div class="text-content">${post.content.replace(/\n/g, "<br>")}</div>
-        <div class="author-info">
-            <div class="author-name">@${post.author || "익명"}</div>
-        </div>
+        <div class="author-info"><div class="author-name">@${post.author || "익명"}</div></div>
         <div class="side-actions">
             <div class="action-btn" onclick="incrementMetric('${post.id}', 'likes_count', this)">
-                <span class="material-symbols-outlined icon-like">favorite</span>
+                <span class="material-symbols-outlined icon-like" style="${hasLiked}">favorite</span>
                 <span class="action-count">${post.likes_count || 0}</span>
             </div>
-            <div class="action-btn" onclick="openCommentSheet('${post.id}')">
+            <div class="action-btn" onclick="openSheet('commentSheet', '${post.id}')">
                 <span class="material-symbols-outlined">chat_bubble</span>
                 <span class="action-count">${post.dislikes_count || 0}</span>
             </div>
-            <div class="action-btn" onclick="sharePost('${post.id}')">
-                <span class="material-symbols-outlined">share</span>
-                <span class="action-count">공유</span>
-            </div>
-            <div class="action-btn report-btn" onclick="reportPost('${post.id}')" title="신고">
-                <span class="material-symbols-outlined">flag</span>
+            <div class="action-btn" onclick="toggleBookmark('${post.id}', this)">
+                <span class="material-symbols-outlined icon-bookmark" style="${hasBookmarked}">bookmark</span>
+                <span class="action-count">${bookmarkText}</span>
             </div>
         </div>`;
     feedContainer.appendChild(postElement);
@@ -202,77 +272,167 @@ async function fetchPosts() {
   });
 }
 
-// 💡 2. [댓글] 댓글창 열고 닫기 및 댓글 데이터 연동
-function openCommentSheet(postId) {
-  currentPostIdForComment = postId;
-  document.getElementById("commentSheet").classList.add("open");
-  fetchComments(postId);
+async function fetchExplorePosts(keyword = "") {
+  const grid = document.getElementById("exploreGrid");
+  grid.innerHTML =
+    '<div style="grid-column: 1 / -1; padding: 50px 0; text-align: center; color: #555;">사유를 불러오는 중...</div>';
+  let query = client
+    .from("posts")
+    .select("*")
+    .order("likes_count", { ascending: false })
+    .limit(30);
+  if (keyword) query = query.ilike("content", `%${keyword}%`);
+
+  const { data, error } = await query;
+  if (error)
+    return (grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #ff3b30;">오류</div>`);
+  if (data.length === 0)
+    return (grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #555; padding: 50px 0;">결과 없음.</div>`);
+
+  grid.innerHTML = data
+    .map(
+      (post) => `
+        <div class="grid-item" onclick="viewGridPost('${encodeURIComponent(post.content)}')">
+            <div class="grid-text">${post.content}</div>
+            <div class="grid-stats"><span class="material-symbols-outlined">favorite</span>${post.likes_count || 0}</div>
+        </div>
+    `,
+    )
+    .join("");
+}
+
+function searchPosts() {
+  fetchExplorePosts(document.getElementById("searchInput").value.trim());
+}
+function viewGridPost(encodedContent) {
+  alert(decodeURIComponent(encodedContent));
+}
+
+async function incrementMetric(postId, column, element) {
+  if (column === "likes_count") {
+    if (!currentUser) return alert("좋아요를 누르려면 로그인이 필요합니다.");
+    const userKey = currentUser.id;
+    const storageKey = `liked_${userKey}_${postId}`;
+    const countSpan = element.querySelector(".action-count");
+    const icon = element.querySelector(".icon-like");
+
+    if (localStorage.getItem(storageKey)) {
+      localStorage.removeItem(storageKey);
+      let currentCount = parseInt(countSpan.innerText) - 1;
+      countSpan.innerText = currentCount < 0 ? 0 : currentCount;
+      icon.style.fontVariationSettings = "'FILL' 0";
+      icon.style.color = "#ccc";
+      const { data } = await client
+        .from("posts")
+        .select(column)
+        .eq("id", postId)
+        .single();
+      let nextCount = (data[column] || 0) - 1;
+      await client
+        .from("posts")
+        .update({ [column]: nextCount < 0 ? 0 : nextCount })
+        .eq("id", postId);
+    } else {
+      localStorage.setItem(storageKey, "true");
+      countSpan.innerText = parseInt(countSpan.innerText) + 1;
+      icon.style.fontVariationSettings = "'FILL' 1";
+      icon.style.color = "#ff3b30";
+      const { data } = await client
+        .from("posts")
+        .select(column)
+        .eq("id", postId)
+        .single();
+      await client
+        .from("posts")
+        .update({ [column]: (data[column] || 0) + 1 })
+        .eq("id", postId);
+    }
+  }
+}
+
+function toggleBookmark(postId, element) {
+  if (!currentUser) return alert("북마크를 이용하려면 로그인이 필요합니다.");
+  const userKey = currentUser.id;
+  const storageKey = `bookmarked_${userKey}_${postId}`;
+  const icon = element.querySelector(".icon-bookmark");
+  const countSpan = element.querySelector(".action-count");
+
+  if (localStorage.getItem(storageKey)) {
+    localStorage.removeItem(storageKey);
+    icon.style.fontVariationSettings = "'FILL' 0";
+    icon.style.color = "#ccc";
+    countSpan.innerText = "저장";
+  } else {
+    localStorage.setItem(storageKey, "true");
+    icon.style.fontVariationSettings = "'FILL' 1";
+    icon.style.color = "#FFCC00";
+    countSpan.innerText = "담김";
+  }
+}
+
+/* 바텀 시트 통합 함수 */
+function openSheet(id, postId = null) {
+  if (id === "commentSheet") {
+    currentPostIdForComment = postId;
+    fetchComments(postId);
+  }
+  const sheet = document.getElementById(id);
+  sheet.style.transition = "bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1)";
+  sheet.classList.add("open");
 }
 
 function closeSheet(id) {
-  document.getElementById(id).classList.remove("open");
+  const sheet = document.getElementById(id);
+  sheet.classList.remove("open");
+  sheet.style.transform = "";
 }
 
 async function fetchComments(postId) {
   const list = document.getElementById("commentList");
-  list.innerHTML = '<div class="coming-soon">댓글을 불러오는 중...</div>';
-
+  list.innerHTML =
+    '<div style="text-align:center; color:#555; margin-top:20px;">사유를 가져오는 중...</div>';
   const { data, error } = await client
     .from("comments")
     .select("*")
     .eq("post_id", postId)
     .order("created_at", { ascending: true });
 
-  if (error) {
-    list.innerHTML = "오류 발생";
-    return;
-  }
-  if (data.length === 0) {
-    list.innerHTML =
-      '<div class="coming-soon">첫 번째로 사유를 나누어 보세요.</div>';
-    return;
-  }
+  if (error) return (list.innerHTML = "오류 발생");
+  if (data.length === 0)
+    return (list.innerHTML =
+      '<div style="text-align:center; color:#555; margin-top:20px;">첫 번째로 사유를 나누어 보세요.</div>');
 
   list.innerHTML = data
-    .map(
-      (c) => `
-        <div class="comment-item">
-            <div class="comment-author">@${c.user_email.split("@")[0]}</div>
-            <div class="comment-text">${c.content}</div>
-        </div>
-    `,
-    )
+    .map((c) => {
+      const authorName = c.user_email ? c.user_email.split("@")[0] : "익명";
+      return `<div class="comment-item"><div class="comment-author">@${authorName}</div><div class="comment-text">${c.content}</div></div>`;
+    })
     .join("");
-
-  // 스크롤 맨 아래로 이동
   list.scrollTop = list.scrollHeight;
 }
 
 async function submitComment() {
   if (!currentUser) {
-    alert("댓글을 남기려면 로그인이 필요합니다.");
+    alert("사유를 나누려면 로그인이 필요합니다.");
     closeSheet("commentSheet");
     switchTab("profile");
     return;
   }
-
   const content = document.getElementById("commentInput").value.trim();
   if (!content) return;
 
-  // 댓글 테이블에 저장
-  const { error } = await client.from("comments").insert([
-    {
-      post_id: currentPostIdForComment,
-      user_email: currentUser.email, // 댓글 작성자 이메일 저장
-      content: content,
-    },
-  ]);
-
+  const { error } = await client
+    .from("comments")
+    .insert([
+      {
+        post_id: currentPostIdForComment,
+        user_email: currentUser.email,
+        content: content,
+      },
+    ]);
   if (!error) {
-    document.getElementById("commentInput").value = ""; // 입력창 비우기
-    fetchComments(currentPostIdForComment); // 댓글 리스트 갱신
-
-    // 기존 게시물 테이블의 댓글 숫자(dislikes_count를 활용) 1 증가
+    document.getElementById("commentInput").value = "";
+    fetchComments(currentPostIdForComment);
     const { data } = await client
       .from("posts")
       .select("dislikes_count")
@@ -282,9 +442,7 @@ async function submitComment() {
       .from("posts")
       .update({ dislikes_count: (data.dislikes_count || 0) + 1 })
       .eq("id", currentPostIdForComment);
-    fetchPosts(); // 뒤의 홈 화면 숫자도 갱신
-  } else {
-    alert("댓글 등록에 실패했습니다.");
+    fetchPosts();
   }
 }
 
@@ -298,62 +456,21 @@ async function submitPost() {
     currentUser.user_metadata?.full_name ||
     currentUser.user_metadata?.name ||
     currentUser.email.split("@")[0];
-  const { error } = await client
-    .from("posts")
-    .insert([{ content: content, author: authorNickname }]);
-
-  if (error) alert("등록에 실패했습니다.");
-  else {
-    document.getElementById("postContent").value = "";
-    updateCharCount();
-    switchTab("home");
-  }
-}
-
-async function incrementMetric(postId, column, element) {
-  const countSpan = element.querySelector(".action-count");
-  countSpan.innerText = parseInt(countSpan.innerText) + 1;
-  if (column === "likes_count") {
-    const icon = element.querySelector(".icon-like");
-    icon.style.fontVariationSettings = "'FILL' 1";
-    icon.style.color = "#ff3b30";
-  }
-  const { data } = await client
-    .from("posts")
-    .select(column)
-    .eq("id", postId)
-    .single();
   await client
     .from("posts")
-    .update({ [column]: (data[column] || 0) + 1 })
-    .eq("id", postId);
-}
+    .insert([
+      {
+        content: content,
+        author: authorNickname,
+        likes_count: 0,
+        dislikes_count: 0,
+        reports_count: 0,
+      },
+    ]);
 
-function sharePost(postId) {
-  const url = window.location.href.split("?")[0] + "?post=" + postId;
-  if (navigator.share)
-    navigator
-      .share({ title: "글림", text: "이 깊은 문장을 확인해보세요.", url: url })
-      .catch(console.error);
-  else
-    navigator.clipboard
-      .writeText(url)
-      .then(() => alert("링크가 복사되었습니다."));
-}
-
-async function reportPost(postId) {
-  if (!confirm("이 문장을 신고하시겠습니까?")) return;
-  const { data } = await client
-    .from("posts")
-    .select("reports_count")
-    .eq("id", postId)
-    .single();
-  await client
-    .from("posts")
-    .update({ reports_count: (data.reports_count || 0) + 1 })
-    .eq("id", postId);
-  alert("신고 접수 완료");
-  fetchPosts();
+  document.getElementById("postContent").value = "";
+  updateCharCount();
+  switchTab("home");
 }
 
 function updateCharCount() {

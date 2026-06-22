@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>글림 - 관리자 센터</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="admin.js" defer></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body,
+      html {
+        height: 100%;
+        background-color: #050505;
+        color: #f0f0f0;
+        font-family: -apple-system, sans-serif;
+        overflow-y: auto;
+      }
+      .page-container {
+        padding: 40px 25px;
+        max-width: 600px;
+        margin: 0 auto;
+      }
+      .admin-badge {
+        background: #ff3b30;
+        color: #fff;
+        font-size: 0.85rem;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-weight: bold;
+        margin-bottom: 20px;
+        display: inline-block;
+        letter-spacing: 1px;
+      }
+      .page-title {
+        font-size: 1.5rem;
+        margin-bottom: 30px;
+        font-weight: bold;
+        color: #fff;
+      }
+      .back-btn {
+        background: #222;
+        color: #fff;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        margin-bottom: 30px;
+        font-size: 0.95rem;
+      }
+
+      #adminReportList {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+      }
+      .my-post-item {
+        background: rgba(255, 59, 48, 0.05);
+        border: 1px solid #ff3b30;
+        border-radius: 12px;
+        padding: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .report-tag {
+        color: #ff9500;
+        font-size: 0.85rem;
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+      .my-post-content {
+        font-size: 1.05rem;
+        color: #fff;
+        line-height: 1.5;
+        font-family: "Noto Serif KR", serif;
+        margin-bottom: 10px;
+      }
+      .delete-post-btn {
+        background: #ff3b30;
+        border: none;
+        color: #fff;
+        cursor: pointer;
+        padding: 10px 15px;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 0.9rem;
+      }
+      .coming-soon {
+        color: #888;
+        text-align: center;
+        padding: 50px 0;
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-container">
+      <div class="admin-badge">ADMIN MODE</div>
+      <div class="page-title">신고 게시물 통합 관리센터</div>
+      <button class="back-btn" onclick="location.href = 'index.html'">
+        ← 일반 서비스로 돌아가기
+      </button>
+      <div id="adminReportList">
+        <div class="coming-soon">보안 인가를 확인하는 중입니다...</div>
+      </div>
+    </div>
+  </body>
+</html>
