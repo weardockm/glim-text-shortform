@@ -8,6 +8,9 @@ let viewedProfileUserId = null;
 let viewedProfileIsFollowing = false;
 let userProfileReturnViewId = "view-home";
 let contextFeedReturnViewId = "view-home";
+let isRefreshing = false;
+let lastNavTapTab = null;
+let lastNavTapTime = 0;
 const contextPostCollections = new Map();
 const contextPostTitles = new Map();
 
@@ -193,6 +196,7 @@ async function init() {
   });
 
   setupContextFeedSwipeBack();
+  setupPullToRefresh();
 }
 
 function activateAppView(viewId) {
@@ -209,6 +213,151 @@ function activateAppView(viewId) {
   document.getElementById(viewId)?.classList.add("active");
   const tabName = viewId.replace("view-", "");
   document.getElementById(`nav-${tabName}`)?.classList.add("active");
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function showPullRefreshIndicator(distance) {
+  if (isRefreshing) return;
+  const indicator = document.getElementById("refreshIndicator");
+  const icon = document.getElementById("refreshIndicatorIcon");
+  const text = document.getElementById("refreshIndicatorText");
+  indicator.classList.add("visible", "pulling");
+  icon.style.transform = `rotate(${Math.min(distance * 2, 180)}deg)`;
+  text.innerText = distance >= 80 ? "놓아서 새로고침" : "당겨서 새로고침";
+}
+
+function hidePullRefreshIndicator() {
+  if (isRefreshing) return;
+  const indicator = document.getElementById("refreshIndicator");
+  const icon = document.getElementById("refreshIndicatorIcon");
+  indicator.classList.remove("visible", "pulling");
+  icon.style.transform = "";
+}
+
+async function refreshTab(tabName) {
+  if (isRefreshing || !["home", "explore", "noti", "profile"].includes(tabName))
+    return;
+
+  isRefreshing = true;
+  const indicator = document.getElementById("refreshIndicator");
+  const icon = document.getElementById("refreshIndicatorIcon");
+  const text = document.getElementById("refreshIndicatorText");
+  const view = document.getElementById(`view-${tabName}`);
+  const startedAt = Date.now();
+
+  indicator.classList.remove("pulling", "complete");
+  indicator.classList.add("visible", "refreshing");
+  icon.style.transform = "";
+  icon.innerText = "refresh";
+  text.innerText = "새로고침 중...";
+  view?.scrollTo({ top: 0, behavior: "smooth" });
+
+  try {
+    if (tabName === "home") {
+      await fetchPosts();
+    } else if (tabName === "explore") {
+      await fetchExplorePosts(document.getElementById("searchInput").value.trim());
+    } else if (tabName === "noti") {
+      await fetchNotifications();
+    } else if (tabName === "profile") {
+      await syncCurrentUserProfile();
+      updateAuthUI();
+      if (currentUser) {
+        await Promise.all([
+          loadProfileGrid("my"),
+          loadProfileGrid("bookmark"),
+          loadProfileGrid("like"),
+          loadMyFollowStats(),
+        ]);
+      }
+    }
+
+    const remainingTime = 650 - (Date.now() - startedAt);
+    if (remainingTime > 0) await wait(remainingTime);
+
+    indicator.classList.remove("refreshing");
+    indicator.classList.add("complete");
+    icon.innerText = "check";
+    text.innerText = "새로고침 완료";
+    await wait(450);
+  } finally {
+    indicator.classList.remove("visible", "refreshing", "complete");
+    icon.innerText = "refresh";
+    icon.style.transform = "";
+    isRefreshing = false;
+  }
+}
+
+function setupPullToRefresh() {
+  const refreshableViews = {
+    home: document.getElementById("view-home"),
+    explore: document.getElementById("view-explore"),
+    noti: document.getElementById("view-noti"),
+    profile: document.getElementById("view-profile"),
+  };
+
+  Object.entries(refreshableViews).forEach(([tabName, view]) => {
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let pullDistance = 0;
+    let isTracking = false;
+
+    view.addEventListener(
+      "touchstart",
+      (event) => {
+        if (isRefreshing || view.scrollTop > 2) return;
+        touchStartX = event.touches[0].clientX;
+        touchStartY = event.touches[0].clientY;
+        pullDistance = 0;
+        isTracking = true;
+      },
+      { passive: true },
+    );
+
+    view.addEventListener(
+      "touchmove",
+      (event) => {
+        if (!isTracking) return;
+        const deltaX = event.touches[0].clientX - touchStartX;
+        const deltaY = event.touches[0].clientY - touchStartY;
+
+        if (deltaY <= 0 || Math.abs(deltaY) <= Math.abs(deltaX)) {
+          pullDistance = 0;
+          hidePullRefreshIndicator();
+          return;
+        }
+
+        pullDistance = deltaY;
+        if (pullDistance > 12) showPullRefreshIndicator(pullDistance);
+      },
+      { passive: true },
+    );
+
+    view.addEventListener(
+      "touchend",
+      () => {
+        if (!isTracking) return;
+        isTracking = false;
+        if (pullDistance >= 80) refreshTab(tabName);
+        else hidePullRefreshIndicator();
+        pullDistance = 0;
+      },
+      { passive: true },
+    );
+
+    view.addEventListener(
+      "touchcancel",
+      () => {
+        isTracking = false;
+        pullDistance = 0;
+        hidePullRefreshIndicator();
+      },
+      { passive: true },
+    );
+  });
 }
 
 function getCurrentProfileData() {
@@ -279,6 +428,30 @@ function setViewedProfileAvatar(avatarUrl) {
     icon.innerText = "person";
     avatar.appendChild(icon);
   }
+}
+
+function handleNavTap(tabName) {
+  const now = Date.now();
+  const activeView = document.querySelector(".app-view.active");
+  const isCurrentTab = activeView?.id === `view-${tabName}`;
+  const isDoubleTap =
+    isCurrentTab && lastNavTapTab === tabName && now - lastNavTapTime < 450;
+
+  if (isDoubleTap) {
+    lastNavTapTab = null;
+    lastNavTapTime = 0;
+    refreshTab(tabName);
+    return;
+  }
+
+  if (isCurrentTab) {
+    activeView.scrollTo({ top: 0, behavior: "smooth" });
+  } else {
+    switchTab(tabName);
+  }
+
+  lastNavTapTab = tabName;
+  lastNavTapTime = now;
 }
 
 function updateViewedProfileFollowButton() {
@@ -877,6 +1050,7 @@ async function fetchPosts() {
   const feedContainer = document.getElementById("postFeed");
   if (error)
     return (feedContainer.innerHTML = `<div style="height:100vh; display:flex; justify-content:center; align-items:center;">데이터 오류</div>`);
+  observer.disconnect();
   feedContainer.innerHTML = "";
   if (data.length === 0)
     return (feedContainer.innerHTML = `<div style="height:100vh; display:flex; justify-content:center; align-items:center; color:#555;">첫 번째 문장을 공유해 보세요.</div>`);

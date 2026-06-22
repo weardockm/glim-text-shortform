@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0..1,0"
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="index.js?v=12" defer></script>
+    <script src="index.js?v=13" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -48,6 +48,50 @@
       }
       .header.is-hidden {
         display: none;
+      }
+      .refresh-indicator {
+        position: fixed;
+        top: 14px;
+        left: 50%;
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 9px 13px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 18px;
+        background: rgba(18, 18, 18, 0.92);
+        color: #ddd;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
+        font-size: 0.76rem;
+        font-family: -apple-system, sans-serif;
+        opacity: 0;
+        pointer-events: none;
+        transform: translate(-50%, -70px) scale(0.92);
+        transition:
+          opacity 0.2s ease,
+          transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+        backdrop-filter: blur(10px);
+      }
+      .refresh-indicator.visible {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+      }
+      .refresh-indicator-icon {
+        font-size: 1.15rem;
+        color: #fff;
+        transition: transform 0.15s ease;
+      }
+      .refresh-indicator.refreshing .refresh-indicator-icon {
+        animation: refreshSpin 0.75s linear infinite;
+      }
+      .refresh-indicator.complete .refresh-indicator-icon {
+        color: #34c759;
+      }
+      @keyframes refreshSpin {
+        to {
+          transform: rotate(360deg);
+        }
       }
       .logo {
         font-size: 1.4rem;
@@ -972,6 +1016,14 @@
   </head>
   <body>
     <div class="header"><div class="logo">글림</div></div>
+    <div class="refresh-indicator" id="refreshIndicator" aria-live="polite">
+      <span
+        class="material-symbols-outlined refresh-indicator-icon"
+        id="refreshIndicatorIcon"
+        >refresh</span
+      >
+      <span id="refreshIndicatorText">새로고침 중...</span>
+    </div>
 
     <div id="view-home" class="app-view active">
       <div id="postFeed">
@@ -1283,11 +1335,19 @@
     </div>
 
     <nav class="bottom-nav">
-      <div class="nav-item active" id="nav-home" onclick="switchTab('home')">
+      <div
+        class="nav-item active"
+        id="nav-home"
+        onclick="handleNavTap('home')"
+      >
         <span class="material-symbols-outlined nav-icon">home</span
         ><span class="nav-text">홈</span>
       </div>
-      <div class="nav-item" id="nav-explore" onclick="switchTab('explore')">
+      <div
+        class="nav-item"
+        id="nav-explore"
+        onclick="handleNavTap('explore')"
+      >
         <span class="material-symbols-outlined nav-icon">search</span
         ><span class="nav-text">탐색</span>
       </div>
@@ -1299,11 +1359,19 @@
         <span class="material-symbols-outlined nav-icon">add_circle</span
         ><span class="nav-text">글쓰기</span>
       </div>
-      <div class="nav-item" id="nav-noti" onclick="switchTab('noti')">
+      <div
+        class="nav-item"
+        id="nav-noti"
+        onclick="handleNavTap('noti')"
+      >
         <span class="material-symbols-outlined nav-icon">notifications</span
         ><span class="nav-text">알림</span>
       </div>
-      <div class="nav-item" id="nav-profile" onclick="switchTab('profile')">
+      <div
+        class="nav-item"
+        id="nav-profile"
+        onclick="handleNavTap('profile')"
+      >
         <span class="material-symbols-outlined nav-icon">person</span
         ><span class="nav-text">프로필</span>
       </div>
