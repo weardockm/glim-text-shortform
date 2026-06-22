@@ -146,4 +146,32 @@ async function submitNotice() {
   }
 }
 
+function setupAdminSwipeBack() {
+  let touchStartX = 0;
+  let touchStartY = 0;
+
+  document.addEventListener(
+    "touchstart",
+    (event) => {
+      touchStartX = event.touches[0].clientX;
+      touchStartY = event.touches[0].clientY;
+    },
+    { passive: true },
+  );
+
+  document.addEventListener(
+    "touchend",
+    (event) => {
+      const touch = event.changedTouches[0];
+      const deltaX = touch.clientX - touchStartX;
+      const deltaY = touch.clientY - touchStartY;
+      if (deltaX < -80 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
+        window.location.href = "index.html";
+      }
+    },
+    { passive: true },
+  );
+}
+
+setupAdminSwipeBack();
 initAdmin();

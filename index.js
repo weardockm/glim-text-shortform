@@ -11,6 +11,7 @@ let contextFeedReturnViewId = "view-home";
 let isRefreshing = false;
 let lastNavTapTab = null;
 let lastNavTapTime = 0;
+let pullIndicatorHideTimer = null;
 const contextPostCollections = new Map();
 const contextPostTitles = new Map();
 
@@ -195,7 +196,7 @@ async function init() {
       });
   });
 
-  setupContextFeedSwipeBack();
+  setupSwipeBackNavigation();
   setupPullToRefresh();
 }
 
@@ -227,14 +228,25 @@ function showPullRefreshIndicator(distance) {
   indicator.classList.add("visible", "pulling");
   icon.style.transform = `rotate(${Math.min(distance * 2, 180)}deg)`;
   text.innerText = distance >= 80 ? "놓아서 새로고침" : "당겨서 새로고침";
+  clearTimeout(pullIndicatorHideTimer);
+  pullIndicatorHideTimer = setTimeout(hidePullRefreshIndicator, 1200);
 }
 
 function hidePullRefreshIndicator() {
+  clearTimeout(pullIndicatorHideTimer);
+  pullIndicatorHideTimer = null;
   if (isRefreshing) return;
   const indicator = document.getElementById("refreshIndicator");
   const icon = document.getElementById("refreshIndicatorIcon");
   indicator.classList.remove("visible", "pulling");
   icon.style.transform = "";
+}
+
+function forceHideRefreshIndicator() {
+  const indicator = document.getElementById("refreshIndicator");
+  const icon = document.getElementById("refreshIndicatorIcon");
+  indicator?.classList.remove("visible", "pulling", "refreshing", "complete");
+  if (icon) icon.style.transform = "";
 }
 
 async function refreshTab(tabName) {
@@ -247,7 +259,10 @@ async function refreshTab(tabName) {
   const text = document.getElementById("refreshIndicatorText");
   const view = document.getElementById(`view-${tabName}`);
   const startedAt = Date.now();
+  const refreshSafetyTimer = setTimeout(forceHideRefreshIndicator, 8000);
 
+  clearTimeout(pullIndicatorHideTimer);
+  pullIndicatorHideTimer = null;
   indicator.classList.remove("pulling", "complete");
   indicator.classList.add("visible", "refreshing");
   icon.style.transform = "";
@@ -284,6 +299,7 @@ async function refreshTab(tabName) {
     text.innerText = "새로고침 완료";
     await wait(450);
   } finally {
+    clearTimeout(refreshSafetyTimer);
     indicator.classList.remove("visible", "refreshing", "complete");
     icon.innerText = "refresh";
     icon.style.transform = "";
@@ -357,6 +373,19 @@ function setupPullToRefresh() {
       },
       { passive: true },
     );
+
+    view.addEventListener(
+      "scroll",
+      () => {
+        if (!isRefreshing) hidePullRefreshIndicator();
+      },
+      { passive: true },
+    );
+  });
+
+  window.addEventListener("blur", forceHideRefreshIndicator);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) forceHideRefreshIndicator();
   });
 }
 
@@ -1012,8 +1041,7 @@ function closeContextPostFeed() {
   activateAppView(contextFeedReturnViewId);
 }
 
-function setupContextFeedSwipeBack() {
-  const view = document.getElementById("view-context-feed");
+function addLeftSwipeBack(view, onBack) {
   let touchStartX = 0;
   let touchStartY = 0;
 
@@ -1034,10 +1062,25 @@ function setupContextFeedSwipeBack() {
       const deltaY = touch.clientY - touchStartY;
 
       if (deltaX < -80 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
-        closeContextPostFeed();
+        onBack();
       }
     },
     { passive: true },
+  );
+}
+
+function setupSwipeBackNavigation() {
+  addLeftSwipeBack(
+    document.getElementById("view-context-feed"),
+    closeContextPostFeed,
+  );
+  addLeftSwipeBack(
+    document.getElementById("view-user-profile"),
+    closeUserProfile,
+  );
+  addLeftSwipeBack(
+    document.getElementById("view-notice-detail"),
+    closeNoticeDetail,
   );
 }
 
@@ -1232,14 +1275,18 @@ function openSheet(id, postId = null) {
     fetchComments(postId);
   }
   const sheet = document.getElementById(id);
+  const backdrop = document.getElementById(`${id}Backdrop`);
   sheet.style.transition = "bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1)";
   sheet.classList.add("open");
+  backdrop?.classList.add("open");
 }
 
 function closeSheet(id) {
   const sheet = document.getElementById(id);
+  const backdrop = document.getElementById(`${id}Backdrop`);
   sheet.classList.remove("open");
   sheet.style.transform = "";
+  backdrop?.classList.remove("open");
 }
 
 async function fetchComments(postId) {
@@ -1585,6 +1632,11 @@ async function openNoticeSheet() {
     `;
     })
     .join("");
+}
+
+function closeNoticeDetail() {
+  switchTab("profile");
+  openSheet("noticeSheet");
 }
 
 function viewNoticeDetail(title, date, content) {

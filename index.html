@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0..1,0"
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="index.js?v=13" defer></script>
+    <script src="index.js?v=15" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -66,6 +66,7 @@
         font-size: 0.76rem;
         font-family: -apple-system, sans-serif;
         opacity: 0;
+        visibility: hidden;
         pointer-events: none;
         transform: translate(-50%, -70px) scale(0.92);
         transition:
@@ -75,6 +76,7 @@
       }
       .refresh-indicator.visible {
         opacity: 1;
+        visibility: visible;
         transform: translate(-50%, 0) scale(1);
       }
       .refresh-indicator-icon {
@@ -837,6 +839,21 @@
       .bottom-sheet.open {
         bottom: 0;
       }
+      .sheet-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 90;
+        background: rgba(0, 0, 0, 0.58);
+        opacity: 0;
+        visibility: hidden;
+        transition:
+          opacity 0.25s ease,
+          visibility 0.25s ease;
+      }
+      .sheet-backdrop.open {
+        opacity: 1;
+        visibility: visible;
+      }
       .sheet-handle {
         width: 40px;
         height: 5px;
@@ -1314,10 +1331,7 @@
         style="align-items: flex-start; padding-top: 60px"
       >
         <button
-          onclick="
-            switchTab('profile');
-            openSheet('noticeSheet');
-          "
+          onclick="closeNoticeDetail()"
           style="
             background: none;
             border: none;
@@ -1439,6 +1453,12 @@
         <div class="profile-list-empty">목록을 불러오는 중...</div>
       </div>
     </div>
+
+    <div
+      class="sheet-backdrop"
+      id="commentSheetBackdrop"
+      onclick="closeSheet('commentSheet')"
+    ></div>
 
     <div class="bottom-sheet" id="commentSheet">
       <div class="sheet-handle"></div>
