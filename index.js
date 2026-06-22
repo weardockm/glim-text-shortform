@@ -1,6 +1,7 @@
 const SUPABASE_URL = "https://qdnpeliqtxdglqewbvgg.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_mwYlhge63nnNjL9lAFhxRw_fxRtRGvO";
 const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const ADMIN_EMAIL = "weardockm@gmail.com";
 
 let currentUser = null;
 let currentPostIdForComment = null;
@@ -54,6 +55,59 @@ function timeForToday(value) {
   if (betweenTimeDay < 8) return `${betweenTimeDay}일 전`;
 
   return `${timeValue.getFullYear()}.${timeValue.getMonth() + 1}.${timeValue.getDate()}`;
+}
+
+function getPostTextSizeClass(content) {
+  const length = content.trim().length;
+  if (length > 250) return "text-content-very-long";
+  if (length > 180) return "text-content-long";
+  if (length > 110) return "text-content-medium";
+  return "";
+}
+
+function fitPostTextToViewport(postElement) {
+  const textElement = postElement.querySelector(".text-content");
+  if (!textElement) return;
+
+  textElement.style.fontSize = "";
+  textElement.style.lineHeight = "";
+  textElement.style.maxHeight = "";
+  textElement.classList.remove("text-content-scrollable");
+
+  const viewportHeight = window.visualViewport?.height || window.innerHeight;
+  const availableHeight = Math.max(160, viewportHeight - 250);
+  let fontSize = parseFloat(getComputedStyle(textElement).fontSize);
+
+  while (textElement.scrollHeight > availableHeight && fontSize > 10) {
+    fontSize -= 0.5;
+    textElement.style.fontSize = `${fontSize}px`;
+    textElement.style.lineHeight = "1.35";
+  }
+
+  if (textElement.scrollHeight > availableHeight) {
+    textElement.style.maxHeight = `${availableHeight}px`;
+    textElement.classList.add("text-content-scrollable");
+  }
+}
+
+function fitAllPostTexts() {
+  requestAnimationFrame(() => {
+    document
+      .querySelectorAll(".post")
+      .forEach((postElement) => fitPostTextToViewport(postElement));
+  });
+}
+
+function setupPostTextFitting() {
+  let resizeTimer = null;
+  const refit = () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(fitAllPostTexts, 100);
+  };
+
+  window.addEventListener("resize", refit);
+  window.visualViewport?.addEventListener("resize", refit);
+  document.fonts?.ready.then(fitAllPostTexts);
 }
 
 function switchTab(tabName) {
@@ -154,50 +208,76 @@ async function init() {
       let touchStartY = 0;
       let touchCurrentY = 0;
       let isDraggingSheet = false;
+      let isTouchTracking = false;
+      let scrollContainer = null;
+
+      const resetSheetTouch = () => {
+        touchStartY = 0;
+        touchCurrentY = 0;
+        isDraggingSheet = false;
+        isTouchTracking = false;
+        scrollContainer = null;
+      };
+
       sheet.addEventListener(
         "touchstart",
         (e) => {
+          resetSheetTouch();
           if (
-            e.target.closest(".comment-list") ||
             e.target.closest(".profile-menu-row") ||
-            e.target.closest("#noticeList") ||
-            e.target.closest("#followList") ||
-            e.target.closest("input")
+            e.target.closest("input, textarea, button")
           )
             return;
+
+          scrollContainer = e.target.closest(
+            ".comment-list, #noticeList, #followList",
+          );
           touchStartY = e.touches[0].clientY;
-          isDraggingSheet = false;
+          touchCurrentY = touchStartY;
+          isTouchTracking = true;
         },
         { passive: true },
       );
       sheet.addEventListener(
         "touchmove",
         (e) => {
+          if (!isTouchTracking) return;
           touchCurrentY = e.touches[0].clientY;
           const deltaY = touchCurrentY - touchStartY;
-          if (deltaY > 0) {
+          const canDragSheet =
+            deltaY > 0 && (!scrollContainer || scrollContainer.scrollTop <= 0);
+
+          if (canDragSheet) {
+            e.preventDefault();
             isDraggingSheet = true;
             sheet.style.transition = "none";
             sheet.style.transform = `translateY(${deltaY}px)`;
+          } else if (isDraggingSheet) {
+            sheet.style.transform = `translateY(${Math.max(deltaY, 0)}px)`;
           }
         },
-        { passive: true },
+        { passive: false },
       );
-      sheet.addEventListener("touchend", (e) => {
-        if (!isDraggingSheet) return;
+      sheet.addEventListener("touchend", () => {
+        if (!isTouchTracking) return;
         const deltaY = touchCurrentY - touchStartY;
         sheet.style.transition =
           "bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1), transform 0.2s ease";
         sheet.style.transform = "";
-        if (deltaY > 100) closeSheet(sheetId);
-        touchStartY = 0;
-        touchCurrentY = 0;
-        isDraggingSheet = false;
+        if (isDraggingSheet && deltaY > 100) closeSheet(sheetId);
+        resetSheetTouch();
+      });
+      sheet.addEventListener("touchcancel", () => {
+        sheet.style.transition =
+          "bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1), transform 0.2s ease";
+        sheet.style.transform = "";
+        resetSheetTouch();
       });
   });
 
   setupSwipeBackNavigation();
   setupPullToRefresh();
+  setupPostTextFitting();
 }
 
 function activateAppView(viewId) {
@@ -768,6 +848,9 @@ async function openFollowList(userId, type) {
 function updateAuthUI() {
   const authContainer = document.getElementById("authContainer");
   const profileContainer = document.getElementById("profileContainer");
+  const adminCenterMenu = document.getElementById("adminCenterMenu");
+  adminCenterMenu.style.display =
+    currentUser?.email === ADMIN_EMAIL ? "flex" : "none";
 
   if (currentUser) {
     authContainer.style.display = "none";
@@ -988,7 +1071,7 @@ function createContextFeedPost(post) {
     : "저장";
 
   postElement.innerHTML = `
-    <div class="text-content">${post.content.replace(/\n/g, "<br>")}</div>
+    <div class="text-content ${getPostTextSizeClass(post.content)}">${post.content.replace(/\n/g, "<br>")}</div>
     <div class="author-info">
       <div
         class="author-name${post.user_id ? " author-link" : ""}"
@@ -1033,6 +1116,7 @@ function renderContextPostFeed(posts, startIndex) {
   posts.forEach((post) => {
     const postElement = createContextFeedPost(post);
     feed.appendChild(postElement);
+    fitPostTextToViewport(postElement);
     contextObserver.observe(postElement);
   });
 
@@ -1265,7 +1349,7 @@ async function fetchPosts() {
 
     // ✅ 작성자 닉네임과 함께, 밑에 '몇 분 전' 등의 시간을 표시
     postElement.innerHTML = `
-      <div class="text-content">${post.content.replace(/\n/g, "<br>")}</div>
+      <div class="text-content ${getPostTextSizeClass(post.content)}">${post.content.replace(/\n/g, "<br>")}</div>
       <div class="author-info">
         <div
           class="author-name${post.user_id ? " author-link" : ""}"
@@ -1298,6 +1382,7 @@ async function fetchPosts() {
         </div>
       </div>`;
     feedContainer.appendChild(postElement);
+    fitPostTextToViewport(postElement);
     observer.observe(postElement);
   });
 }

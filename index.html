@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0..1,0"
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="index.js?v=18" defer></script>
+    <script src="index.js?v=20" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -105,6 +105,7 @@
       .app-view {
         display: none;
         height: 100vh;
+        height: 100dvh;
         width: 100%;
         padding-bottom: 65px;
         overflow-y: auto;
@@ -193,6 +194,7 @@
       }
       .post {
         height: 100vh;
+        height: 100dvh;
         scroll-snap-align: start;
         display: flex;
         justify-content: center;
@@ -204,7 +206,8 @@
         font-size: 1.4rem;
         line-height: 1.8;
         text-align: center;
-        word-break: keep-all;
+        word-break: break-word;
+        overflow-wrap: anywhere;
         max-width: 450px;
         font-weight: 300;
         color: #eaeaea;
@@ -214,6 +217,27 @@
         transition:
           opacity 1s ease-out,
           transform 1s cubic-bezier(0.25, 1, 0.5, 1);
+      }
+      .text-content.text-content-medium {
+        font-size: 1.18rem;
+        line-height: 1.65;
+      }
+      .text-content.text-content-long {
+        font-size: 1rem;
+        line-height: 1.55;
+      }
+      .text-content.text-content-very-long {
+        font-size: 0.86rem;
+        line-height: 1.45;
+      }
+      .text-content.text-content-scrollable {
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+        touch-action: pan-y;
+        scrollbar-width: none;
+      }
+      .text-content.text-content-scrollable::-webkit-scrollbar {
+        display: none;
       }
       .post.is-visible .text-content {
         opacity: 1;
@@ -1463,6 +1487,12 @@
     </div>
 
     <div
+      class="sheet-backdrop"
+      id="followListSheetBackdrop"
+      onclick="closeSheet('followListSheet')"
+    ></div>
+
+    <div
       class="bottom-sheet"
       id="followListSheet"
       style="height: 72%; z-index: 120"
@@ -1540,7 +1570,12 @@
             >chevron_right</span
           >
         </div>
-        <div class="profile-menu-row" onclick="location.href = 'admin.html'">
+        <div
+          class="profile-menu-row"
+          id="adminCenterMenu"
+          style="display: none"
+          onclick="location.href = 'admin.html'"
+        >
           <span style="color: #ff3b30; font-weight: bold">🚨 관리자 센터</span
           ><span class="material-symbols-outlined profile-menu-chevron"
             >chevron_right</span
