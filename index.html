@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0..1,0"
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="index.js?v=15" defer></script>
+    <script src="index.js?v=16" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -113,6 +113,25 @@
         display: block;
         animation: fadeIn 0.3s ease;
       }
+      .app-view.swipe-back-underlay {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        display: block;
+        background: #050505;
+        animation: none;
+        will-change: transform, opacity;
+      }
+      .app-view.swipe-back-current {
+        position: fixed;
+        inset: 0;
+        z-index: 130;
+        display: block;
+        background: #050505;
+        animation: none;
+        box-shadow: -12px 0 30px rgba(0, 0, 0, 0.35);
+        will-change: transform;
+      }
       @keyframes fadeIn {
         from {
           opacity: 0;
@@ -128,6 +147,12 @@
         scroll-snap-type: y mandatory;
         scroll-behavior: smooth;
         scrollbar-width: none;
+      }
+      #view-home,
+      #view-explore,
+      #view-noti,
+      #view-profile {
+        overscroll-behavior-y: none;
       }
       #view-home::-webkit-scrollbar,
       #view-context-feed::-webkit-scrollbar {

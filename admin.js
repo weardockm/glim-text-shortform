@@ -149,25 +149,67 @@ async function submitNotice() {
 function setupAdminSwipeBack() {
   let touchStartX = 0;
   let touchStartY = 0;
+  let swipeDistance = 0;
+  let isDragging = false;
 
   document.addEventListener(
     "touchstart",
     (event) => {
       touchStartX = event.touches[0].clientX;
       touchStartY = event.touches[0].clientY;
+      swipeDistance = 0;
+      isDragging = false;
     },
     { passive: true },
   );
 
   document.addEventListener(
-    "touchend",
+    "touchmove",
     (event) => {
-      const touch = event.changedTouches[0];
-      const deltaX = touch.clientX - touchStartX;
-      const deltaY = touch.clientY - touchStartY;
-      if (deltaX < -80 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
-        window.location.href = "index.html";
+      const deltaX = event.touches[0].clientX - touchStartX;
+      const deltaY = event.touches[0].clientY - touchStartY;
+      if (deltaX <= 0 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.1) return;
+      event.preventDefault();
+      isDragging = true;
+      swipeDistance = Math.min(deltaX, window.innerWidth);
+      document.body.style.transition = "none";
+      document.body.style.transform = `translate3d(${swipeDistance}px, 0, 0)`;
+    },
+    { passive: false },
+  );
+
+  document.addEventListener(
+    "touchend",
+    () => {
+      if (!isDragging) return;
+      document.body.style.transition =
+        "transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)";
+      if (swipeDistance > window.innerWidth * 0.28) {
+        document.body.style.transform = "translate3d(100vw, 0, 0)";
+        setTimeout(() => {
+          window.location.href = "index.html";
+        }, 230);
+      } else {
+        document.body.style.transform = "translate3d(0, 0, 0)";
+        setTimeout(() => {
+          document.body.style.transition = "";
+          document.body.style.transform = "";
+        }, 230);
       }
+    },
+    { passive: true },
+  );
+
+  document.addEventListener(
+    "touchcancel",
+    () => {
+      document.body.style.transition =
+        "transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)";
+      document.body.style.transform = "translate3d(0, 0, 0)";
+      setTimeout(() => {
+        document.body.style.transition = "";
+        document.body.style.transform = "";
+      }, 230);
     },
     { passive: true },
   );

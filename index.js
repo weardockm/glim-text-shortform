@@ -229,7 +229,7 @@ function showPullRefreshIndicator(distance) {
   icon.style.transform = `rotate(${Math.min(distance * 2, 180)}deg)`;
   text.innerText = distance >= 80 ? "놓아서 새로고침" : "당겨서 새로고침";
   clearTimeout(pullIndicatorHideTimer);
-  pullIndicatorHideTimer = setTimeout(hidePullRefreshIndicator, 1200);
+  pullIndicatorHideTimer = setTimeout(forceHideRefreshIndicator, 1200);
 }
 
 function hidePullRefreshIndicator() {
@@ -242,11 +242,29 @@ function hidePullRefreshIndicator() {
   icon.style.transform = "";
 }
 
+function resetRefreshViewPosition(view, animate = true) {
+  if (!view) return;
+  view.style.transition = animate
+    ? "transform 0.24s cubic-bezier(0.25, 1, 0.5, 1)"
+    : "none";
+  view.style.transform = "";
+  setTimeout(() => {
+    if (!view.style.transform) view.style.transition = "";
+  }, 250);
+}
+
+function resetAllRefreshViewPositions() {
+  ["home", "explore", "noti", "profile"].forEach((tabName) => {
+    resetRefreshViewPosition(document.getElementById(`view-${tabName}`));
+  });
+}
+
 function forceHideRefreshIndicator() {
   const indicator = document.getElementById("refreshIndicator");
   const icon = document.getElementById("refreshIndicatorIcon");
   indicator?.classList.remove("visible", "pulling", "refreshing", "complete");
   if (icon) icon.style.transform = "";
+  resetAllRefreshViewPositions();
 }
 
 async function refreshTab(tabName) {
@@ -303,6 +321,7 @@ async function refreshTab(tabName) {
     indicator.classList.remove("visible", "refreshing", "complete");
     icon.innerText = "refresh";
     icon.style.transform = "";
+    resetRefreshViewPosition(view);
     isRefreshing = false;
   }
 }
@@ -342,14 +361,18 @@ function setupPullToRefresh() {
 
         if (deltaY <= 0 || Math.abs(deltaY) <= Math.abs(deltaX)) {
           pullDistance = 0;
+          resetRefreshViewPosition(view);
           hidePullRefreshIndicator();
           return;
         }
 
+        event.preventDefault();
         pullDistance = deltaY;
+        view.style.transition = "none";
+        view.style.transform = `translate3d(0, ${Math.min(deltaY * 0.22, 34)}px, 0)`;
         if (pullDistance > 12) showPullRefreshIndicator(pullDistance);
       },
-      { passive: true },
+      { passive: false },
     );
 
     view.addEventListener(
@@ -357,6 +380,7 @@ function setupPullToRefresh() {
       () => {
         if (!isTracking) return;
         isTracking = false;
+        resetRefreshViewPosition(view);
         if (pullDistance >= 80) refreshTab(tabName);
         else hidePullRefreshIndicator();
         pullDistance = 0;
@@ -369,6 +393,7 @@ function setupPullToRefresh() {
       () => {
         isTracking = false;
         pullDistance = 0;
+        resetRefreshViewPosition(view);
         hidePullRefreshIndicator();
       },
       { passive: true },
@@ -1041,46 +1066,166 @@ function closeContextPostFeed() {
   activateAppView(contextFeedReturnViewId);
 }
 
-function addLeftSwipeBack(view, onBack) {
+function addInteractiveSwipeBack(view, getPreviousViewId, onBack, options = {}) {
   let touchStartX = 0;
   let touchStartY = 0;
+  let touchStartedAt = 0;
+  let swipeDistance = 0;
+  let previousView = null;
+  let isDragging = false;
+  let isAnimating = false;
+
+  const cleanUp = () => {
+    view.classList.remove("swipe-back-current");
+    view.style.transition = "";
+    view.style.transform = "";
+    if (previousView) {
+      previousView.classList.remove("swipe-back-underlay");
+      previousView.style.transition = "";
+      previousView.style.transform = "";
+      previousView.style.opacity = "";
+    }
+    previousView = null;
+    isDragging = false;
+    isAnimating = false;
+    swipeDistance = 0;
+  };
+
+  const cancelSwipe = () => {
+    if (!isDragging || isAnimating) return;
+    isAnimating = true;
+    view.style.transition = "transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)";
+    view.style.transform = "translate3d(0, 0, 0)";
+    if (previousView) {
+      previousView.style.transition =
+        "transform 0.22s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.22s ease";
+      previousView.style.transform = "translate3d(-18%, 0, 0)";
+      previousView.style.opacity = "0.72";
+    }
+    setTimeout(() => {
+      options.onCancel?.();
+      cleanUp();
+    }, 230);
+  };
 
   view.addEventListener(
     "touchstart",
     (event) => {
+      if (isAnimating) return;
       touchStartX = event.touches[0].clientX;
       touchStartY = event.touches[0].clientY;
+      touchStartedAt = Date.now();
+      swipeDistance = 0;
     },
     { passive: true },
   );
 
   view.addEventListener(
-    "touchend",
+    "touchmove",
     (event) => {
-      const touch = event.changedTouches[0];
-      const deltaX = touch.clientX - touchStartX;
-      const deltaY = touch.clientY - touchStartY;
+      if (isAnimating) return;
+      const deltaX = event.touches[0].clientX - touchStartX;
+      const deltaY = event.touches[0].clientY - touchStartY;
 
-      if (deltaX < -80 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
-        onBack();
+      if (deltaX <= 0 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.1) return;
+      event.preventDefault();
+
+      if (!isDragging) {
+        previousView = document.getElementById(getPreviousViewId());
+        if (!previousView || previousView === view) return;
+        isDragging = true;
+        view.classList.add("swipe-back-current");
+        previousView.classList.add("swipe-back-underlay");
+        previousView.style.transform = "translate3d(-18%, 0, 0)";
+        previousView.style.opacity = "0.72";
+        options.onStart?.();
+      }
+
+      swipeDistance = Math.min(deltaX, window.innerWidth);
+      const progress = swipeDistance / window.innerWidth;
+      view.style.transform = `translate3d(${swipeDistance}px, 0, 0)`;
+      previousView.style.transform = `translate3d(${-18 + progress * 18}%, 0, 0)`;
+      previousView.style.opacity = `${0.72 + progress * 0.28}`;
+    },
+    { passive: false },
+  );
+
+  view.addEventListener(
+    "touchend",
+    () => {
+      if (!isDragging || isAnimating) return;
+      const isQuickSwipe =
+        swipeDistance > 55 && Date.now() - touchStartedAt < 280;
+      const shouldGoBack =
+        swipeDistance > window.innerWidth * 0.28 || isQuickSwipe;
+
+      if (shouldGoBack) {
+        isAnimating = true;
+        view.style.transition =
+          "transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)";
+        view.style.transform = "translate3d(100vw, 0, 0)";
+        previousView.style.transition =
+          "transform 0.22s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.22s ease";
+        previousView.style.transform = "translate3d(0, 0, 0)";
+        previousView.style.opacity = "1";
+        setTimeout(() => {
+          onBack();
+          cleanUp();
+        }, 230);
+      } else {
+        cancelSwipe();
+      }
+    },
+    { passive: true },
+  );
+
+  view.addEventListener(
+    "touchcancel",
+    () => {
+      if (isDragging) {
+        cancelSwipe();
+      } else {
+        cleanUp();
       }
     },
     { passive: true },
   );
 }
 
+function prepareNoticeSwipeUnderlay() {
+  const noticeSheet = document.getElementById("noticeSheet");
+  noticeSheet.style.transition = "none";
+  noticeSheet.classList.add("open");
+}
+
+function cancelNoticeSwipeUnderlay() {
+  closeSheet("noticeSheet");
+}
+
+function completeNoticeSwipeBack() {
+  switchTab("profile");
+  openSheet("noticeSheet");
+}
+
 function setupSwipeBackNavigation() {
-  addLeftSwipeBack(
+  addInteractiveSwipeBack(
     document.getElementById("view-context-feed"),
+    () => contextFeedReturnViewId,
     closeContextPostFeed,
   );
-  addLeftSwipeBack(
+  addInteractiveSwipeBack(
     document.getElementById("view-user-profile"),
+    () => userProfileReturnViewId,
     closeUserProfile,
   );
-  addLeftSwipeBack(
+  addInteractiveSwipeBack(
     document.getElementById("view-notice-detail"),
-    closeNoticeDetail,
+    () => "view-profile",
+    completeNoticeSwipeBack,
+    {
+      onStart: prepareNoticeSwipeUnderlay,
+      onCancel: cancelNoticeSwipeUnderlay,
+    },
   );
 }
 
