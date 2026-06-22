@@ -15,10 +15,10 @@
     />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0,0"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0..1,0"
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="index.js" defer></script>
+    <script src="index.js?v=12" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -46,6 +46,9 @@
         background: linear-gradient(to bottom, rgba(5, 5, 5, 0.9), transparent);
         pointer-events: none;
       }
+      .header.is-hidden {
+        display: none;
+      }
       .logo {
         font-size: 1.4rem;
         font-weight: 700;
@@ -72,17 +75,50 @@
           opacity: 1;
         }
       }
-
-      /* 홈 탭 */
-      #view-home {
+      #view-home,
+      #view-context-feed {
         padding-bottom: 0;
         overflow-y: scroll;
         scroll-snap-type: y mandatory;
         scroll-behavior: smooth;
         scrollbar-width: none;
       }
-      #view-home::-webkit-scrollbar {
+      #view-home::-webkit-scrollbar,
+      #view-context-feed::-webkit-scrollbar {
         display: none;
+      }
+      .context-feed-controls {
+        position: fixed;
+        top: 16px;
+        left: 14px;
+        right: 14px;
+        z-index: 45;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .context-feed-back-btn {
+        width: 38px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 50%;
+        background: rgba(10, 10, 10, 0.78);
+        color: #fff;
+        cursor: pointer;
+        backdrop-filter: blur(8px);
+      }
+      .context-feed-title {
+        padding: 7px 10px;
+        border-radius: 12px;
+        background: rgba(10, 10, 10, 0.7);
+        color: #aaa;
+        font-size: 0.72rem;
+        font-family: -apple-system, sans-serif;
+        white-space: normal;
+        backdrop-filter: blur(8px);
       }
       .post {
         height: 100vh;
@@ -128,6 +164,21 @@
         color: #aaa;
         letter-spacing: 1px;
       }
+      .author-link {
+        cursor: pointer;
+      }
+      .author-link:active {
+        color: #fff;
+      }
+      /* ✅ 게시글 시간 표시용 스타일 추가 */
+      .post-time {
+        font-size: 0.75rem;
+        color: #666;
+        margin-top: 4px;
+        font-family: -apple-system, sans-serif;
+        letter-spacing: 0.5px;
+      }
+
       .side-actions {
         position: absolute;
         right: 15px;
@@ -205,8 +256,6 @@
       .more-menu-item:active {
         background: rgba(255, 59, 48, 0.1);
       }
-
-      /* 내비게이션 */
       .bottom-nav {
         position: fixed;
         bottom: 0;
@@ -257,7 +306,6 @@
       .nav-item.write-btn:active .nav-icon {
         transform: scale(0.9);
       }
-
       .page-container {
         padding: 100px 25px 30px 25px;
         height: 100%;
@@ -273,8 +321,6 @@
         width: 100%;
         text-align: left;
       }
-
-      /* 탐색 & 프로필 그리드 공통 */
       .explore-header {
         position: sticky;
         top: 0;
@@ -358,8 +404,6 @@
       .grid-stats .material-symbols-outlined {
         font-size: 0.8rem;
       }
-
-      /* 글쓰기 */
       .textarea-wrapper {
         position: relative;
         width: 100%;
@@ -391,8 +435,6 @@
         color: #666;
         font-family: -apple-system, sans-serif;
       }
-
-      /* 로그인 폼 */
       .social-btn {
         display: flex;
         align-items: center;
@@ -435,7 +477,7 @@
         color: #fff;
         padding: 16px;
         font-size: 1.05rem;
-        margin-bottom: 15px;
+        margin-bottom: 5px;
         font-family: -apple-system, sans-serif;
       }
       .auth-input:focus {
@@ -458,12 +500,6 @@
       .submit-btn:active {
         transform: scale(0.98);
       }
-      .secondary-btn {
-        background: #222;
-        color: #fff;
-      }
-
-      /* 프로필 탭 전면 개편 */
       #view-profile {
         padding: 0;
         background: #050505;
@@ -485,7 +521,6 @@
         font-weight: 700;
         font-family: "Noto Serif KR", serif;
       }
-
       .profile-info-header {
         display: flex;
         flex-direction: column;
@@ -515,7 +550,6 @@
         color: #888;
         margin-bottom: 20px;
       }
-
       .profile-stats {
         display: flex;
         justify-content: center;
@@ -528,6 +562,12 @@
         flex-direction: column;
         align-items: center;
       }
+      .stat-link {
+        cursor: pointer;
+      }
+      .stat-link:active {
+        opacity: 0.65;
+      }
       .stat-num {
         font-size: 1.1rem;
         font-weight: 700;
@@ -538,7 +578,6 @@
         font-size: 0.75rem;
         color: #888;
       }
-
       .profile-edit-btn {
         background: #222;
         color: #fff;
@@ -555,9 +594,134 @@
       .profile-edit-btn:active {
         background: #333;
       }
-
-      /* 프로필 네비게이션 탭 (3열) */
-      .profile-tabs {
+      .viewed-profile-body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        overflow-y: auto;
+        padding: 25px 20px 30px;
+      }
+      #view-user-profile {
+        padding: 0 0 65px;
+        background: #050505;
+        font-family: -apple-system, sans-serif;
+      }
+      .user-profile-back-btn {
+        width: 32px;
+        height: 32px;
+        border: none;
+        background: none;
+        color: #fff;
+        cursor: pointer;
+      }
+      .user-profile-topbar-spacer {
+        width: 32px;
+      }
+      .user-profile-posts-title {
+        width: 100%;
+        padding: 14px 18px;
+        border-top: 1px solid #222;
+        border-bottom: 1px solid #222;
+        color: #aaa;
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+      .profile-list-empty {
+        grid-column: 1 / -1;
+        width: 100%;
+        padding: 45px 20px;
+        color: #666;
+        text-align: center;
+        font-size: 0.9rem;
+      }
+      .viewed-profile-follow-btn {
+        width: 100%;
+        max-width: 220px;
+        border: 1px solid #fff;
+        border-radius: 10px;
+        background: #fff;
+        color: #050505;
+        padding: 11px 18px;
+        font-size: 0.9rem;
+        font-weight: 700;
+        cursor: pointer;
+        font-family: -apple-system, sans-serif;
+      }
+      .viewed-profile-follow-btn.following {
+        border-color: #444;
+        background: #222;
+        color: #fff;
+      }
+      .viewed-profile-follow-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .follow-list {
+        flex-grow: 1;
+        overflow-y: auto;
+        touch-action: pan-y;
+      }
+      .follow-list-row {
+        width: 100%;
+        min-height: 68px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 4px;
+        border: none;
+        border-bottom: 1px solid #222;
+        background: none;
+        color: #fff;
+        text-align: left;
+        cursor: pointer;
+      }
+      .follow-list-row:active {
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .follow-list-avatar {
+        width: 46px;
+        height: 46px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        border: 1px solid #333;
+        border-radius: 50%;
+        background: #222;
+        color: #666;
+      }
+      .follow-list-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .follow-list-profile {
+        min-width: 0;
+        flex-grow: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .follow-list-profile strong {
+        overflow: hidden;
+        color: #eee;
+        font-size: 0.95rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .follow-list-profile small {
+        overflow: hidden;
+        color: #777;
+        font-size: 0.78rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .follow-list-chevron {
+        color: #555;
+      }
+      .profile-tabs-container {
+        position: relative;
         display: flex;
         border-top: 1px solid #222;
         border-bottom: 1px solid #222;
@@ -569,17 +733,38 @@
         text-align: center;
         color: #666;
         cursor: pointer;
-        border-bottom: 2px solid transparent;
-        transition: all 0.2s;
+        transition: color 0.2s;
+        z-index: 1;
       }
       .p-tab.active {
         color: #fff;
-        border-bottom: 2px solid #fff;
       }
-      .p-tab .material-symbols-outlined {
-        font-size: 1.5rem;
+      .profile-tabs-indicator {
+        position: absolute;
+        bottom: -1px;
+        left: 0;
+        width: 33.3333%;
+        height: 2px;
+        background-color: #fff;
+        transition: transform 0.05s ease-out;
       }
-
+      .profile-grid-scroll-container {
+        display: flex;
+        width: 100%;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+      }
+      .profile-grid-scroll-container::-webkit-scrollbar {
+        display: none;
+      }
+      .swipe-grid-section {
+        width: 100%;
+        flex-shrink: 0;
+        scroll-snap-align: start;
+        min-height: 50vh;
+      }
       .profile-login-card {
         width: 100%;
         background: #111;
@@ -588,8 +773,6 @@
         padding: 20px;
         margin-top: 20px;
       }
-
-      /* 바텀 시트 (댓글 & 설정 공통) */
       .bottom-sheet {
         position: fixed;
         bottom: -100%;
@@ -642,7 +825,6 @@
         transition: color 0.2s;
       }
 
-      /* 댓글 전용 */
       .comment-list {
         flex-grow: 1;
         overflow-y: auto;
@@ -664,13 +846,40 @@
         font-size: 0.85rem;
         color: #888;
         margin-bottom: 6px;
-        font-family: -apple-system, sans-serif;
+        font-family: "Noto Serif KR", serif;
+        font-weight: 700;
       }
       .comment-text {
         font-size: 1rem;
         color: #eee;
         line-height: 1.4;
+        margin-bottom: 10px;
       }
+      .comment-actions {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+      }
+      .comment-action-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        color: #666;
+        font-size: 0.8rem;
+        line-height: 1;
+        cursor: pointer;
+        font-family: -apple-system, sans-serif;
+      }
+      .comment-action-btn .material-symbols-outlined {
+        font-size: 1.1rem;
+        line-height: 1;
+      }
+      .comment-action-btn .action-count {
+        margin-top: 0;
+        color: inherit;
+        line-height: 1;
+      }
+
       .comment-input-area {
         display: flex;
         gap: 10px;
@@ -697,8 +906,6 @@
         font-weight: 600;
         cursor: pointer;
       }
-
-      /* 설정 전용 */
       .profile-menu-row {
         display: flex;
         align-items: center;
@@ -719,6 +926,47 @@
       }
       .logout-text {
         color: #ff3b30;
+      }
+
+      .noti-item {
+        padding: 15px 20px;
+        border-bottom: 1px solid #222;
+        display: flex;
+        align-items: flex-start;
+        gap: 15px;
+        background: #0a0a0a;
+      }
+      .noti-icon {
+        font-size: 1.5rem;
+        color: #fff;
+        margin-top: 2px;
+      }
+      .noti-icon.like {
+        color: #ff3b30;
+        font-variation-settings: "FILL" 1;
+      }
+      .noti-icon.comment {
+        color: #fff;
+        font-variation-settings: "FILL" 1;
+      }
+      .noti-icon.follow {
+        color: #4285f4;
+        font-variation-settings: "FILL" 1;
+      }
+      .noti-text {
+        font-size: 0.95rem;
+        color: #ddd;
+        line-height: 1.4;
+        font-family: -apple-system, sans-serif;
+      }
+      .noti-text strong {
+        color: #fff;
+      }
+      .noti-time {
+        font-size: 0.75rem;
+        color: #666;
+        margin-top: 6px;
+        font-family: -apple-system, sans-serif;
       }
     </style>
   </head>
@@ -742,6 +990,16 @@
       </div>
     </div>
 
+    <div id="view-context-feed" class="app-view">
+      <div class="context-feed-controls">
+        <button class="context-feed-back-btn" onclick="closeContextPostFeed()">
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <span class="context-feed-title" id="contextFeedTitle">게시물</span>
+      </div>
+      <div id="contextPostFeed"></div>
+    </div>
+
     <div id="view-explore" class="app-view">
       <div class="explore-header">
         <div class="search-wrapper">
@@ -749,7 +1007,7 @@
             type="text"
             class="search-bar"
             id="searchInput"
-            placeholder="사유 검색"
+            placeholder="검색"
             onkeyup="if (event.keyCode === 13) searchPosts();"
           />
           <span
@@ -770,7 +1028,7 @@
             class="post-textarea"
             id="postContent"
             maxlength="300"
-            placeholder="새벽에 어울리는 조용한 사유를 적어주세요."
+            placeholder="새벽에 어울리는 조용한 글을 적어주세요."
             oninput="updateCharCount()"
           ></textarea>
           <div class="char-count" id="charCount">0 / 300</div>
@@ -779,17 +1037,14 @@
       </div>
     </div>
 
-    <div id="view-noti" class="app-view">
-      <div
-        style="
-          height: 100%;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          color: #555;
-        "
-      >
-        알림 기능은 준비 중입니다.
+    <div id="view-noti" class="app-view" style="padding: 0">
+      <div class="profile-topbar" style="border-bottom: 1px solid #222">
+        <h1 class="profile-title">알림</h1>
+      </div>
+      <div id="notiList" style="padding-bottom: 20px">
+        <div style="text-align: center; color: #555; padding: 50px 0">
+          로그인이 필요합니다.
+        </div>
       </div>
     </div>
 
@@ -816,7 +1071,7 @@
               font-size: 0.9rem;
             "
           >
-            글림의 깊은 사유를 함께 나누어보세요.
+            글림의 깊은 이야기들을 함께 나누어보세요.
           </p>
           <button
             class="social-btn kakao-btn"
@@ -881,52 +1136,149 @@
 
           <div class="profile-stats">
             <div class="stat-item">
-              <span class="stat-num" id="statPosts">0</span>
-              <span class="stat-label">게시글</span>
+              <span class="stat-num" id="statPosts">0</span
+              ><span class="stat-label">게시글</span>
             </div>
-            <div class="stat-item">
-              <span class="stat-num">0</span>
-              <span class="stat-label">팔로워</span>
+            <div
+              class="stat-item stat-link"
+              onclick="openMyFollowList('followers')"
+            >
+              <span class="stat-num" id="statFollowers">0</span
+              ><span class="stat-label">팔로워</span>
             </div>
-            <div class="stat-item">
-              <span class="stat-num">0</span>
-              <span class="stat-label">팔로잉</span>
+            <div
+              class="stat-item stat-link"
+              onclick="openMyFollowList('following')"
+            >
+              <span class="stat-num" id="statFollowing">0</span
+              ><span class="stat-label">팔로잉</span>
             </div>
           </div>
-
-          <button
-            class="profile-edit-btn"
-            onclick="alert('프로필 수정 기능은 준비 중입니다.')"
-          >
+          <button class="profile-edit-btn" onclick="openEditProfile()">
             프로필 편집
           </button>
         </div>
 
-        <div class="profile-tabs">
-          <div
-            class="p-tab active"
-            id="tab-my"
-            onclick="switchProfileTab('my')"
-          >
+        <div class="profile-tabs-container">
+          <div class="profile-tabs-indicator" id="tabIndicator"></div>
+          <div class="p-tab active" id="tab-my" onclick="scrollToProfileTab(0)">
             <span class="material-symbols-outlined">grid_on</span>
           </div>
-          <div
-            class="p-tab"
-            id="tab-bookmark"
-            onclick="switchProfileTab('bookmark')"
-          >
+          <div class="p-tab" id="tab-bookmark" onclick="scrollToProfileTab(1)">
             <span class="material-symbols-outlined">bookmark</span>
           </div>
-          <div class="p-tab" id="tab-like" onclick="switchProfileTab('like')">
+          <div class="p-tab" id="tab-like" onclick="scrollToProfileTab(2)">
             <span class="material-symbols-outlined">favorite</span>
           </div>
         </div>
 
         <div
-          id="profileGrid"
-          class="explore-grid"
-          style="padding-top: 2px"
-        ></div>
+          class="profile-grid-scroll-container"
+          id="profileGridScroll"
+          onscroll="updateTabIndicator()"
+        >
+          <div class="swipe-grid-section">
+            <div
+              id="profileGrid-my"
+              class="explore-grid"
+              style="padding-top: 2px"
+            ></div>
+          </div>
+          <div class="swipe-grid-section">
+            <div
+              id="profileGrid-bookmark"
+              class="explore-grid"
+              style="padding-top: 2px"
+            ></div>
+          </div>
+          <div class="swipe-grid-section">
+            <div
+              id="profileGrid-like"
+              class="explore-grid"
+              style="padding-top: 2px"
+            ></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="view-user-profile" class="app-view">
+      <header class="profile-topbar" style="border-bottom: 1px solid #222">
+        <button class="user-profile-back-btn" onclick="closeUserProfile()">
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <h1 class="profile-title">프로필</h1>
+        <span class="user-profile-topbar-spacer"></span>
+      </header>
+
+      <div class="viewed-profile-body">
+        <div class="profile-avatar" id="viewedProfileAvatar">
+          <span
+            class="material-symbols-outlined"
+            style="font-size: 3rem; color: #555"
+            >person</span
+          >
+        </div>
+        <div class="profile-name" id="viewedProfileName">불러오는 중...</div>
+        <div class="profile-id" id="viewedProfileId"></div>
+
+        <div class="profile-stats">
+          <div class="stat-item">
+            <span class="stat-num" id="viewedProfilePosts">0</span
+            ><span class="stat-label">게시글</span>
+          </div>
+          <div
+            class="stat-item stat-link"
+            onclick="openViewedFollowList('followers')"
+          >
+            <span class="stat-num" id="viewedProfileFollowers">0</span
+            ><span class="stat-label">팔로워</span>
+          </div>
+          <div
+            class="stat-item stat-link"
+            onclick="openViewedFollowList('following')"
+          >
+            <span class="stat-num" id="viewedProfileFollowing">0</span
+            ><span class="stat-label">팔로잉</span>
+          </div>
+        </div>
+
+        <button
+          class="viewed-profile-follow-btn"
+          id="viewedProfileFollowButton"
+          onclick="toggleFollow()"
+        >
+          팔로우
+        </button>
+      </div>
+
+      <div class="user-profile-posts-title">작성한 글</div>
+      <div class="explore-grid" id="viewedProfileGrid"></div>
+    </div>
+
+    <div id="view-notice-detail" class="app-view">
+      <div
+        class="page-container"
+        style="align-items: flex-start; padding-top: 60px"
+      >
+        <button
+          onclick="
+            switchTab('profile');
+            openSheet('noticeSheet');
+          "
+          style="
+            background: none;
+            border: none;
+            color: #aaa;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-bottom: 30px;
+            font-family: -apple-system, sans-serif;
+          "
+        >
+          ← 목록으로 돌아가기
+        </button>
+        <div id="noticeDetailContainer" style="width: 100%"></div>
       </div>
     </div>
 
@@ -957,10 +1309,73 @@
       </div>
     </nav>
 
+    <div class="bottom-sheet" id="editProfileSheet" style="height: 55%">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title">프로필 편집</div>
+        <button class="close-btn" onclick="closeSheet('editProfileSheet')">
+          ✕
+        </button>
+      </div>
+      <div style="padding-bottom: 20px; overflow-y: auto">
+        <p style="color: #888; font-size: 0.85rem; margin-bottom: 8px">
+          닉네임 (게시글에 표시되는 이름)
+        </p>
+        <input
+          type="text"
+          id="editNicknameInput"
+          class="auth-input"
+          placeholder="새 닉네임"
+          maxlength="15"
+        />
+        <p
+          style="
+            color: #888;
+            font-size: 0.85rem;
+            margin-top: 15px;
+            margin-bottom: 8px;
+          "
+        >
+          아이디 (@id 형식)
+        </p>
+        <input
+          type="text"
+          id="editIdInput"
+          class="auth-input"
+          placeholder="영문, 숫자, 밑줄(_) 3자 이상"
+          maxlength="20"
+        />
+        <button
+          class="submit-btn"
+          onclick="saveProfile()"
+          style="margin-top: 25px"
+        >
+          저장하기
+        </button>
+      </div>
+    </div>
+
+    <div
+      class="bottom-sheet"
+      id="followListSheet"
+      style="height: 72%; z-index: 120"
+    >
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title" id="followListTitle">팔로워</div>
+        <button class="close-btn" onclick="closeSheet('followListSheet')">
+          ✕
+        </button>
+      </div>
+      <div class="follow-list" id="followList">
+        <div class="profile-list-empty">목록을 불러오는 중...</div>
+      </div>
+    </div>
+
     <div class="bottom-sheet" id="commentSheet">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
-        <div class="sheet-title">사유 나누기</div>
+        <div class="sheet-title">생각 나누기</div>
         <button class="close-btn" onclick="closeSheet('commentSheet')">
           ✕
         </button>
@@ -971,7 +1386,7 @@
           type="text"
           id="commentInput"
           class="comment-input"
-          placeholder="조심스러운 사유를 남겨주세요."
+          placeholder="따뜻한 댓글을 남겨주세요."
         />
         <button class="comment-submit-btn" onclick="submitComment()">
           등록
@@ -988,7 +1403,7 @@
         </button>
       </div>
       <div style="flex-grow: 1; overflow-y: auto">
-        <div class="profile-menu-row">
+        <div class="profile-menu-row" onclick="openNoticeSheet()">
           <span>공지사항</span
           ><span class="material-symbols-outlined profile-menu-chevron"
             >chevron_right</span
@@ -1012,12 +1427,34 @@
             >chevron_right</span
           >
         </div>
+        <div class="profile-menu-row" onclick="location.href = 'admin.html'">
+          <span style="color: #ff3b30; font-weight: bold">🚨 관리자 센터</span
+          ><span class="material-symbols-outlined profile-menu-chevron"
+            >chevron_right</span
+          >
+        </div>
         <div
           class="profile-menu-row"
           style="margin-top: 20px; border-top: 1px solid #222"
           onclick="handleSignOut()"
         >
           <span class="logout-text">로그아웃</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="bottom-sheet" id="noticeSheet" style="z-index: 110">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title">공지사항</div>
+        <button class="close-btn" onclick="closeSheet('noticeSheet')">✕</button>
+      </div>
+      <div
+        style="flex-grow: 1; overflow-y: auto; padding-bottom: 20px"
+        id="noticeList"
+      >
+        <div style="text-align: center; color: #555; margin-top: 20px">
+          공지사항을 불러오는 중...
         </div>
       </div>
     </div>
