@@ -1150,9 +1150,16 @@ function addInteractiveSwipeBack(view, getPreviousViewId, onBack, options = {}) 
 
   view.addEventListener(
     "touchend",
-    () => {
+    (event) => {
       if (!isDragging || isAnimating) return;
-      const shouldGoBack = swipeDistance >= window.innerWidth * 0.5;
+      swipeDistance = Math.max(
+        0,
+        Math.min(
+          event.changedTouches[0].clientX - touchStartX,
+          window.innerWidth,
+        ),
+      );
+      const shouldGoBack = swipeDistance > window.innerWidth * 0.5;
 
       if (shouldGoBack) {
         isAnimating = true;

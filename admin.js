@@ -180,11 +180,18 @@ function setupAdminSwipeBack() {
 
   document.addEventListener(
     "touchend",
-    () => {
+    (event) => {
       if (!isDragging) return;
+      swipeDistance = Math.max(
+        0,
+        Math.min(
+          event.changedTouches[0].clientX - touchStartX,
+          window.innerWidth,
+        ),
+      );
       document.body.style.transition =
         "transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)";
-      if (swipeDistance >= window.innerWidth * 0.5) {
+      if (swipeDistance > window.innerWidth * 0.5) {
         document.body.style.transform = "translate3d(100vw, 0, 0)";
         setTimeout(() => {
           window.location.href = "index.html";
