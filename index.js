@@ -13,12 +13,16 @@ let isRefreshing = false;
 let lastNavTapTab = null;
 let lastNavTapTime = 0;
 let pullIndicatorHideTimer = null;
+let selectedProfileAvatarFile = null;
+let shouldRemoveProfileAvatar = false;
+let editAvatarPreviewObjectUrl = null;
 const contextPostCollections = new Map();
 const contextPostTitles = new Map();
 
 const observerOptions = {
   root: document.querySelector("#view-home"),
-  threshold: 0.6,
+  rootMargin: "12% 0px 12% 0px",
+  threshold: 0.4,
 };
 const observer = new IntersectionObserver((entries) => {
   entries.forEach((entry) => {
@@ -34,7 +38,11 @@ const contextObserver = new IntersectionObserver(
       else entry.target.classList.remove("is-visible");
     });
   },
-  { root: document.querySelector("#view-context-feed"), threshold: 0.6 },
+  {
+    root: document.querySelector("#view-context-feed"),
+    rootMargin: "12% 0px 12% 0px",
+    threshold: 0.4,
+  },
 );
 
 // ✅ 날짜를 '방금 전', '몇 분 전' 등으로 포맷팅하는 함수 추가
@@ -110,8 +118,13 @@ function setupPostTextFitting() {
   document.fonts?.ready.then(fitAllPostTexts);
 }
 
+function setGlobalHeaderView(viewId) {
+  document
+    .querySelector(".header")
+    ?.classList.toggle("is-hidden", viewId !== "view-home");
+}
+
 function switchTab(tabName) {
-  document.querySelector(".header")?.classList.remove("is-hidden");
   if (tabName === "write" && !currentUser) {
     alert("글을 작성하려면 로그인이 필요합니다.");
     switchTab("profile");
@@ -125,6 +138,7 @@ function switchTab(tabName) {
     .forEach((nav) => nav.classList.remove("active"));
   document.getElementById(`view-${tabName}`).classList.add("active");
   document.getElementById(`nav-${tabName}`).classList.add("active");
+  setGlobalHeaderView(`view-${tabName}`);
 
   if (tabName === "home") fetchPosts();
   if (tabName === "explore") fetchExplorePosts();
@@ -204,75 +218,75 @@ async function init() {
     "editProfileSheet",
     "followListSheet",
   ].forEach((sheetId) => {
-      const sheet = document.getElementById(sheetId);
-      let touchStartY = 0;
-      let touchCurrentY = 0;
-      let isDraggingSheet = false;
-      let isTouchTracking = false;
-      let scrollContainer = null;
+    const sheet = document.getElementById(sheetId);
+    let touchStartY = 0;
+    let touchCurrentY = 0;
+    let isDraggingSheet = false;
+    let isTouchTracking = false;
+    let scrollContainer = null;
 
-      const resetSheetTouch = () => {
-        touchStartY = 0;
-        touchCurrentY = 0;
-        isDraggingSheet = false;
-        isTouchTracking = false;
-        scrollContainer = null;
-      };
+    const resetSheetTouch = () => {
+      touchStartY = 0;
+      touchCurrentY = 0;
+      isDraggingSheet = false;
+      isTouchTracking = false;
+      scrollContainer = null;
+    };
 
-      sheet.addEventListener(
-        "touchstart",
-        (e) => {
-          resetSheetTouch();
-          if (
-            e.target.closest(".profile-menu-row") ||
-            e.target.closest("input, textarea, button")
-          )
-            return;
+    sheet.addEventListener(
+      "touchstart",
+      (e) => {
+        resetSheetTouch();
+        if (
+          e.target.closest(".profile-menu-row") ||
+          e.target.closest("input, textarea, button")
+        )
+          return;
 
-          scrollContainer = e.target.closest(
-            ".comment-list, #noticeList, #followList",
-          );
-          touchStartY = e.touches[0].clientY;
-          touchCurrentY = touchStartY;
-          isTouchTracking = true;
-        },
-        { passive: true },
-      );
-      sheet.addEventListener(
-        "touchmove",
-        (e) => {
-          if (!isTouchTracking) return;
-          touchCurrentY = e.touches[0].clientY;
-          const deltaY = touchCurrentY - touchStartY;
-          const canDragSheet =
-            deltaY > 0 && (!scrollContainer || scrollContainer.scrollTop <= 0);
-
-          if (canDragSheet) {
-            e.preventDefault();
-            isDraggingSheet = true;
-            sheet.style.transition = "none";
-            sheet.style.transform = `translateY(${deltaY}px)`;
-          } else if (isDraggingSheet) {
-            sheet.style.transform = `translateY(${Math.max(deltaY, 0)}px)`;
-          }
-        },
-        { passive: false },
-      );
-      sheet.addEventListener("touchend", () => {
+        scrollContainer = e.target.closest(
+          ".comment-list, #noticeList, #followList, .sheet-scroll",
+        );
+        touchStartY = e.touches[0].clientY;
+        touchCurrentY = touchStartY;
+        isTouchTracking = true;
+      },
+      { passive: true },
+    );
+    sheet.addEventListener(
+      "touchmove",
+      (e) => {
         if (!isTouchTracking) return;
+        touchCurrentY = e.touches[0].clientY;
         const deltaY = touchCurrentY - touchStartY;
-        sheet.style.transition =
-          "bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1), transform 0.2s ease";
-        sheet.style.transform = "";
-        if (isDraggingSheet && deltaY > 100) closeSheet(sheetId);
-        resetSheetTouch();
-      });
-      sheet.addEventListener("touchcancel", () => {
-        sheet.style.transition =
-          "bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1), transform 0.2s ease";
-        sheet.style.transform = "";
-        resetSheetTouch();
-      });
+        const canDragSheet =
+          deltaY > 0 && (!scrollContainer || scrollContainer.scrollTop <= 0);
+
+        if (canDragSheet) {
+          e.preventDefault();
+          isDraggingSheet = true;
+          sheet.style.transition = "none";
+          sheet.style.transform = `translateY(${deltaY}px)`;
+        } else if (isDraggingSheet) {
+          sheet.style.transform = `translateY(${Math.max(deltaY, 0)}px)`;
+        }
+      },
+      { passive: false },
+    );
+    sheet.addEventListener("touchend", () => {
+      if (!isTouchTracking) return;
+      const deltaY = touchCurrentY - touchStartY;
+      sheet.style.transition =
+        "bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1), transform 0.2s ease";
+      sheet.style.transform = "";
+      if (isDraggingSheet && deltaY > 100) closeSheet(sheetId);
+      resetSheetTouch();
+    });
+    sheet.addEventListener("touchcancel", () => {
+      sheet.style.transition =
+        "bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1), transform 0.2s ease";
+      sheet.style.transform = "";
+      resetSheetTouch();
+    });
   });
 
   setupSwipeBackNavigation();
@@ -281,9 +295,7 @@ async function init() {
 }
 
 function activateAppView(viewId) {
-  document
-    .querySelector(".header")
-    ?.classList.toggle("is-hidden", viewId === "view-context-feed");
+  setGlobalHeaderView(viewId);
   document
     .querySelectorAll(".app-view")
     .forEach((view) => view.classList.remove("active"));
@@ -300,14 +312,29 @@ function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function setRefreshHeaderHidden(isHidden) {
+  document.querySelector(".header")?.classList.toggle(
+    "is-refresh-hidden",
+    isHidden,
+  );
+}
+
 function showPullRefreshIndicator(distance) {
   if (isRefreshing) return;
   const indicator = document.getElementById("refreshIndicator");
   const icon = document.getElementById("refreshIndicatorIcon");
   const text = document.getElementById("refreshIndicatorText");
+
+  setRefreshHeaderHidden(true);
   indicator.classList.add("visible", "pulling");
-  icon.style.transform = `rotate(${Math.min(distance * 2, 180)}deg)`;
-  text.innerText = distance >= 80 ? "놓아서 새로고침" : "당겨서 새로고침";
+
+  // 당기는 거리에 따라 글리머가 점점 커지도록 변경 (최대 1.1배)
+  const scaleValue = Math.min(0.5 + distance / 120, 1.1);
+  icon.style.transform = `scale(${scaleValue})`;
+
+  // 당기는 거리에 따른 문구 변경
+  text.innerText = distance >= 80 ? "놓아서 글리머 깨우기" : "하품하는 중...";
+
   clearTimeout(pullIndicatorHideTimer);
   pullIndicatorHideTimer = setTimeout(forceHideRefreshIndicator, 1200);
 }
@@ -316,6 +343,7 @@ function hidePullRefreshIndicator() {
   clearTimeout(pullIndicatorHideTimer);
   pullIndicatorHideTimer = null;
   if (isRefreshing) return;
+  setRefreshHeaderHidden(false);
   const indicator = document.getElementById("refreshIndicator");
   const icon = document.getElementById("refreshIndicatorIcon");
   indicator.classList.remove("visible", "pulling");
@@ -344,6 +372,7 @@ function forceHideRefreshIndicator() {
   const icon = document.getElementById("refreshIndicatorIcon");
   indicator?.classList.remove("visible", "pulling", "refreshing", "complete");
   if (icon) icon.style.transform = "";
+  setRefreshHeaderHidden(false);
   resetAllRefreshViewPositions();
 }
 
@@ -361,18 +390,23 @@ async function refreshTab(tabName) {
 
   clearTimeout(pullIndicatorHideTimer);
   pullIndicatorHideTimer = null;
+  setRefreshHeaderHidden(true);
   indicator.classList.remove("pulling", "complete");
   indicator.classList.add("visible", "refreshing");
-  icon.style.transform = "";
-  icon.innerText = "refresh";
-  text.innerText = "새로고침 중...";
+
+  icon.style.transform = ""; // 커졌던 크기를 원래대로 되돌림
+  // 삭제됨: icon.innerText = "refresh"; (이미지 태그 보호)
+  text.innerText = "글 불러오는 중...";
+
   view?.scrollTo({ top: 0, behavior: "smooth" });
 
   try {
     if (tabName === "home") {
       await fetchPosts();
     } else if (tabName === "explore") {
-      await fetchExplorePosts(document.getElementById("searchInput").value.trim());
+      await fetchExplorePosts(
+        document.getElementById("searchInput").value.trim(),
+      );
     } else if (tabName === "noti") {
       await fetchNotifications();
     } else if (tabName === "profile") {
@@ -393,15 +427,17 @@ async function refreshTab(tabName) {
 
     indicator.classList.remove("refreshing");
     indicator.classList.add("complete");
-    icon.innerText = "check";
+    // 삭제됨: icon.innerText = "check";
     text.innerText = "새로고침 완료";
-    await wait(450);
+    await wait(900);
   } finally {
     clearTimeout(refreshSafetyTimer);
     indicator.classList.remove("visible", "refreshing", "complete");
-    icon.innerText = "refresh";
+    // 삭제됨: icon.innerText = "refresh";
     icon.style.transform = "";
     resetRefreshViewPosition(view);
+    await wait(750);
+    setRefreshHeaderHidden(false);
     isRefreshing = false;
   }
 }
@@ -448,8 +484,9 @@ function setupPullToRefresh() {
 
         event.preventDefault();
         pullDistance = deltaY;
+        setRefreshHeaderHidden(true);
         view.style.transition = "none";
-        view.style.transform = `translate3d(0, ${Math.min(deltaY * 0.22, 34)}px, 0)`;
+        view.style.transform = `translate3d(0, ${deltaY * 0.22}px, 0)`;
         if (pullDistance > 12) showPullRefreshIndicator(pullDistance);
       },
       { passive: false },
@@ -545,8 +582,8 @@ async function loadMyFollowStats() {
   document.getElementById("statFollowing").innerText = counts.following;
 }
 
-function setViewedProfileAvatar(avatarUrl) {
-  const avatar = document.getElementById("viewedProfileAvatar");
+function renderAvatarElement(avatar, avatarUrl, iconSize = "3rem") {
+  if (!avatar) return;
   avatar.replaceChildren();
 
   if (avatarUrl) {
@@ -558,10 +595,94 @@ function setViewedProfileAvatar(avatarUrl) {
   } else {
     const icon = document.createElement("span");
     icon.className = "material-symbols-outlined";
-    icon.style.cssText = "font-size:3rem; color:#555;";
+    icon.style.cssText = `font-size:${iconSize}; color:#555;`;
     icon.innerText = "person";
     avatar.appendChild(icon);
   }
+}
+
+function setOwnProfileAvatar(avatarUrl) {
+  renderAvatarElement(document.getElementById("profileAvatar"), avatarUrl);
+}
+
+function setViewedProfileAvatar(avatarUrl) {
+  renderAvatarElement(
+    document.getElementById("viewedProfileAvatar"),
+    avatarUrl,
+  );
+}
+
+function setEditProfileAvatarPreview(avatarUrl) {
+  renderAvatarElement(document.getElementById("editAvatarPreview"), avatarUrl);
+}
+
+function getCurrentAvatarUrl() {
+  return (
+    currentUser?.user_metadata?.avatar_url ||
+    currentUser?.user_metadata?.picture ||
+    null
+  );
+}
+
+function resetEditProfileAvatarState() {
+  selectedProfileAvatarFile = null;
+  shouldRemoveProfileAvatar = false;
+  if (editAvatarPreviewObjectUrl) {
+    URL.revokeObjectURL(editAvatarPreviewObjectUrl);
+    editAvatarPreviewObjectUrl = null;
+  }
+  const input = document.getElementById("editAvatarInput");
+  if (input) input.value = "";
+}
+
+function handleProfileAvatarChange(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    alert("이미지 파일만 선택할 수 있습니다.");
+    event.target.value = "";
+    return;
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    alert("프로필 사진은 5MB 이하 이미지를 선택해주세요.");
+    event.target.value = "";
+    return;
+  }
+
+  if (editAvatarPreviewObjectUrl) {
+    URL.revokeObjectURL(editAvatarPreviewObjectUrl);
+  }
+  selectedProfileAvatarFile = file;
+  shouldRemoveProfileAvatar = false;
+  editAvatarPreviewObjectUrl = URL.createObjectURL(file);
+  setEditProfileAvatarPreview(editAvatarPreviewObjectUrl);
+}
+
+function removeProfileAvatar() {
+  resetEditProfileAvatarState();
+  shouldRemoveProfileAvatar = true;
+  setEditProfileAvatarPreview(currentUser?.user_metadata?.picture || null);
+}
+
+async function uploadProfileAvatar(file) {
+  const rawExtension = file.name.split(".").pop() || "jpg";
+  const extension =
+    rawExtension.toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const filePath = `${currentUser.id}/avatar-${Date.now()}.${extension}`;
+  const { error } = await client.storage
+    .from("avatars")
+    .upload(filePath, file, {
+      cacheControl: "3600",
+      contentType: file.type,
+      upsert: false,
+    });
+
+  if (error) throw error;
+
+  const { data } = client.storage.from("avatars").getPublicUrl(filePath);
+  return data.publicUrl;
 }
 
 function handleNavTap(tabName) {
@@ -837,7 +958,9 @@ async function openFollowList(userId, type) {
     return;
   }
 
-  const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
+  const profilesById = new Map(
+    profiles.map((profile) => [profile.id, profile]),
+  );
   list.replaceChildren();
   userIds.forEach((id) => {
     const profile = profilesById.get(id);
@@ -861,15 +984,11 @@ function updateAuthUI() {
       currentUser.email.split("@")[0];
     const displayId =
       currentUser.user_metadata?.custom_id || currentUser.email.split("@")[0];
-    const avatarUrl = currentUser.user_metadata?.avatar_url;
+    const avatarUrl = getCurrentAvatarUrl();
 
     document.getElementById("profileName").innerText = displayName;
     document.getElementById("profileId").innerText = `@${displayId}`;
-
-    if (avatarUrl) {
-      document.getElementById("profileAvatar").innerHTML =
-        `<img src="${avatarUrl}" style="width:100%; height:100%; object-fit:cover;">`;
-    }
+    setOwnProfileAvatar(avatarUrl);
 
     client
       .from("posts")
@@ -893,6 +1012,8 @@ function openEditProfile() {
   const currentId =
     currentUser.user_metadata?.custom_id || currentUser.email.split("@")[0];
 
+  resetEditProfileAvatarState();
+  setEditProfileAvatarPreview(getCurrentAvatarUrl());
   document.getElementById("editNicknameInput").value = currentNick;
   document.getElementById("editIdInput").value = currentId;
   openSheet("editProfileSheet");
@@ -902,6 +1023,7 @@ async function saveProfile() {
   if (!currentUser) return;
   const newNick = document.getElementById("editNicknameInput").value.trim();
   const newId = document.getElementById("editIdInput").value.trim();
+  const saveButton = document.getElementById("editProfileSaveButton");
 
   if (!newNick || newNick.length < 2) {
     alert("닉네임은 최소 2자 이상 입력해주세요.");
@@ -919,35 +1041,65 @@ async function saveProfile() {
     currentUser.user_metadata?.random_nickname ||
     currentUser.email.split("@")[0];
 
-  const { error } = await client.auth.updateUser({
-    data: { random_nickname: newNick, custom_id: newId },
-  });
+  const avatarChanged = selectedProfileAvatarFile || shouldRemoveProfileAvatar;
+  let avatarUrl = getCurrentAvatarUrl();
 
-  if (error) {
-    alert("프로필 업데이트 중 오류가 발생했습니다.");
-    return;
+  saveButton.disabled = true;
+  saveButton.innerText = "저장 중...";
+
+  try {
+    if (selectedProfileAvatarFile) {
+      avatarUrl = await uploadProfileAvatar(selectedProfileAvatarFile);
+    } else if (shouldRemoveProfileAvatar) {
+      avatarUrl = null;
+    }
+
+    const userData = { random_nickname: newNick, custom_id: newId };
+    if (avatarChanged) userData.avatar_url = avatarUrl;
+
+    const { data, error } = await client.auth.updateUser({ data: userData });
+
+    if (error) {
+      alert("프로필 업데이트 중 오류가 발생했습니다.");
+      return;
+    }
+
+    currentUser = data.user || currentUser;
+    currentUser.user_metadata = {
+      ...currentUser.user_metadata,
+      random_nickname: newNick,
+      custom_id: newId,
+    };
+    if (avatarChanged) currentUser.user_metadata.avatar_url = avatarUrl;
+
+    await syncCurrentUserProfile();
+
+    if (oldNick !== newNick) {
+      await client
+        .from("posts")
+        .update({ author: newNick })
+        .eq("user_id", currentUser.id);
+      await client
+        .from("comments")
+        .update({ user_email: newNick })
+        .eq("user_email", oldNick);
+    }
+
+    updateAuthUI();
+    closeSheet("editProfileSheet");
+    resetEditProfileAvatarState();
+    loadProfileGrid("my");
+    fetchPosts();
+    alert("프로필이 성공적으로 변경되었습니다.");
+  } catch (error) {
+    console.warn("프로필 사진 업로드 실패:", error);
+    alert(
+      "프로필 사진 업로드에 실패했습니다. avatars 스토리지 설정을 확인해주세요.",
+    );
+  } finally {
+    saveButton.disabled = false;
+    saveButton.innerText = "저장하기";
   }
-
-  currentUser.user_metadata.random_nickname = newNick;
-  currentUser.user_metadata.custom_id = newId;
-  await syncCurrentUserProfile();
-
-  if (oldNick !== newNick) {
-    await client
-      .from("posts")
-      .update({ author: newNick })
-      .eq("user_id", currentUser.id);
-    await client
-      .from("comments")
-      .update({ user_email: newNick })
-      .eq("user_email", oldNick);
-  }
-
-  updateAuthUI();
-  closeSheet("editProfileSheet");
-  loadProfileGrid("my");
-  fetchPosts();
-  alert("프로필이 성공적으로 변경되었습니다.");
 }
 
 async function handleSocialLogin(provider) {
@@ -1059,14 +1211,10 @@ function createContextFeedPost(post) {
   const hasLiked = localStorage.getItem(`liked_${userKey}_${post.id}`)
     ? "font-variation-settings: 'FILL' 1; color: #ff3b30;"
     : "";
-  const hasBookmarked = localStorage.getItem(
-    `bookmarked_${userKey}_${post.id}`,
-  )
+  const hasBookmarked = localStorage.getItem(`bookmarked_${userKey}_${post.id}`)
     ? "font-variation-settings: 'FILL' 1; color: #FFCC00;"
     : "";
-  const bookmarkText = localStorage.getItem(
-    `bookmarked_${userKey}_${post.id}`,
-  )
+  const bookmarkText = localStorage.getItem(`bookmarked_${userKey}_${post.id}`)
     ? "담김"
     : "저장";
 
@@ -1150,7 +1298,12 @@ function closeContextPostFeed() {
   activateAppView(contextFeedReturnViewId);
 }
 
-function addInteractiveSwipeBack(view, getPreviousViewId, onBack, options = {}) {
+function addInteractiveSwipeBack(
+  view,
+  getPreviousViewId,
+  onBack,
+  options = {},
+) {
   let touchStartX = 0;
   let touchStartY = 0;
   let swipeDistance = 0;
@@ -1247,8 +1400,7 @@ function addInteractiveSwipeBack(view, getPreviousViewId, onBack, options = {}) 
 
       if (shouldGoBack) {
         isAnimating = true;
-        view.style.transition =
-          "transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)";
+        view.style.transition = "transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)";
         view.style.transform = "translate3d(100vw, 0, 0)";
         previousView.style.transition =
           "transform 0.22s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.22s ease";
@@ -1519,6 +1671,7 @@ function closeSheet(id) {
   sheet.classList.remove("open");
   sheet.style.transform = "";
   backdrop?.classList.remove("open");
+  if (id === "editProfileSheet") resetEditProfileAvatarState();
 }
 
 async function fetchComments(postId) {

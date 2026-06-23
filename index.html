@@ -24,6 +24,13 @@
         box-sizing: border-box;
         margin: 0;
         padding: 0;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      *::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+        display: none;
       }
       body,
       html {
@@ -45,9 +52,16 @@
         z-index: 10;
         background: linear-gradient(to bottom, rgba(5, 5, 5, 0.9), transparent);
         pointer-events: none;
+        transition:
+          opacity 0.18s ease,
+          visibility 0.18s ease;
       }
       .header.is-hidden {
         display: none;
+      }
+      .header.is-refresh-hidden {
+        opacity: 0;
+        visibility: hidden;
       }
       .refresh-indicator {
         position: fixed;
@@ -70,25 +84,49 @@
         pointer-events: none;
         transform: translate(-50%, -70px) scale(0.92);
         transition:
-          opacity 0.2s ease,
-          transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+          opacity 0.75s ease,
+          transform 0.55s cubic-bezier(0.25, 1, 0.5, 1),
+          visibility 0s linear 0.75s;
         backdrop-filter: blur(10px);
       }
       .refresh-indicator.visible {
         opacity: 1;
         visibility: visible;
         transform: translate(-50%, 0) scale(1);
+        transition:
+          opacity 0.18s ease,
+          transform 0.3s cubic-bezier(0.25, 1, 0.5, 1),
+          visibility 0s;
       }
       .refresh-indicator-icon {
-        font-size: 1.15rem;
-        color: #fff;
+        width: 24px; /* 글리머 크기에 맞게 조절 */
+        height: 24px;
+        object-fit: contain;
         transition: transform 0.15s ease;
       }
+
+      /* 빙글빙글 도는 애니메이션 대신 둥둥 떠다니는 애니메이션으로 교체 */
       .refresh-indicator.refreshing .refresh-indicator-icon {
-        animation: refreshSpin 0.75s linear infinite;
+        animation: floatGlimmer 1.5s ease-in-out infinite;
       }
+
+      @keyframes floatGlimmer {
+        0% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-4px);
+        }
+        100% {
+          transform: translateY(0px);
+        }
+      }
+
+      /* 완료 시 초록색으로 변하던 부분을 없애고 기본 상태로 둡니다 */
       .refresh-indicator.complete .refresh-indicator-icon {
-        color: #34c759;
+        filter: drop-shadow(
+          0 0 4px rgba(255, 255, 255, 0.5)
+        ); /* 살짝 빛나는 효과 */
       }
       @keyframes refreshSpin {
         to {
@@ -477,6 +515,7 @@
         color: #ddd;
         line-height: 1.5;
         display: -webkit-box;
+        line-clamp: 4;
         -webkit-line-clamp: 4;
         -webkit-box-orient: vertical;
         overflow: hidden;
@@ -633,6 +672,64 @@
         margin-bottom: 15px;
         overflow: hidden;
         border: 1px solid #333;
+      }
+      .profile-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .edit-avatar-section {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .edit-avatar-preview {
+        width: 88px;
+        height: 88px;
+        border-radius: 50%;
+        border: 1px solid #3a3a3a;
+        background: #222;
+        color: #777;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        cursor: pointer;
+      }
+      .edit-avatar-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .edit-avatar-actions {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .edit-avatar-btn {
+        min-width: 86px;
+        border: 1px solid #333;
+        border-radius: 999px;
+        background: #1a1a1a;
+        color: #fff;
+        padding: 9px 13px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: -apple-system, sans-serif;
+      }
+      .edit-avatar-btn.secondary {
+        color: #aaa;
+      }
+      .edit-avatar-file {
+        display: none;
+      }
+      .sheet-scroll {
+        overflow-y: auto;
+        touch-action: pan-y;
       }
       .profile-name {
         font-size: 1.2rem;
@@ -1083,11 +1180,12 @@
   <body>
     <div class="header"><div class="logo">글림</div></div>
     <div class="refresh-indicator" id="refreshIndicator" aria-live="polite">
-      <span
-        class="material-symbols-outlined refresh-indicator-icon"
+      <img
+        src="image/glimmer-yawn.png"
+        class="refresh-indicator-icon"
         id="refreshIndicatorIcon"
-        >refresh</span
-      >
+        alt="하품하는 글리머"
+      />
       <span id="refreshIndicatorText">새로고침 중...</span>
     </div>
 
@@ -1171,15 +1269,6 @@
         id="authContainer"
         style="padding: 20px; padding-top: 80px; display: none"
       >
-        <h2
-          style="
-            color: #fff;
-            margin-bottom: 20px;
-            font-family: &quot;Noto Serif KR&quot;, serif;
-          "
-        >
-          로그인이 필요합니다
-        </h2>
         <section id="authForm" class="profile-login-card">
           <p
             style="
@@ -1398,19 +1487,11 @@
     </div>
 
     <nav class="bottom-nav">
-      <div
-        class="nav-item active"
-        id="nav-home"
-        onclick="handleNavTap('home')"
-      >
+      <div class="nav-item active" id="nav-home" onclick="handleNavTap('home')">
         <span class="material-symbols-outlined nav-icon">home</span
         ><span class="nav-text">홈</span>
       </div>
-      <div
-        class="nav-item"
-        id="nav-explore"
-        onclick="handleNavTap('explore')"
-      >
+      <div class="nav-item" id="nav-explore" onclick="handleNavTap('explore')">
         <span class="material-symbols-outlined nav-icon">search</span
         ><span class="nav-text">탐색</span>
       </div>
@@ -1422,25 +1503,23 @@
         <span class="material-symbols-outlined nav-icon">add_circle</span
         ><span class="nav-text">글쓰기</span>
       </div>
-      <div
-        class="nav-item"
-        id="nav-noti"
-        onclick="handleNavTap('noti')"
-      >
+      <div class="nav-item" id="nav-noti" onclick="handleNavTap('noti')">
         <span class="material-symbols-outlined nav-icon">notifications</span
         ><span class="nav-text">알림</span>
       </div>
-      <div
-        class="nav-item"
-        id="nav-profile"
-        onclick="handleNavTap('profile')"
-      >
+      <div class="nav-item" id="nav-profile" onclick="handleNavTap('profile')">
         <span class="material-symbols-outlined nav-icon">person</span
         ><span class="nav-text">프로필</span>
       </div>
     </nav>
 
-    <div class="bottom-sheet" id="editProfileSheet" style="height: 55%">
+    <div
+      class="sheet-backdrop"
+      id="editProfileSheetBackdrop"
+      onclick="closeSheet('editProfileSheet')"
+    ></div>
+
+    <div class="bottom-sheet" id="editProfileSheet" style="height: 68%">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
         <div class="sheet-title">프로필 편집</div>
@@ -1448,7 +1527,45 @@
           ✕
         </button>
       </div>
-      <div style="padding-bottom: 20px; overflow-y: auto">
+      <div class="sheet-scroll" style="padding-bottom: 20px">
+        <div class="edit-avatar-section">
+          <button
+            type="button"
+            class="edit-avatar-preview"
+            id="editAvatarPreview"
+            onclick="document.getElementById('editAvatarInput').click()"
+            aria-label="프로필 사진 변경"
+          >
+            <span
+              class="material-symbols-outlined"
+              style="font-size: 3rem; color: #555"
+              >person</span
+            >
+          </button>
+          <input
+            type="file"
+            id="editAvatarInput"
+            class="edit-avatar-file"
+            accept="image/*"
+            onchange="handleProfileAvatarChange(event)"
+          />
+          <div class="edit-avatar-actions">
+            <button
+              type="button"
+              class="edit-avatar-btn"
+              onclick="document.getElementById('editAvatarInput').click()"
+            >
+              사진 변경
+            </button>
+            <button
+              type="button"
+              class="edit-avatar-btn secondary"
+              onclick="removeProfileAvatar()"
+            >
+              삭제
+            </button>
+          </div>
+        </div>
         <p style="color: #888; font-size: 0.85rem; margin-bottom: 8px">
           닉네임 (게시글에 표시되는 이름)
         </p>
@@ -1477,6 +1594,7 @@
           maxlength="20"
         />
         <button
+          id="editProfileSaveButton"
           class="submit-btn"
           onclick="saveProfile()"
           style="margin-top: 25px"
@@ -1537,6 +1655,12 @@
       </div>
     </div>
 
+    <div
+      class="sheet-backdrop"
+      id="settingsSheetBackdrop"
+      onclick="closeSheet('settingsSheet')"
+    ></div>
+
     <div class="bottom-sheet" id="settingsSheet">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
@@ -1590,6 +1714,12 @@
         </div>
       </div>
     </div>
+
+    <div
+      class="sheet-backdrop"
+      id="noticeSheetBackdrop"
+      onclick="closeSheet('noticeSheet')"
+    ></div>
 
     <div class="bottom-sheet" id="noticeSheet" style="z-index: 110">
       <div class="sheet-handle"></div>
