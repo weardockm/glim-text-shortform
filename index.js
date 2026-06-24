@@ -3,6 +3,11 @@ const SUPABASE_ANON_KEY = "sb_publishable_mwYlhge63nnNjL9lAFhxRw_fxRtRGvO";
 const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const ADMIN_EMAIL = "weardockm@gmail.com";
 
+let currentPlayingBtn = null; // 현재 재생중인 버튼 기억
+let isBgmEnabled = true;
+let currentBgmUrl = "";
+let bgmSyncFrame = null;
+let isWaitingForBgmGesture = false;
 let currentUser = null;
 let currentPostIdForComment = null;
 let viewedProfileUserId = null;
@@ -16,8 +21,52 @@ let pullIndicatorHideTimer = null;
 let selectedProfileAvatarFile = null;
 let shouldRemoveProfileAvatar = false;
 let editAvatarPreviewObjectUrl = null;
+let avatarCropSourceUrl = null;
+let avatarCropOriginalFile = null;
+const AVATAR_CROP_OUTPUT_SIZE = 512;
+const MAX_AVATAR_SOURCE_SIZE = 15 * 1024 * 1024;
+const ALLOWED_AVATAR_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+const avatarCropState = {
+  naturalWidth: 0,
+  naturalHeight: 0,
+  stageSize: 0,
+  cropSize: 0,
+  minScale: 1,
+  maxScale: 4,
+  scale: 1,
+  x: 0,
+  y: 0,
+  isDragging: false,
+  pointerId: null,
+  startClientX: 0,
+  startClientY: 0,
+  startX: 0,
+  startY: 0,
+  isReady: false,
+};
 const contextPostCollections = new Map();
 const contextPostTitles = new Map();
+// BGM 제목/아티스트 기본 표시 정보. Supabase에 bgm_title/bgm_artist가 있으면 그 값이 우선됩니다.
+const BGM_TRACKS = [
+  {
+    url: "https://qdnpeliqtxdglqewbvgg.supabase.co/storage/v1/object/public/bgm/Paper%20Cup%20Piano.mp3",
+    title: "Paper Cup Piano",
+    artist: "GLIM",
+  },
+  {
+    url: "https://qdnpeliqtxdglqewbvgg.supabase.co/storage/v1/object/public/bgm/Paper%20Boat%20After%20Rain.mp3",
+    title: "Paper boat After Rain",
+    artist: "GLIM",
+  },
+];
+const BGM_TRACKS_BY_URL = new Map(
+  BGM_TRACKS.map((track) => [track.url, track]),
+);
 
 const observerOptions = {
   root: document.querySelector("#view-home"),
@@ -29,6 +78,7 @@ const observer = new IntersectionObserver((entries) => {
     if (entry.isIntersecting) entry.target.classList.add("is-visible");
     else entry.target.classList.remove("is-visible");
   });
+  requestBgmSyncForView(document.querySelector("#view-home"));
 }, observerOptions);
 
 const contextObserver = new IntersectionObserver(
@@ -37,6 +87,7 @@ const contextObserver = new IntersectionObserver(
       if (entry.isIntersecting) entry.target.classList.add("is-visible");
       else entry.target.classList.remove("is-visible");
     });
+    requestBgmSyncForView(document.querySelector("#view-context-feed"));
   },
   {
     root: document.querySelector("#view-context-feed"),
@@ -124,6 +175,319 @@ function setGlobalHeaderView(viewId) {
     ?.classList.toggle("is-hidden", viewId !== "view-home");
 }
 
+function setBottomNavView(viewId) {
+  document
+    .querySelector(".bottom-nav")
+    ?.classList.toggle("is-hidden", viewId === "view-bgm-picker");
+}
+
+function getBgmDisplayName(bgmUrl) {
+  if (!bgmUrl) return "BGM";
+
+  const formatFilename = (filename) =>
+    filename.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ") || "BGM";
+  const decodeFilename = (filename) => {
+    try {
+      return decodeURIComponent(filename);
+    } catch (_error) {
+      return filename;
+    }
+  };
+
+  try {
+    const url = new URL(bgmUrl, window.location.href);
+    return formatFilename(decodeFilename(url.pathname.split("/").pop() || ""));
+  } catch (_error) {
+    return formatFilename(
+      decodeFilename(String(bgmUrl).split("/").pop() || ""),
+    );
+  }
+}
+
+function getBgmTrackInfo(post) {
+  const fallbackTitle = getBgmDisplayName(post.bgm_url);
+  const knownTrack = BGM_TRACKS_BY_URL.get(post.bgm_url);
+
+  return {
+    title:
+      post.bgm_name || post.bgm_title || knownTrack?.title || fallbackTitle,
+    artist:
+      post.bgm_artist || post.artist || knownTrack?.artist || "아티스트 미상",
+  };
+}
+
+function getBgmTrackByUrl(bgmUrl) {
+  if (!bgmUrl) return null;
+
+  return (
+    BGM_TRACKS_BY_URL.get(bgmUrl) || {
+      url: bgmUrl,
+      title: getBgmDisplayName(bgmUrl),
+      artist: "아티스트 미상",
+    }
+  );
+}
+
+function getBgmTrackLabel(track) {
+  if (!track) return "음악 없이 고요하게";
+  return `${track.title} - ${track.artist}`;
+}
+
+function updateSelectedBgmLabel() {
+  const input = document.getElementById("postBgm");
+  const label = document.getElementById("selectedBgmLabel");
+  if (!input || !label) return;
+
+  label.textContent = getBgmTrackLabel(getBgmTrackByUrl(input.value));
+}
+
+function renderBgmPicker() {
+  const list = document.getElementById("bgmPickerList");
+  const selectedUrl = document.getElementById("postBgm")?.value || "";
+  if (!list) return;
+
+  const options = [
+    {
+      url: "",
+      title: "음악 없이 고요하게",
+      artist: "",
+    },
+    ...BGM_TRACKS,
+  ];
+
+  list.innerHTML = options
+    .map((track) => {
+      const isSelected = selectedUrl === track.url;
+      const artistHtml = track.artist
+        ? `<div class="bgm-picker-option-artist">${escapeHtml(track.artist)}</div>`
+        : "";
+
+      return `
+        <button
+          type="button"
+          class="bgm-picker-option${isSelected ? " is-selected" : ""}"
+          data-bgm-url="${escapeHtml(track.url)}"
+          onclick="selectPostBgm(this.dataset.bgmUrl)"
+        >
+          <div class="bgm-picker-option-text">
+            <div class="bgm-picker-option-title">${escapeHtml(track.title)}</div>
+            ${artistHtml}
+          </div>
+          <span class="material-symbols-outlined bgm-picker-option-icon">${isSelected ? "check_circle" : "radio_button_unchecked"}</span>
+        </button>`;
+    })
+    .join("");
+}
+
+function setupBgmPicker() {
+  updateSelectedBgmLabel();
+  renderBgmPicker();
+}
+
+function openBgmPicker() {
+  renderBgmPicker();
+  activateAppView("view-bgm-picker");
+}
+
+function closeBgmPicker() {
+  activateAppView("view-write");
+}
+
+function selectPostBgm(bgmUrl) {
+  const input = document.getElementById("postBgm");
+  if (!input) return;
+
+  input.value = bgmUrl || "";
+  updateSelectedBgmLabel();
+  renderBgmPicker();
+  closeBgmPicker();
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => {
+    const entities = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entities[char];
+  });
+}
+
+function renderPostBgmControl(post) {
+  if (!post.bgm_url) return "";
+  const { title, artist } = getBgmTrackInfo(post);
+  const bgmLabel = `${title} - ${artist}`;
+  const shouldScroll = bgmLabel.length > 26;
+
+  return `
+      <button
+        class="post-bgm-info${isBgmEnabled ? " is-enabled" : ""}"
+        type="button"
+        data-bgm-url="${escapeHtml(post.bgm_url)}"
+        onclick="toggleBgmFromPost(this)"
+      >
+        <span class="material-symbols-outlined bgm-toggle-icon icon-bgm">${isBgmEnabled ? "pause" : "play_arrow"}</span>
+        <span class="bgm-track">
+          <span class="bgm-line${shouldScroll ? " is-marquee" : ""}">
+            <span class="bgm-line-text" data-text="${escapeHtml(bgmLabel)}">${escapeHtml(bgmLabel)}</span>
+          </span>
+        </span>
+      </button>`;
+}
+
+function updateBgmControls() {
+  document.querySelectorAll(".post-bgm-info").forEach((button) => {
+    button.classList.toggle("is-enabled", isBgmEnabled);
+    const icon = button.querySelector(".icon-bgm");
+    if (icon) icon.textContent = isBgmEnabled ? "pause" : "play_arrow";
+  });
+}
+
+function pauseBgm() {
+  const bgmPlayer = document.getElementById("bgmPlayer");
+  if (!bgmPlayer) return;
+  bgmPlayer.pause();
+  currentPlayingBtn = null;
+}
+
+function resumeBgmAfterGesture() {
+  isWaitingForBgmGesture = false;
+  document.removeEventListener("pointerdown", resumeBgmAfterGesture);
+  document.removeEventListener("touchstart", resumeBgmAfterGesture);
+  document.removeEventListener("keydown", resumeBgmAfterGesture);
+  if (isBgmEnabled) syncBgmToVisiblePost();
+}
+
+function waitForBgmGesture() {
+  if (isWaitingForBgmGesture) return;
+  isWaitingForBgmGesture = true;
+  document.addEventListener("pointerdown", resumeBgmAfterGesture, {
+    passive: true,
+  });
+  document.addEventListener("touchstart", resumeBgmAfterGesture, {
+    passive: true,
+  });
+  document.addEventListener("keydown", resumeBgmAfterGesture);
+}
+
+function playBgmUrl(bgmUrl) {
+  const bgmPlayer = document.getElementById("bgmPlayer");
+  if (!bgmPlayer) return;
+
+  if (!bgmUrl) {
+    pauseBgm();
+    currentBgmUrl = "";
+    return;
+  }
+
+  if (currentBgmUrl !== bgmUrl) {
+    bgmPlayer.src = bgmUrl;
+    currentBgmUrl = bgmUrl;
+  }
+
+  const playPromise = bgmPlayer.play();
+  if (playPromise?.catch) {
+    playPromise.catch(() => {
+      if (isBgmEnabled) waitForBgmGesture();
+    });
+  }
+}
+
+function getActivePostInView(view) {
+  if (!view) return null;
+
+  const visiblePosts = Array.from(view.querySelectorAll(".post.is-visible"));
+  const posts = visiblePosts.length
+    ? visiblePosts
+    : Array.from(view.querySelectorAll(".post"));
+  if (!posts.length) return null;
+
+  const viewRect = view.getBoundingClientRect();
+  const viewCenterY = viewRect.top + viewRect.height / 2;
+
+  return posts.reduce((closestPost, post) => {
+    if (!closestPost) return post;
+    const postCenterY =
+      post.getBoundingClientRect().top +
+      post.getBoundingClientRect().height / 2;
+    const closestCenterY =
+      closestPost.getBoundingClientRect().top +
+      closestPost.getBoundingClientRect().height / 2;
+    return Math.abs(postCenterY - viewCenterY) <
+      Math.abs(closestCenterY - viewCenterY)
+      ? post
+      : closestPost;
+  }, null);
+}
+
+function syncBgmToVisiblePost(
+  view = document.querySelector(".app-view.active"),
+) {
+  if (!isBgmEnabled) return;
+
+  const activeView = view?.classList.contains("active")
+    ? view
+    : document.querySelector(".app-view.active");
+  if (
+    !activeView ||
+    !["view-home", "view-context-feed"].includes(activeView.id)
+  )
+    return;
+
+  const activePost = getActivePostInView(activeView);
+  if (!activePost) return;
+
+  playBgmUrl(activePost.dataset.bgmUrl || "");
+  updateBgmControls();
+}
+
+function requestBgmSyncForView(view) {
+  if (!isBgmEnabled) return;
+  if (bgmSyncFrame) cancelAnimationFrame(bgmSyncFrame);
+  bgmSyncFrame = requestAnimationFrame(() => {
+    bgmSyncFrame = null;
+    syncBgmToVisiblePost(view);
+  });
+}
+
+function requestBgmSyncForActiveFeed(viewId) {
+  if (!["view-home", "view-context-feed"].includes(viewId)) return;
+  requestBgmSyncForView(document.getElementById(viewId));
+}
+
+function toggleBgmFromPost(button) {
+  const bgmUrl = button?.dataset?.bgmUrl || "";
+  if (!bgmUrl) return;
+
+  isBgmEnabled = !isBgmEnabled;
+  updateBgmControls();
+
+  if (isBgmEnabled) {
+    currentPlayingBtn = button.querySelector(".icon-bgm");
+    playBgmUrl(bgmUrl);
+  } else {
+    pauseBgm();
+  }
+}
+
+function toggleBgm(bgmUrl, btnElement) {
+  if (!bgmUrl) return;
+
+  isBgmEnabled = !isBgmEnabled;
+  updateBgmControls();
+
+  if (!isBgmEnabled) {
+    pauseBgm();
+    return;
+  }
+
+  currentPlayingBtn = btnElement;
+  playBgmUrl(bgmUrl);
+}
+
 function switchTab(tabName) {
   if (tabName === "write" && !currentUser) {
     alert("글을 작성하려면 로그인이 필요합니다.");
@@ -139,6 +503,8 @@ function switchTab(tabName) {
   document.getElementById(`view-${tabName}`).classList.add("active");
   document.getElementById(`nav-${tabName}`).classList.add("active");
   setGlobalHeaderView(`view-${tabName}`);
+  setBottomNavView(`view-${tabName}`);
+  requestBgmSyncForActiveFeed(`view-${tabName}`);
 
   if (tabName === "home") fetchPosts();
   if (tabName === "explore") fetchExplorePosts();
@@ -292,10 +658,13 @@ async function init() {
   setupSwipeBackNavigation();
   setupPullToRefresh();
   setupPostTextFitting();
+  setupAvatarCropper();
+  setupBgmPicker();
 }
 
 function activateAppView(viewId) {
   setGlobalHeaderView(viewId);
+  setBottomNavView(viewId);
   document
     .querySelectorAll(".app-view")
     .forEach((view) => view.classList.remove("active"));
@@ -306,6 +675,7 @@ function activateAppView(viewId) {
   document.getElementById(viewId)?.classList.add("active");
   const tabName = viewId.replace("view-", "");
   document.getElementById(`nav-${tabName}`)?.classList.add("active");
+  requestBgmSyncForActiveFeed(viewId);
 }
 
 function wait(milliseconds) {
@@ -313,10 +683,9 @@ function wait(milliseconds) {
 }
 
 function setRefreshHeaderHidden(isHidden) {
-  document.querySelector(".header")?.classList.toggle(
-    "is-refresh-hidden",
-    isHidden,
-  );
+  document
+    .querySelector(".header")
+    ?.classList.toggle("is-refresh-hidden", isHidden);
 }
 
 function showPullRefreshIndicator(distance) {
@@ -396,7 +765,7 @@ async function refreshTab(tabName) {
 
   icon.style.transform = ""; // 커졌던 크기를 원래대로 되돌림
   // 삭제됨: icon.innerText = "refresh"; (이미지 태그 보호)
-  text.innerText = "글 불러오는 중...";
+  text.innerText = "불러오는 중...";
 
   view?.scrollTo({ top: 0, behavior: "smooth" });
 
@@ -624,7 +993,315 @@ function getCurrentAvatarUrl() {
   );
 }
 
+function getAvatarCropElements() {
+  return {
+    sheet: document.getElementById("avatarCropSheet"),
+    backdrop: document.getElementById("avatarCropSheetBackdrop"),
+    stage: document.getElementById("avatarCropStage"),
+    frame: document.getElementById("avatarCropFrame"),
+    image: document.getElementById("avatarCropImage"),
+    zoom: document.getElementById("avatarCropZoom"),
+    input: document.getElementById("editAvatarInput"),
+  };
+}
+
+function clampValue(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function setupAvatarCropper() {
+  const { stage, zoom } = getAvatarCropElements();
+  if (!stage || !zoom) return;
+
+  stage.addEventListener("pointerdown", startAvatarCropDrag);
+  stage.addEventListener("pointermove", moveAvatarCropDrag);
+  stage.addEventListener("pointerup", endAvatarCropDrag);
+  stage.addEventListener("pointercancel", endAvatarCropDrag);
+  stage.addEventListener("wheel", handleAvatarCropWheel, { passive: false });
+
+  zoom.addEventListener("input", () => {
+    setAvatarCropScale(parseFloat(zoom.value));
+  });
+
+  window.addEventListener("resize", () => {
+    if (!avatarCropOriginalFile) return;
+    requestAnimationFrame(measureAvatarCropper);
+  });
+}
+
+function openAvatarCropSheet() {
+  const { sheet, backdrop } = getAvatarCropElements();
+  sheet?.classList.add("open");
+  backdrop?.classList.add("open");
+}
+
+function closeAvatarCropper(resetInput = true) {
+  const { sheet, backdrop, image, input } = getAvatarCropElements();
+  sheet?.classList.remove("open");
+  backdrop?.classList.remove("open");
+
+  if (image) {
+    image.onload = null;
+    image.onerror = null;
+    image.removeAttribute("src");
+    image.style.cssText = "";
+  }
+
+  if (avatarCropSourceUrl) {
+    URL.revokeObjectURL(avatarCropSourceUrl);
+    avatarCropSourceUrl = null;
+  }
+
+  avatarCropOriginalFile = null;
+  avatarCropState.naturalWidth = 0;
+  avatarCropState.naturalHeight = 0;
+  avatarCropState.stageSize = 0;
+  avatarCropState.cropSize = 0;
+  avatarCropState.minScale = 1;
+  avatarCropState.maxScale = 4;
+  avatarCropState.scale = 1;
+  avatarCropState.x = 0;
+  avatarCropState.y = 0;
+  avatarCropState.isDragging = false;
+  avatarCropState.pointerId = null;
+  avatarCropState.isReady = false;
+
+  if (resetInput && input) input.value = "";
+}
+
+function cancelAvatarCropper() {
+  closeAvatarCropper(true);
+}
+
+function openAvatarCropper(file) {
+  closeAvatarCropper(false);
+  const { image } = getAvatarCropElements();
+  if (!image) return;
+
+  avatarCropOriginalFile = file;
+  avatarCropSourceUrl = URL.createObjectURL(file);
+
+  image.onload = () => {
+    avatarCropState.naturalWidth = image.naturalWidth;
+    avatarCropState.naturalHeight = image.naturalHeight;
+    avatarCropState.x = 0;
+    avatarCropState.y = 0;
+    avatarCropState.scale = 0;
+    avatarCropState.isReady = true;
+    openAvatarCropSheet();
+    requestAnimationFrame(measureAvatarCropper);
+  };
+  image.onerror = () => {
+    closeAvatarCropper(true);
+    alert("이미지를 불러오지 못했습니다. 다른 사진을 선택해주세요.");
+  };
+  image.src = avatarCropSourceUrl;
+}
+
+function measureAvatarCropper() {
+  const { stage, frame, zoom } = getAvatarCropElements();
+  if (!stage || !frame || !zoom || !avatarCropState.isReady) return;
+
+  avatarCropState.stageSize = stage.getBoundingClientRect().width;
+  avatarCropState.cropSize = frame.getBoundingClientRect().width;
+  avatarCropState.minScale =
+    avatarCropState.cropSize /
+    Math.min(avatarCropState.naturalWidth, avatarCropState.naturalHeight);
+  avatarCropState.maxScale = avatarCropState.minScale * 4;
+  avatarCropState.scale = clampValue(
+    avatarCropState.scale || avatarCropState.minScale,
+    avatarCropState.minScale,
+    avatarCropState.maxScale,
+  );
+
+  zoom.min = avatarCropState.minScale;
+  zoom.max = avatarCropState.maxScale;
+  zoom.step = (avatarCropState.maxScale - avatarCropState.minScale) / 300;
+  zoom.value = avatarCropState.scale;
+
+  clampAvatarCropOffset();
+  renderAvatarCropImage();
+}
+
+function renderAvatarCropImage() {
+  const { image } = getAvatarCropElements();
+  if (!image || !avatarCropState.isReady) return;
+
+  image.style.width = `${avatarCropState.naturalWidth * avatarCropState.scale}px`;
+  image.style.height = `${avatarCropState.naturalHeight * avatarCropState.scale}px`;
+  image.style.transform = `translate(-50%, -50%) translate(${avatarCropState.x}px, ${avatarCropState.y}px)`;
+}
+
+function clampAvatarCropOffset() {
+  const displayWidth = avatarCropState.naturalWidth * avatarCropState.scale;
+  const displayHeight = avatarCropState.naturalHeight * avatarCropState.scale;
+  const limitX = Math.max(0, (displayWidth - avatarCropState.cropSize) / 2);
+  const limitY = Math.max(0, (displayHeight - avatarCropState.cropSize) / 2);
+
+  avatarCropState.x = clampValue(avatarCropState.x, -limitX, limitX);
+  avatarCropState.y = clampValue(avatarCropState.y, -limitY, limitY);
+}
+
+function setAvatarCropScale(nextScale) {
+  if (!avatarCropState.isReady) return;
+
+  avatarCropState.scale = clampValue(
+    nextScale,
+    avatarCropState.minScale,
+    avatarCropState.maxScale,
+  );
+  clampAvatarCropOffset();
+  renderAvatarCropImage();
+}
+
+function startAvatarCropDrag(event) {
+  if (!avatarCropState.isReady || !event.isPrimary) return;
+
+  event.preventDefault();
+  avatarCropState.isDragging = true;
+  avatarCropState.pointerId = event.pointerId;
+  avatarCropState.startClientX = event.clientX;
+  avatarCropState.startClientY = event.clientY;
+  avatarCropState.startX = avatarCropState.x;
+  avatarCropState.startY = avatarCropState.y;
+  event.currentTarget.setPointerCapture(event.pointerId);
+}
+
+function moveAvatarCropDrag(event) {
+  if (
+    !avatarCropState.isDragging ||
+    avatarCropState.pointerId !== event.pointerId
+  )
+    return;
+
+  event.preventDefault();
+  avatarCropState.x =
+    avatarCropState.startX + event.clientX - avatarCropState.startClientX;
+  avatarCropState.y =
+    avatarCropState.startY + event.clientY - avatarCropState.startClientY;
+  clampAvatarCropOffset();
+  renderAvatarCropImage();
+}
+
+function endAvatarCropDrag(event) {
+  if (avatarCropState.pointerId !== event.pointerId) return;
+
+  avatarCropState.isDragging = false;
+  avatarCropState.pointerId = null;
+  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+}
+
+function handleAvatarCropWheel(event) {
+  if (!avatarCropState.isReady) return;
+
+  event.preventDefault();
+  const zoomFactor = event.deltaY < 0 ? 1.06 : 0.94;
+  const nextScale = avatarCropState.scale * zoomFactor;
+  const { zoom } = getAvatarCropElements();
+  setAvatarCropScale(nextScale);
+  if (zoom) zoom.value = avatarCropState.scale;
+}
+
+function getAvatarCropSourceRect() {
+  const displayWidth = avatarCropState.naturalWidth * avatarCropState.scale;
+  const displayHeight = avatarCropState.naturalHeight * avatarCropState.scale;
+  const sourceWidth = Math.min(
+    avatarCropState.naturalWidth,
+    avatarCropState.cropSize / avatarCropState.scale,
+  );
+  const sourceHeight = Math.min(
+    avatarCropState.naturalHeight,
+    avatarCropState.cropSize / avatarCropState.scale,
+  );
+  const sourceX = clampValue(
+    (displayWidth / 2 - avatarCropState.x - avatarCropState.cropSize / 2) /
+      avatarCropState.scale,
+    0,
+    avatarCropState.naturalWidth - sourceWidth,
+  );
+  const sourceY = clampValue(
+    (displayHeight / 2 - avatarCropState.y - avatarCropState.cropSize / 2) /
+      avatarCropState.scale,
+    0,
+    avatarCropState.naturalHeight - sourceHeight,
+  );
+
+  return { sourceX, sourceY, sourceWidth, sourceHeight };
+}
+
+function getAvatarCropOutputType(fileType) {
+  if (fileType === "image/jpeg") return "image/jpeg";
+  if (fileType === "image/webp") return "image/webp";
+  return "image/png";
+}
+
+function getAvatarCropFileExtension(fileType) {
+  if (fileType === "image/jpeg") return "jpg";
+  if (fileType === "image/webp") return "webp";
+  return "png";
+}
+
+function canvasToBlob(canvas, fileType, quality) {
+  return new Promise((resolve) => {
+    canvas.toBlob(resolve, fileType, quality);
+  });
+}
+
+async function applyAvatarCrop() {
+  const { image } = getAvatarCropElements();
+  if (!image || !avatarCropState.isReady || !avatarCropOriginalFile) return;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = AVATAR_CROP_OUTPUT_SIZE;
+  canvas.height = AVATAR_CROP_OUTPUT_SIZE;
+  const context = canvas.getContext("2d");
+  const { sourceX, sourceY, sourceWidth, sourceHeight } =
+    getAvatarCropSourceRect();
+
+  context.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    AVATAR_CROP_OUTPUT_SIZE,
+    AVATAR_CROP_OUTPUT_SIZE,
+  );
+
+  let outputType = getAvatarCropOutputType(avatarCropOriginalFile.type);
+  let blob = await canvasToBlob(canvas, outputType, 0.92);
+  if (!blob && outputType !== "image/png") {
+    outputType = "image/png";
+    blob = await canvasToBlob(canvas, outputType, 0.92);
+  }
+
+  if (!blob) {
+    alert("프로필 사진을 만들지 못했습니다. 다른 사진을 선택해주세요.");
+    return;
+  }
+
+  if (editAvatarPreviewObjectUrl) {
+    URL.revokeObjectURL(editAvatarPreviewObjectUrl);
+  }
+
+  const extension = getAvatarCropFileExtension(outputType);
+  selectedProfileAvatarFile = new File(
+    [blob],
+    `avatar-crop-${Date.now()}.${extension}`,
+    { type: outputType },
+  );
+  shouldRemoveProfileAvatar = false;
+  editAvatarPreviewObjectUrl = URL.createObjectURL(selectedProfileAvatarFile);
+  setEditProfileAvatarPreview(editAvatarPreviewObjectUrl);
+  closeAvatarCropper(true);
+}
+
 function resetEditProfileAvatarState() {
+  closeAvatarCropper(false);
   selectedProfileAvatarFile = null;
   shouldRemoveProfileAvatar = false;
   if (editAvatarPreviewObjectUrl) {
@@ -639,25 +1316,19 @@ function handleProfileAvatarChange(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
-  if (!file.type.startsWith("image/")) {
-    alert("이미지 파일만 선택할 수 있습니다.");
+  if (!ALLOWED_AVATAR_TYPES.has(file.type)) {
+    alert("프로필 사진은 JPG, PNG, WebP, GIF 파일만 업로드할 수 있습니다.");
     event.target.value = "";
     return;
   }
 
-  if (file.size > 5 * 1024 * 1024) {
-    alert("프로필 사진은 5MB 이하 이미지를 선택해주세요.");
+  if (file.size > MAX_AVATAR_SOURCE_SIZE) {
+    alert("프로필 사진은 15MB 이하 이미지를 선택해주세요.");
     event.target.value = "";
     return;
   }
 
-  if (editAvatarPreviewObjectUrl) {
-    URL.revokeObjectURL(editAvatarPreviewObjectUrl);
-  }
-  selectedProfileAvatarFile = file;
-  shouldRemoveProfileAvatar = false;
-  editAvatarPreviewObjectUrl = URL.createObjectURL(file);
-  setEditProfileAvatarPreview(editAvatarPreviewObjectUrl);
+  openAvatarCropper(file);
 }
 
 function removeProfileAvatar() {
@@ -683,6 +1354,20 @@ async function uploadProfileAvatar(file) {
 
   const { data } = client.storage.from("avatars").getPublicUrl(filePath);
   return data.publicUrl;
+}
+
+function getProfileAvatarUploadErrorMessage(error) {
+  const message = error?.message || "";
+
+  if (message.toLowerCase().includes("bucket not found")) {
+    return [
+      "프로필 사진 업로드에 실패했습니다.",
+      "avatars 스토리지 버킷이 없습니다.",
+      "Supabase SQL Editor에서 supabase-avatar-storage-setup.sql을 실행해주세요.",
+    ].join("\n");
+  }
+
+  return `프로필 사진 업로드에 실패했습니다.${message ? `\n${message}` : "\navatars 스토리지 설정을 확인해주세요."}`;
 }
 
 function handleNavTap(tabName) {
@@ -1093,9 +1778,7 @@ async function saveProfile() {
     alert("프로필이 성공적으로 변경되었습니다.");
   } catch (error) {
     console.warn("프로필 사진 업로드 실패:", error);
-    alert(
-      "프로필 사진 업로드에 실패했습니다. avatars 스토리지 설정을 확인해주세요.",
-    );
+    alert(getProfileAvatarUploadErrorMessage(error));
   } finally {
     saveButton.disabled = false;
     saveButton.innerText = "저장하기";
@@ -1207,6 +1890,7 @@ async function loadProfileGrid(tabType) {
 function createContextFeedPost(post) {
   const postElement = document.createElement("div");
   postElement.className = "post";
+  postElement.dataset.bgmUrl = post.bgm_url || "";
   const userKey = currentUser ? currentUser.id : "guest";
   const hasLiked = localStorage.getItem(`liked_${userKey}_${post.id}`)
     ? "font-variation-settings: 'FILL' 1; color: #ff3b30;"
@@ -1226,6 +1910,7 @@ function createContextFeedPost(post) {
         ${post.user_id ? `onclick="openUserProfile('${post.user_id}')"` : ""}
       >${post.author || "익명"}</div>
       <div class="post-time">${timeForToday(post.created_at)}</div>
+      ${renderPostBgmControl(post)}
     </div>
     <div class="side-actions">
       <div class="action-btn" onclick="incrementMetric('${post.id}', 'likes_count', this)">
@@ -1274,6 +1959,7 @@ function renderContextPostFeed(posts, startIndex) {
     view.scrollTop = targetPost ? targetPost.offsetTop : 0;
     requestAnimationFrame(() => {
       view.style.scrollBehavior = "";
+      requestBgmSyncForView(view);
     });
   });
 }
@@ -1447,6 +2133,11 @@ function completeNoticeSwipeBack() {
 
 function setupSwipeBackNavigation() {
   addInteractiveSwipeBack(
+    document.getElementById("view-bgm-picker"),
+    () => "view-write",
+    closeBgmPicker,
+  );
+  addInteractiveSwipeBack(
     document.getElementById("view-context-feed"),
     () => contextFeedReturnViewId,
     closeContextPostFeed,
@@ -1484,6 +2175,7 @@ async function fetchPosts() {
   data.forEach((post) => {
     const postElement = document.createElement("div");
     postElement.className = "post";
+    postElement.dataset.bgmUrl = post.bgm_url || "";
     const userKey = currentUser ? currentUser.id : "guest";
     const hasLiked = localStorage.getItem(`liked_${userKey}_${post.id}`)
       ? "font-variation-settings: 'FILL' 1; color: #ff3b30;"
@@ -1508,6 +2200,7 @@ async function fetchPosts() {
           ${post.user_id ? `onclick="openUserProfile('${post.user_id}')"` : ""}
         >${post.author || "익명"}</div>
         <div class="post-time">${timeForToday(post.created_at)}</div>
+        ${renderPostBgmControl(post)}
       </div>
       <div class="side-actions">
         <div class="action-btn" onclick="incrementMetric('${post.id}', 'likes_count', this)">
@@ -1537,6 +2230,7 @@ async function fetchPosts() {
     fitPostTextToViewport(postElement);
     observer.observe(postElement);
   });
+  requestBgmSyncForView(document.getElementById("view-home"));
 }
 
 async function fetchExplorePosts(keyword = "") {
@@ -1547,7 +2241,7 @@ async function fetchExplorePosts(keyword = "") {
     keyword ? `‘${keyword}’ 검색 결과` : "탐색 게시물",
   );
   grid.innerHTML =
-    '<div style="grid-column: 1 / -1; padding: 50px 0; text-align: center; color: #555;">글을 불러오는 중...</div>';
+    '<div style="grid-column: 1 / -1; padding: 50px 0; text-align: center; color: #555;">불러오는 중...</div>';
   let query = client
     .from("posts")
     .select("*")
@@ -1894,6 +2588,8 @@ async function fetchNotifications() {
 async function submitPost() {
   if (!currentUser) return switchTab("profile");
   const content = document.getElementById("postContent").value.trim();
+  const bgmUrl = document.getElementById("postBgm").value; // 추가: 음악 URL 가져오기
+
   if (!content || content.length < 5)
     return alert("최소 5자 이상 작성해주세요.");
 
@@ -1906,6 +2602,7 @@ async function submitPost() {
       content: content,
       author: authorNickname,
       user_id: currentUser.id,
+      bgm_url: bgmUrl, // 추가: DB에 저장
       likes_count: 0,
       dislikes_count: 0,
       reports_count: 0,
@@ -1918,6 +2615,8 @@ async function submitPost() {
   }
 
   document.getElementById("postContent").value = "";
+  document.getElementById("postBgm").value = ""; // 추가: 초기화
+  updateSelectedBgmLabel();
   updateCharCount();
   switchTab("home");
 }

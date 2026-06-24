@@ -18,7 +18,7 @@
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0..1,0"
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="index.js?v=20" defer></script>
+    <script src="index.js?v=26" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -285,6 +285,7 @@
         position: absolute;
         bottom: 90px;
         left: 20px;
+        max-width: calc(100% - 120px);
         opacity: 0;
         transition: opacity 1.5s ease-out 0.3s;
       }
@@ -404,6 +405,9 @@
         align-items: center;
         z-index: 50;
         padding-bottom: env(safe-area-inset-bottom);
+      }
+      .bottom-nav.is-hidden {
+        display: none;
       }
       .nav-item {
         display: flex;
@@ -569,6 +573,146 @@
         color: #666;
         font-family: -apple-system, sans-serif;
       }
+      .write-bgm-field {
+        width: 100%;
+        margin-bottom: 20px;
+      }
+      .write-bgm-label {
+        color: #888;
+        font-size: 0.85rem;
+        margin-bottom: 8px;
+        font-family: -apple-system, sans-serif;
+      }
+      .write-bgm-select-btn {
+        width: 100%;
+        min-height: 46px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        background: #0f0f0f;
+        border: 1px solid #282828;
+        border-radius: 12px;
+        color: #eee;
+        padding: 12px 14px 12px 14px;
+        cursor: pointer;
+        font-family: -apple-system, sans-serif;
+        font-size: 0.92rem;
+        text-align: left;
+      }
+      .write-bgm-select-btn:active {
+        transform: scale(0.99);
+        background: #151515;
+      }
+      .write-bgm-selected {
+        min-width: 0;
+        padding-right: 8px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .write-bgm-add-icon {
+        flex: 0 0 auto;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 1.25rem;
+      }
+      .bgm-picker-view {
+        padding-bottom: 0;
+        background: #050505;
+        overscroll-behavior-y: none;
+      }
+      .bgm-picker-topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 14px 18px 12px;
+        background: rgba(5, 5, 5, 0.92);
+        border-bottom: 1px solid #181818;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+      .bgm-picker-back-btn {
+        width: 38px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: #eee;
+        cursor: pointer;
+      }
+      .bgm-picker-back-btn:active {
+        background: #181818;
+      }
+      .bgm-picker-title {
+        margin: 0;
+        color: #eee;
+        font-size: 1rem;
+        font-weight: 700;
+        font-family: -apple-system, sans-serif;
+      }
+      .bgm-picker-list {
+        padding: 8px 18px 28px;
+      }
+      .bgm-picker-option {
+        width: 100%;
+        min-height: 58px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        background: transparent;
+        border: 0;
+        border-bottom: 1px solid #181818;
+        color: #eee;
+        padding: 14px 0;
+        cursor: pointer;
+        text-align: left;
+        font-family: -apple-system, sans-serif;
+      }
+      .bgm-picker-option:active {
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .bgm-picker-option-text {
+        min-width: 0;
+      }
+      .bgm-picker-option-title {
+        color: #f2f2f2;
+        font-size: 0.95rem;
+        font-weight: 700;
+        line-height: 1.25;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .bgm-picker-option-artist {
+        margin-top: 4px;
+        color: #777;
+        font-size: 0.78rem;
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .bgm-picker-option-icon {
+        flex: 0 0 auto;
+        color: #888;
+        font-size: 1.2rem;
+      }
+      .bgm-picker-option.is-selected .bgm-picker-option-icon {
+        color: #fff;
+        font-variation-settings: "FILL" 1;
+      }
       .social-btn {
         display: flex;
         align-items: center;
@@ -726,6 +870,118 @@
       }
       .edit-avatar-file {
         display: none;
+      }
+      .avatar-crop-backdrop {
+        z-index: 125;
+      }
+      .avatar-crop-sheet {
+        height: 82%;
+        z-index: 130;
+      }
+      .avatar-crop-body {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        flex: 1;
+        min-height: 0;
+      }
+      .avatar-crop-stage {
+        position: relative;
+        width: min(78vw, 360px);
+        aspect-ratio: 1 / 1;
+        margin: 0 auto;
+        border-radius: 18px;
+        background: #050505;
+        overflow: hidden;
+        border: 1px solid #2a2a2a;
+        touch-action: none;
+        cursor: grab;
+        user-select: none;
+      }
+      .avatar-crop-stage:active {
+        cursor: grabbing;
+      }
+      .avatar-crop-stage img {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        max-width: none;
+        user-select: none;
+        -webkit-user-drag: none;
+        transform-origin: center;
+      }
+      .avatar-crop-frame {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 76%;
+        aspect-ratio: 1 / 1;
+        transform: translate(-50%, -50%);
+        border: 2px solid rgba(255, 255, 255, 0.92);
+        border-radius: 50%;
+        box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.64);
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .avatar-crop-grid-line {
+        position: absolute;
+        background: rgba(255, 255, 255, 0.45);
+      }
+      .avatar-crop-grid-line.vertical {
+        top: 0;
+        bottom: 0;
+        width: 1px;
+      }
+      .avatar-crop-grid-line.horizontal {
+        left: 0;
+        right: 0;
+        height: 1px;
+      }
+      .avatar-crop-grid-line.vertical.one {
+        left: 33.333%;
+      }
+      .avatar-crop-grid-line.vertical.two {
+        left: 66.666%;
+      }
+      .avatar-crop-grid-line.horizontal.one {
+        top: 33.333%;
+      }
+      .avatar-crop-grid-line.horizontal.two {
+        top: 66.666%;
+      }
+      .avatar-crop-controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #aaa;
+        font-size: 0.9rem;
+        font-family: -apple-system, sans-serif;
+      }
+      .avatar-crop-slider {
+        width: 100%;
+        accent-color: #fff;
+      }
+      .avatar-crop-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: auto;
+      }
+      .avatar-crop-btn {
+        border: 1px solid #333;
+        border-radius: 12px;
+        background: #1a1a1a;
+        color: #ddd;
+        padding: 14px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        cursor: pointer;
+        font-family: -apple-system, sans-serif;
+      }
+      .avatar-crop-btn.primary {
+        background: #fff;
+        border-color: #fff;
+        color: #000;
       }
       .sheet-scroll {
         overflow-y: auto;
@@ -1175,6 +1431,85 @@
         margin-top: 6px;
         font-family: -apple-system, sans-serif;
       }
+      /* author-info 내부에 들어갈 BGM 정보창 디자인 */
+      .post-bgm-info {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 8px;
+        padding: 5px 9px;
+        background: rgba(255, 255, 255, 0.15);
+        border: 0;
+        border-radius: 8px;
+        cursor: pointer;
+        color: #eee;
+        width: min(238px, 100%);
+        min-height: 30px;
+        backdrop-filter: blur(5px);
+        -webkit-backdrop-filter: blur(5px);
+        font-family: -apple-system, sans-serif;
+        transition:
+          background 0.2s,
+          color 0.2s,
+          transform 0.2s ease;
+      }
+      .post-bgm-info:active {
+        background: rgba(255, 255, 255, 0.25);
+        transform: scale(0.96);
+      }
+      .post-bgm-info.is-enabled {
+        background: rgba(255, 255, 255, 0.2);
+        color: #fff;
+      }
+      .bgm-toggle-icon {
+        font-size: 1.05rem;
+        line-height: 1;
+        flex: 0 0 auto;
+      }
+      .bgm-track {
+        display: block;
+        min-width: 0;
+        flex: 1;
+        text-align: left;
+      }
+      .bgm-line {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        line-height: 1.2;
+        color: #f4f4f4;
+        font-size: 0.7rem;
+        font-weight: 600;
+      }
+      .bgm-line-text {
+        display: inline-block;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: top;
+      }
+      .bgm-line.is-marquee .bgm-line-text {
+        max-width: none;
+        padding-right: 28px;
+        overflow: visible;
+        text-overflow: clip;
+        animation: bgm-marquee 9s linear infinite;
+      }
+      .bgm-line.is-marquee .bgm-line-text::after {
+        content: attr(data-text);
+        padding-left: 28px;
+      }
+      @keyframes bgm-marquee {
+        0%,
+        12% {
+          transform: translateX(0);
+        }
+        88%,
+        100% {
+          transform: translateX(-50%);
+        }
+      }
     </style>
   </head>
   <body>
@@ -1249,8 +1584,39 @@
           ></textarea>
           <div class="char-count" id="charCount">0 / 300</div>
         </div>
+        <div class="write-bgm-field">
+          <p class="write-bgm-label">함께 띄울 새벽 BGM</p>
+          <input type="hidden" id="postBgm" value="" />
+          <button
+            type="button"
+            class="write-bgm-select-btn"
+            onclick="openBgmPicker()"
+          >
+            <span class="write-bgm-selected" id="selectedBgmLabel"
+              >음악 없이 고요하게</span
+            >
+            <span class="material-symbols-outlined write-bgm-add-icon"
+              >add</span
+            >
+          </button>
+        </div>
         <button class="submit-btn" onclick="submitPost()">우주로 띄우기</button>
       </div>
+    </div>
+
+    <div id="view-bgm-picker" class="app-view bgm-picker-view">
+      <div class="bgm-picker-topbar">
+        <button
+          type="button"
+          class="bgm-picker-back-btn"
+          onclick="closeBgmPicker()"
+          aria-label="닫기"
+        >
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <h1 class="bgm-picker-title">BGM</h1>
+      </div>
+      <div class="bgm-picker-list" id="bgmPickerList"></div>
     </div>
 
     <div id="view-noti" class="app-view" style="padding: 0">
@@ -1546,7 +1912,7 @@
             type="file"
             id="editAvatarInput"
             class="edit-avatar-file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/gif"
             onchange="handleProfileAvatarChange(event)"
           />
           <div class="edit-avatar-actions">
@@ -1601,6 +1967,59 @@
         >
           저장하기
         </button>
+      </div>
+    </div>
+
+    <div
+      class="sheet-backdrop avatar-crop-backdrop"
+      id="avatarCropSheetBackdrop"
+      onclick="cancelAvatarCropper()"
+    ></div>
+
+    <div class="bottom-sheet avatar-crop-sheet" id="avatarCropSheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title">프로필 사진 맞추기</div>
+        <button class="close-btn" onclick="cancelAvatarCropper()">✕</button>
+      </div>
+      <div class="avatar-crop-body">
+        <div class="avatar-crop-stage" id="avatarCropStage">
+          <img id="avatarCropImage" alt="" />
+          <div class="avatar-crop-frame" id="avatarCropFrame">
+            <span class="avatar-crop-grid-line vertical one"></span>
+            <span class="avatar-crop-grid-line vertical two"></span>
+            <span class="avatar-crop-grid-line horizontal one"></span>
+            <span class="avatar-crop-grid-line horizontal two"></span>
+          </div>
+        </div>
+        <label class="avatar-crop-controls">
+          <span class="material-symbols-outlined">zoom_in</span>
+          <input
+            type="range"
+            id="avatarCropZoom"
+            class="avatar-crop-slider"
+            min="1"
+            max="4"
+            step="0.01"
+            value="1"
+          />
+        </label>
+        <div class="avatar-crop-actions">
+          <button
+            type="button"
+            class="avatar-crop-btn"
+            onclick="cancelAvatarCropper()"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            class="avatar-crop-btn primary"
+            onclick="applyAvatarCrop()"
+          >
+            적용
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1736,5 +2155,6 @@
         </div>
       </div>
     </div>
+    <audio id="bgmPlayer" loop></audio>
   </body>
 </html>
