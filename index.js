@@ -52,6 +52,30 @@ const avatarCropState = {
 };
 const contextPostCollections = new Map();
 const contextPostTitles = new Map();
+// --- 기존 전역 변수들 아래에 추가 ---
+const postViewTimers = new Map(); // 체류 시간 측정을 위한 타이머 저장소
+
+// 유저의 감성 취향 점수를 로컬 스토리지에 누적하는 함수
+function updateMoodScore(mood, points) {
+  if (!mood) return;
+  let scores = JSON.parse(localStorage.getItem("glim_mood_scores") || "{}");
+  scores[mood] = (scores[mood] || 0) + points;
+  localStorage.setItem("glim_mood_scores", JSON.stringify(scores));
+} // <--- 🌟 여기서 updateMoodScore 함수를 닫아주세요!
+
+// 유저가 읽은 글의 ID를 로컬스토리지에 저장하는 함수
+function markPostAsSeen(postId) {
+  if (!postId) return;
+  let seenPosts = JSON.parse(localStorage.getItem("glim_seen_posts") || "[]");
+
+  // 아직 안 읽은 글이라면 기록
+  if (!seenPosts.includes(postId)) {
+    seenPosts.push(postId);
+    // 용량 관리를 위해 최근 300개까지만 기억
+    if (seenPosts.length > 300) seenPosts.shift();
+    localStorage.setItem("glim_seen_posts", JSON.stringify(seenPosts));
+  }
+}
 // BGM 제목/아티스트 기본 표시 정보. Supabase에 bgm_title/bgm_artist가 있으면 그 값이 우선됩니다.
 const BGM_TRACKS = [
   {
@@ -65,36 +89,104 @@ const BGM_TRACKS = [
     artist: "GLIM",
   },
 ];
+const MOOD_OPTIONS = [
+  {
+    value: "사색",
+    label: "조용한 사색",
+    description: "천천히 가라앉는 생각",
+    icon: "psychology",
+  },
+  {
+    value: "위로",
+    label: "따뜻한 위로",
+    description: "부드럽게 건네는 말",
+    icon: "volunteer_activism",
+  },
+  {
+    value: "우울",
+    label: "비 오는 우울",
+    description: "조금 낮게 내려앉은 마음",
+    icon: "water_drop",
+  },
+  {
+    value: "설렘",
+    label: "기분 좋은 설렘",
+    description: "가볍게 뛰는 순간",
+    icon: "auto_awesome",
+  },
+  {
+    value: "일상",
+    label: "소소한 일상",
+    description: "작게 남겨둔 하루",
+    icon: "local_cafe",
+  },
+];
 const BGM_TRACKS_BY_URL = new Map(
   BGM_TRACKS.map((track) => [track.url, track]),
 );
+const MOOD_OPTIONS_BY_VALUE = new Map(
+  MOOD_OPTIONS.map((mood) => [mood.value, mood]),
+);
 const FEED_BGM_VIEW_IDS = new Set(["view-home", "view-context-feed"]);
+const nativeAlert = window.alert.bind(window);
+let isAppAlertReady = false;
+let appAlertPreviousFocus = null;
+let appAlertOnClose = null;
 
 const observerOptions = {
   root: document.querySelector("#view-home"),
-  rootMargin: "12% 0px 12% 0px",
-  threshold: 0.4,
+  rootMargin: "0px",
+  threshold: 0.6,
 };
-const observer = new IntersectionObserver((entries) => {
+
+// 체류 시간과 가시성을 동시에 관리하는 통합 로직
+function handleIntersection(entries, viewElement) {
   entries.forEach((entry) => {
-    if (entry.isIntersecting) entry.target.classList.add("is-visible");
-    else entry.target.classList.remove("is-visible");
+    const postElement = entry.target;
+    const postId = postElement.dataset.postId;
+    const mood = postElement.dataset.mood;
+
+    if (entry.isIntersecting) {
+      postElement.classList.add("is-visible");
+
+      // ✅ 화면에 보이면 타이머 시작
+      if (postId) postViewTimers.set(postId, Date.now());
+    } else {
+      postElement.classList.remove("is-visible");
+
+      // ✅ 화면에서 벗어나면 체류 시간 계산 후 점수 반영
+      if (postId && postViewTimers.has(postId)) {
+        const viewDuration = (Date.now() - postViewTimers.get(postId)) / 1000;
+        postViewTimers.delete(postId);
+
+        if (viewDuration >= 1) {
+          markPostAsSeen(postId);
+        }
+
+        // 10초 이상 깊게 읽으면 3점, 3초 이상 읽으면 1점
+        if (viewDuration >= 10 && mood) {
+          updateMoodScore(mood, 3);
+        } else if (viewDuration >= 3 && mood) {
+          updateMoodScore(mood, 1);
+        }
+      }
+    }
   });
-  requestBgmSyncForView(document.querySelector("#view-home"));
+  requestBgmSyncForView(viewElement);
+}
+
+const observer = new IntersectionObserver((entries) => {
+  handleIntersection(entries, document.querySelector("#view-home"));
 }, observerOptions);
 
 const contextObserver = new IntersectionObserver(
   (entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) entry.target.classList.add("is-visible");
-      else entry.target.classList.remove("is-visible");
-    });
-    requestBgmSyncForView(document.querySelector("#view-context-feed"));
+    handleIntersection(entries, document.querySelector("#view-context-feed"));
   },
   {
     root: document.querySelector("#view-context-feed"),
-    rootMargin: "12% 0px 12% 0px",
-    threshold: 0.4,
+    rootMargin: "0px",
+    threshold: 0.6,
   },
 );
 
@@ -377,6 +469,135 @@ function escapeHtml(value) {
   });
 }
 
+function setupAppAlert() {
+  if (isAppAlertReady) return;
+
+  const alertElement = document.getElementById("appAlert");
+  if (!alertElement) return;
+
+  window.alert = showAppAlert;
+  isAppAlertReady = true;
+
+  alertElement.addEventListener("click", (event) => {
+    const closeTarget =
+      event.target instanceof Element &&
+      event.target.closest("[data-app-alert-close]");
+
+    if (closeTarget) {
+      closeAppAlert();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && alertElement.classList.contains("open")) {
+      closeAppAlert();
+    }
+  });
+}
+
+function showAppAlert(message, onClose) {
+  const alertElement = document.getElementById("appAlert");
+  const messageElement = document.getElementById("appAlertMessage");
+  const closeButton = alertElement?.querySelector("[data-app-alert-close]");
+
+  if (!alertElement || !messageElement) {
+    nativeAlert(String(message ?? ""));
+    if (typeof onClose === "function") onClose();
+    return;
+  }
+
+  appAlertPreviousFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  appAlertOnClose = typeof onClose === "function" ? onClose : null;
+  messageElement.textContent = String(message ?? "");
+  alertElement.classList.add("open");
+  alertElement.setAttribute("aria-hidden", "false");
+
+  requestAnimationFrame(() => {
+    closeButton?.focus({ preventScroll: true });
+  });
+}
+
+function closeAppAlert() {
+  const alertElement = document.getElementById("appAlert");
+  if (!alertElement) return;
+  const onClose = appAlertOnClose;
+
+  alertElement.classList.remove("open");
+  alertElement.setAttribute("aria-hidden", "true");
+  appAlertOnClose = null;
+
+  if (
+    appAlertPreviousFocus &&
+    document.contains(appAlertPreviousFocus) &&
+    alertElement.contains(document.activeElement)
+  ) {
+    appAlertPreviousFocus.focus({ preventScroll: true });
+  }
+  appAlertPreviousFocus = null;
+  if (typeof onClose === "function") onClose();
+}
+
+function getMoodOption(value) {
+  return MOOD_OPTIONS_BY_VALUE.get(value) || null;
+}
+
+function updateSelectedMoodLabel() {
+  const input = document.getElementById("postMood");
+  const label = document.getElementById("selectedMoodLabel");
+  const button = document.getElementById("moodSelectButton");
+  if (!input || !label) return;
+
+  const selectedMood = getMoodOption(input.value);
+  label.textContent = selectedMood?.label || "감성을 선택해주세요";
+  button?.classList.toggle("has-value", Boolean(selectedMood));
+}
+
+function renderMoodPicker() {
+  const list = document.getElementById("moodOptionList");
+  const selectedMood = document.getElementById("postMood")?.value || "";
+  if (!list) return;
+
+  list.innerHTML = MOOD_OPTIONS.map((mood) => {
+    const isSelected = selectedMood === mood.value;
+
+    return `
+      <button
+        type="button"
+        class="mood-option-btn${isSelected ? " is-selected" : ""}"
+        onclick="selectPostMood('${escapeHtml(mood.value)}')"
+      >
+        <span class="material-symbols-outlined mood-option-icon">${escapeHtml(mood.icon)}</span>
+        <span class="mood-option-text">
+          <span class="mood-option-title">${escapeHtml(mood.label)}</span>
+          <span class="mood-option-desc">${escapeHtml(mood.description)}</span>
+        </span>
+        <span class="material-symbols-outlined mood-option-check">${isSelected ? "check_circle" : "radio_button_unchecked"}</span>
+      </button>`;
+  }).join("");
+}
+
+function openMoodPicker() {
+  renderMoodPicker();
+  openSheet("moodSheet");
+}
+
+function closeMoodPicker() {
+  closeSheet("moodSheet");
+}
+
+function selectPostMood(moodValue) {
+  const input = document.getElementById("postMood");
+  if (!input) return;
+
+  input.value = moodValue || "";
+  updateSelectedMoodLabel();
+  renderMoodPicker();
+  closeMoodPicker();
+}
+
 function renderPostBgmControl(post) {
   if (!post.bgm_url) return "";
   const { title, artist } = getBgmTrackInfo(post);
@@ -525,11 +746,7 @@ function syncBgmToVisiblePost(
   const activeView = view?.classList.contains("active")
     ? view
     : document.querySelector(".app-view.active");
-  if (
-    !activeView ||
-    !FEED_BGM_VIEW_IDS.has(activeView.id)
-  )
-    return;
+  if (!activeView || !FEED_BGM_VIEW_IDS.has(activeView.id)) return;
 
   const activePost = getActivePostInView(activeView);
   if (!activePost) return;
@@ -597,8 +814,9 @@ function toggleBgm(bgmUrl, btnElement) {
 
 function switchTab(tabName) {
   if (tabName === "write" && !currentUser) {
-    alert("글을 작성하려면 로그인이 필요합니다.");
-    switchTab("profile");
+    showAppAlert("글을 작성하려면 로그인이 필요합니다.", () => {
+      switchTab("profile");
+    });
     return;
   }
   document
@@ -658,6 +876,7 @@ function generateRandomNickname() {
 }
 
 async function init() {
+  setupAppAlert();
   setupBgmAudioUnlock();
 
   const {
@@ -692,6 +911,7 @@ async function init() {
     "noticeSheet",
     "editProfileSheet",
     "followListSheet",
+    "moodSheet",
   ].forEach((sheetId) => {
     const sheet = document.getElementById(sheetId);
     let touchStartY = 0;
@@ -1999,7 +2219,12 @@ async function loadProfileGrid(tabType) {
 function createContextFeedPost(post) {
   const postElement = document.createElement("div");
   postElement.className = "post";
+
+  // ✅ 타이머와 알고리즘 계산을 위해 데이터 심어두기
+  postElement.dataset.postId = post.id;
+  postElement.dataset.mood = post.mood || "";
   postElement.dataset.bgmUrl = post.bgm_url || "";
+
   const userKey = currentUser ? currentUser.id : "guest";
   const hasLiked = localStorage.getItem(`liked_${userKey}_${post.id}`)
     ? "font-variation-settings: 'FILL' 1; color: #ff3b30;"
@@ -2268,77 +2493,65 @@ function setupSwipeBackNavigation() {
 }
 
 async function fetchPosts() {
+  // ✅ 1. 일단 최신 글을 넉넉히(100개) 가져옵니다.
   const { data, error } = await client
     .from("posts")
     .select("*")
     .neq("author", "🚨글림 운영자")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(100);
+
   const feedContainer = document.getElementById("postFeed");
   if (error)
     return (feedContainer.innerHTML = `<div style="height:100vh; display:flex; justify-content:center; align-items:center;">데이터 오류</div>`);
+
   observer.disconnect();
   feedContainer.innerHTML = "";
   if (data.length === 0)
     return (feedContainer.innerHTML = `<div style="height:100vh; display:flex; justify-content:center; align-items:center; color:#555;">첫 번째 문장을 공유해 보세요.</div>`);
 
-  data.forEach((post) => {
-    const postElement = document.createElement("div");
-    postElement.className = "post";
-    postElement.dataset.bgmUrl = post.bgm_url || "";
-    const userKey = currentUser ? currentUser.id : "guest";
-    const hasLiked = localStorage.getItem(`liked_${userKey}_${post.id}`)
-      ? "font-variation-settings: 'FILL' 1; color: #ff3b30;"
-      : "";
-    const hasBookmarked = localStorage.getItem(
-      `bookmarked_${userKey}_${post.id}`,
-    )
-      ? "font-variation-settings: 'FILL' 1; color: #FFCC00;"
-      : "";
-    const bookmarkText = localStorage.getItem(
-      `bookmarked_${userKey}_${post.id}`,
-    )
-      ? "담김"
-      : "저장";
+  // ✅ 2. 내 취향 점수를 불러와서 알고리즘 정렬 (Sorting)
+  const userMoodScores = JSON.parse(
+    localStorage.getItem("glim_mood_scores") || "{}",
+  );
 
-    // ✅ 작성자 닉네임과 함께, 밑에 '몇 분 전' 등의 시간을 표시
-    postElement.innerHTML = `
-      <div class="text-content ${getPostTextSizeClass(post.content)}">${post.content.replace(/\n/g, "<br>")}</div>
-      <div class="author-info">
-        <div
-          class="author-name${post.user_id ? " author-link" : ""}"
-          ${post.user_id ? `onclick="openUserProfile('${post.user_id}')"` : ""}
-        >${post.author || "익명"}</div>
-        <div class="post-time">${timeForToday(post.created_at)}</div>
-        ${renderPostBgmControl(post)}
-      </div>
-      <div class="side-actions">
-        <div class="action-btn" onclick="incrementMetric('${post.id}', 'likes_count', this)">
-          <span class="material-symbols-outlined icon-like" style="${hasLiked}">favorite</span>
-          <span class="action-count">${post.likes_count || 0}</span>
-        </div>
-        <div class="action-btn" onclick="openSheet('commentSheet', '${post.id}')">
-          <span class="material-symbols-outlined">chat_bubble</span>
-          <span class="action-count">${post.dislikes_count || 0}</span>
-        </div>
-        <div class="action-btn" onclick="toggleBookmark('${post.id}', this)">
-          <span class="material-symbols-outlined icon-bookmark" style="${hasBookmarked}">bookmark</span>
-          <span class="action-count">${bookmarkText}</span>
-        </div>
-        <div class="action-btn" onclick="sharePost('${encodeURIComponent(post.content)}')">
-          <span class="material-symbols-outlined">share</span>
-          <span class="action-count">공유</span>
-        </div>
-        <div class="action-btn more-menu-wrapper" onclick="toggleMoreMenu(this, event)">
-          <span class="material-symbols-outlined">more_vert</span>
-          <div class="more-menu">
-            <button class="more-menu-item" onclick="reportPost('${post.id}')">신고하기</button>
-          </div>
-        </div>
-      </div>`;
+  const seenPosts = JSON.parse(localStorage.getItem("glim_seen_posts") || "[]");
+
+  data.sort((a, b) => {
+    // 기본 점수: 내가 좋아하는 감성일수록 가산점 + 남들이 누른 좋아요 점수
+    let scoreA = (userMoodScores[a.mood] || 0) * 1.5 + (a.likes_count || 0) * 2;
+    let scoreB = (userMoodScores[b.mood] || 0) * 1.5 + (b.likes_count || 0) * 2;
+
+    // 시간 페널티: 너무 옛날 글이 계속 상단에 뜨지 않게 감점 (밀리초를 일 단위로 변환)
+    let timePenaltyA =
+      (Date.now() - new Date(a.created_at).getTime()) / (1000 * 60 * 60 * 24);
+    let timePenaltyB =
+      (Date.now() - new Date(b.created_at).getTime()) / (1000 * 60 * 60 * 24);
+
+    // 🛑 읽은 글 패널티: 이미 본 글이면 -100점 폭탄 (무조건 피드 맨 아래로 유배)
+    let seenPenaltyA = seenPosts.includes(a.id) ? 100 : 0;
+    let seenPenaltyB = seenPosts.includes(b.id) ? 100 : 0;
+
+    // 🎲 랜덤 스파이스: 동점일 때마다 순서가 미세하게 바뀌도록 0~2점 무작위 부여
+    let randomSpiceA = Math.random() * 2;
+    let randomSpiceB = Math.random() * 2;
+
+    // 최종 점수 합산
+    let finalScoreA = scoreA - timePenaltyA - seenPenaltyA + randomSpiceA;
+    let finalScoreB = scoreB - timePenaltyB - seenPenaltyB + randomSpiceB;
+
+    // 최종 점수 비교 (내림차순 정렬)
+    return finalScoreB - finalScoreA;
+  });
+
+  // ✅ 3. 정렬된 순서대로 화면에 그림
+  data.forEach((post) => {
+    const postElement = createContextFeedPost(post);
     feedContainer.appendChild(postElement);
     fitPostTextToViewport(postElement);
     observer.observe(postElement);
   });
+
   requestBgmSyncForView(document.getElementById("view-home"));
 }
 
@@ -2408,6 +2621,7 @@ async function incrementMetric(postId, column, element) {
         .eq("id", postId);
     } else {
       localStorage.setItem(storageKey, "true");
+      updateMoodScore(element.closest(".post").dataset.mood, 5);
       countSpan.innerText = parseInt(countSpan.innerText) + 1;
       icon.style.fontVariationSettings = "'FILL' 1";
       icon.style.color = "#ff3b30";
@@ -2450,6 +2664,7 @@ function toggleBookmark(postId, element) {
     countSpan.innerText = "저장";
   } else {
     localStorage.setItem(storageKey, "true");
+    updateMoodScore(element.closest(".post").dataset.mood, 8);
     icon.style.fontVariationSettings = "'FILL' 1";
     icon.style.color = "#FFCC00";
     countSpan.innerText = "담김";
@@ -2635,16 +2850,37 @@ async function submitComment() {
   }
 }
 
+function renderNotificationState(icon, title, description = "") {
+  return `
+    <div class="noti-state">
+      <span class="material-symbols-outlined noti-state-icon">${escapeHtml(icon)}</span>
+      <div class="noti-state-title">${escapeHtml(title)}</div>
+      ${
+        description
+          ? `<div class="noti-state-desc">${escapeHtml(description)}</div>`
+          : ""
+      }
+    </div>
+  `;
+}
+
 async function fetchNotifications() {
   const notiList = document.getElementById("notiList");
+  if (!notiList) return;
+
   if (!currentUser) {
-    notiList.innerHTML =
-      '<div style="text-align: center; color: #555; padding: 50px 0;">로그인이 필요합니다.</div>';
+    notiList.innerHTML = renderNotificationState(
+      "notifications",
+      "로그인이 필요합니다.",
+      "프로필에서 로그인하면 알림을 확인할 수 있어요.",
+    );
     return;
   }
 
-  notiList.innerHTML =
-    '<div style="text-align: center; color: #555; padding: 50px 0;">알림을 불러오는 중...</div>';
+  notiList.innerHTML = renderNotificationState(
+    "hourglass_empty",
+    "알림을 불러오는 중...",
+  );
   const myNickname = currentUser.user_metadata?.random_nickname;
 
   const { data, error } = await client
@@ -2654,37 +2890,45 @@ async function fetchNotifications() {
     .order("created_at", { ascending: false });
 
   if (error)
-    return (notiList.innerHTML =
-      '<div style="text-align:center; color:#ff3b30; padding:50px;">오류가 발생했습니다.</div>');
-  if (data.length === 0)
-    return (notiList.innerHTML =
-      '<div style="text-align:center; color:#555; padding:50px;">새로운 알림이 없습니다.</div>');
+    return (notiList.innerHTML = renderNotificationState(
+      "error",
+      "오류가 발생했습니다.",
+      "잠시 후 다시 확인해주세요.",
+    ));
+  if (!data?.length)
+    return (notiList.innerHTML = renderNotificationState(
+      "notifications_off",
+      "새로운 알림이 없습니다.",
+      "조용한 새벽처럼 아직 도착한 소식이 없어요.",
+    ));
 
   notiList.innerHTML = data
     .map((n) => {
       let icon = "notifications";
       let iconClass = "";
       let text = "";
+      const actor = escapeHtml(n.actor_nickname || "누군가");
 
       if (n.type === "like") {
         icon = "favorite";
         iconClass = "like";
-        text = `<strong>${n.actor_nickname}</strong>님이 회원님의 글을 좋아합니다.`;
+        text = `<strong>${actor}</strong>님이 회원님의 글을 좋아합니다.`;
       } else if (n.type === "comment") {
         icon = "chat_bubble";
         iconClass = "comment";
-        text = `<strong>${n.actor_nickname}</strong>님이 회원님의 글에 댓글을 남겼습니다.`;
+        text = `<strong>${actor}</strong>님이 회원님의 글에 댓글을 남겼습니다.`;
       } else if (n.type === "follow") {
         icon = "person_add";
         iconClass = "follow";
-        text = `<strong>${n.actor_nickname}</strong>님이 회원님을 팔로우하기 시작했습니다.`;
+        text = `<strong>${actor}</strong>님이 회원님을 팔로우하기 시작했습니다.`;
+      } else {
+        text = "새로운 알림이 도착했습니다.";
       }
 
-      // ✅ 알림 시간도 몇 분 전 양식 적용
       return `
-      <div class="noti-item">
-        <span class="material-symbols-outlined noti-icon ${iconClass}">${icon}</span>
-        <div>
+      <div class="noti-item" role="listitem">
+        <span class="material-symbols-outlined noti-icon ${iconClass}">${escapeHtml(icon)}</span>
+        <div class="noti-content">
           <div class="noti-text">${text}</div>
           <div class="noti-time">${timeForToday(n.created_at)}</div>
         </div>
@@ -2695,12 +2939,22 @@ async function fetchNotifications() {
 }
 
 async function submitPost() {
-  if (!currentUser) return switchTab("profile");
+  if (!currentUser) {
+    showAppAlert("글을 작성하려면 로그인이 필요합니다.", () => {
+      switchTab("profile");
+    });
+    return;
+  }
   const content = document.getElementById("postContent").value.trim();
-  const bgmUrl = document.getElementById("postBgm").value; // 추가: 음악 URL 가져오기
+  const bgmUrl = document.getElementById("postBgm").value;
+  const mood = document.getElementById("postMood").value; // ✅ 감성 태그 값 가져오기
+
+  const selectedBgmTrack = getBgmTrackByUrl(bgmUrl);
+  const bgmTitle = selectedBgmTrack?.title || null;
 
   if (!content || content.length < 5)
     return alert("최소 5자 이상 작성해주세요.");
+  if (!mood) return alert("글의 감성 온도를 선택해주세요."); // ✅ 감성 선택 필수 확인
 
   const authorNickname =
     currentUser.user_metadata?.random_nickname ||
@@ -2711,7 +2965,9 @@ async function submitPost() {
       content: content,
       author: authorNickname,
       user_id: currentUser.id,
-      bgm_url: bgmUrl, // 추가: DB에 저장
+      bgm_url: bgmUrl,
+      bgm_title: bgmTitle,
+      mood: mood, // ✅ DB에 저장
       likes_count: 0,
       dislikes_count: 0,
       reports_count: 0,
@@ -2724,8 +2980,10 @@ async function submitPost() {
   }
 
   document.getElementById("postContent").value = "";
-  document.getElementById("postBgm").value = ""; // 추가: 초기화
+  document.getElementById("postBgm").value = "";
+  document.getElementById("postMood").value = ""; // ✅ 태그 초기화
   updateSelectedBgmLabel();
+  updateSelectedMoodLabel();
   updateCharCount();
   switchTab("home");
 }

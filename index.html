@@ -575,34 +575,42 @@
       }
       .write-bgm-field {
         width: 100%;
-        margin-bottom: 20px;
+        margin-bottom: 22px;
       }
       .write-bgm-label {
-        color: #888;
+        color: #9a9a9a;
         font-size: 0.85rem;
-        margin-bottom: 8px;
+        margin-bottom: 9px;
         font-family: -apple-system, sans-serif;
+        letter-spacing: 0;
       }
       .write-bgm-select-btn {
         width: 100%;
-        min-height: 46px;
+        min-height: 50px;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        background: #0f0f0f;
-        border: 1px solid #282828;
+        background: linear-gradient(180deg, #151515 0%, #0d0d0d 100%);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 12px;
-        color: #eee;
-        padding: 12px 14px 12px 14px;
+        color: #f0f0f0;
+        padding: 13px 14px;
         cursor: pointer;
         font-family: -apple-system, sans-serif;
         font-size: 0.92rem;
         text-align: left;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.06),
+          0 10px 24px rgba(0, 0, 0, 0.24);
+        transition:
+          border-color 0.18s ease,
+          background 0.18s ease,
+          transform 0.18s ease;
       }
       .write-bgm-select-btn:active {
         transform: scale(0.99);
-        background: #151515;
+        border-color: rgba(255, 255, 255, 0.18);
       }
       .write-bgm-selected {
         min-width: 0;
@@ -618,13 +626,109 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        border-radius: 50%;
+        background: #f2f2f2;
+        color: #080808;
+        font-size: 1.08rem;
+      }
+      .write-mood-select-btn {
+        min-height: 52px;
+      }
+      .write-mood-select-btn.has-value {
+        border-color: rgba(255, 255, 255, 0.2);
+      }
+      .write-mood-icon {
+        background: rgba(255, 255, 255, 0.08);
+        color: #f2f2f2;
+      }
+      .mood-sheet {
+        height: 58%;
+        max-height: 520px;
+      }
+      .mood-sheet-copy {
+        margin: -10px 0 16px;
+        color: #777;
+        font-size: 0.82rem;
+        line-height: 1.45;
+        font-family: -apple-system, sans-serif;
+        word-break: keep-all;
+      }
+      .mood-option-list {
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+        overflow-y: auto;
+        padding-bottom: 18px;
+        touch-action: pan-y;
+      }
+      .mood-option-btn {
+        width: 100%;
+        min-height: 62px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 13px;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 8px;
+        background: rgba(15, 15, 15, 0.92);
+        color: #eee;
+        cursor: pointer;
+        text-align: left;
+        font-family: -apple-system, sans-serif;
+      }
+      .mood-option-btn:active {
+        transform: scale(0.99);
+        background: rgba(24, 24, 24, 0.96);
+      }
+      .mood-option-btn.is-selected {
+        border-color: rgba(255, 255, 255, 0.24);
+        background: rgba(25, 25, 25, 0.96);
+      }
+      .mood-option-icon {
+        flex: 0 0 auto;
+        width: 38px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.05);
+        color: #f2f2f2;
+        font-size: 1.15rem;
+      }
+      .mood-option-text {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .mood-option-title {
+        color: #f4f4f4;
+        font-size: 0.94rem;
+        font-weight: 700;
+        line-height: 1.25;
+      }
+      .mood-option-desc {
+        margin-top: 4px;
+        color: #777;
+        font-size: 0.78rem;
+        line-height: 1.25;
+      }
+      .mood-option-check {
+        flex: 0 0 auto;
+        color: #5f5f5f;
+        font-size: 1.22rem;
+      }
+      .mood-option-btn.is-selected .mood-option-check {
         color: #fff;
-        font-size: 1.25rem;
+        font-variation-settings: "FILL" 1;
       }
       .bgm-picker-view {
         padding-bottom: 0;
-        background: #050505;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 220px),
+          #050505;
         overscroll-behavior-y: none;
+        font-family: -apple-system, sans-serif;
       }
       .bgm-picker-topbar {
         position: sticky;
@@ -632,75 +736,116 @@
         z-index: 20;
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 14px 18px 12px;
-        background: rgba(5, 5, 5, 0.92);
-        border-bottom: 1px solid #181818;
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
+        gap: 12px;
+        padding: 15px 18px 13px;
+        background: rgba(5, 5, 5, 0.86);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
       }
       .bgm-picker-back-btn {
-        width: 38px;
-        height: 38px;
+        width: 36px;
+        height: 36px;
         display: flex;
         align-items: center;
         justify-content: center;
-        border: 0;
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 50%;
-        background: transparent;
+        background: rgba(255, 255, 255, 0.04);
         color: #eee;
         cursor: pointer;
       }
       .bgm-picker-back-btn:active {
-        background: #181818;
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .bgm-picker-title-wrap {
+        min-width: 0;
       }
       .bgm-picker-title {
         margin: 0;
         color: #eee;
-        font-size: 1rem;
+        font-size: 1.04rem;
         font-weight: 700;
-        font-family: -apple-system, sans-serif;
+        font-family: "Noto Serif KR", serif;
+      }
+      .bgm-picker-subtitle {
+        margin-top: 2px;
+        color: #777;
+        font-size: 0.72rem;
+        line-height: 1.2;
       }
       .bgm-picker-list {
-        padding: 8px 18px 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 16px 18px 30px;
       }
       .bgm-picker-option {
         width: 100%;
-        min-height: 58px;
+        min-height: 66px;
         display: flex;
         align-items: center;
         gap: 12px;
-        background: transparent;
-        border: 0;
-        border-bottom: 1px solid #181818;
+        position: relative;
+        overflow: hidden;
+        background: rgba(16, 16, 16, 0.88);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 8px;
         color: #eee;
-        padding: 0;
+        padding: 0 12px;
         text-align: left;
         font-family: -apple-system, sans-serif;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+        transition:
+          border-color 0.18s ease,
+          background 0.18s ease,
+          transform 0.18s ease;
       }
       .bgm-picker-option:active {
-        background: rgba(255, 255, 255, 0.04);
+        transform: scale(0.99);
+        background: rgba(24, 24, 24, 0.94);
+      }
+      .bgm-picker-option.is-selected {
+        border-color: rgba(255, 255, 255, 0.24);
+        background: rgba(25, 25, 25, 0.96);
+      }
+      .bgm-picker-option.is-selected::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 12px;
+        bottom: 12px;
+        width: 2px;
+        border-radius: 999px;
+        background: #f1f1f1;
       }
       .bgm-picker-preview-btn,
       .bgm-picker-preview-spacer {
         flex: 0 0 auto;
-        width: 36px;
-        height: 36px;
+        width: 38px;
+        height: 38px;
         display: flex;
         align-items: center;
         justify-content: center;
         border-radius: 50%;
       }
       .bgm-picker-preview-btn {
-        border: 1px solid #242424;
-        background: #111;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: #181818;
         color: #f2f2f2;
         cursor: pointer;
+        transition:
+          background 0.18s ease,
+          color 0.18s ease,
+          transform 0.18s ease;
       }
       .bgm-picker-preview-btn:active,
       .bgm-picker-preview-btn.is-previewing {
         background: #f2f2f2;
         color: #050505;
+      }
+      .bgm-picker-preview-btn:active {
+        transform: scale(0.94);
       }
       .bgm-picker-preview-icon,
       .bgm-picker-preview-spacer .material-symbols-outlined {
@@ -712,7 +857,7 @@
       .bgm-picker-select-btn {
         flex: 1 1 auto;
         min-width: 0;
-        min-height: 58px;
+        min-height: 64px;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -720,22 +865,22 @@
         border: 0;
         background: transparent;
         color: inherit;
-        padding: 14px 0;
+        padding: 13px 0;
         cursor: pointer;
         text-align: left;
         font-family: -apple-system, sans-serif;
       }
       .bgm-picker-select-btn:active {
-        background: rgba(255, 255, 255, 0.04);
+        background: transparent;
       }
       .bgm-picker-option-text {
         flex: 1 1 auto;
         min-width: 0;
       }
       .bgm-picker-option-title {
-        color: #f2f2f2;
+        color: #f4f4f4;
         font-size: 0.95rem;
-        font-weight: 700;
+        font-weight: 650;
         line-height: 1.25;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -752,8 +897,8 @@
       }
       .bgm-picker-option-icon {
         flex: 0 0 auto;
-        color: #888;
-        font-size: 1.2rem;
+        color: #5f5f5f;
+        font-size: 1.24rem;
       }
       .bgm-picker-option.is-selected .bgm-picker-option-icon {
         color: #fff;
@@ -766,13 +911,15 @@
         width: 100%;
         border: none;
         padding: 18px 16px;
-        border-radius: 14px;
+        border-radius: 8px;
         font-weight: 600;
         font-size: 1.1rem;
         cursor: pointer;
         margin-bottom: 12px;
         font-family: -apple-system, sans-serif;
-        transition: transform 0.2s;
+        transition:
+          box-shadow 0.18s ease,
+          transform 0.18s ease;
         position: relative;
       }
       .social-btn:active {
@@ -787,6 +934,7 @@
       .kakao-btn {
         background: #fee500;
         color: rgba(0, 0, 0, 0.85);
+        box-shadow: 0 10px 24px rgba(254, 229, 0, 0.08);
       }
       .google-btn {
         background: #ffffff;
@@ -1261,11 +1409,122 @@
       }
       .profile-login-card {
         width: 100%;
-        background: #111;
-        border: 1px solid #222;
-        border-radius: 20px;
-        padding: 20px;
-        margin-top: 20px;
+        margin-top: 2px;
+        padding: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        background: linear-gradient(180deg, #151515 0%, #0f0f0f 100%);
+        box-shadow:
+          0 18px 38px rgba(0, 0, 0, 0.32),
+          inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      }
+      .auth-container {
+        min-height: 100%;
+        padding: 46px 20px 92px;
+        background:
+          linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.035),
+            transparent 260px
+          ),
+          #050505;
+      }
+      .logged-out-profile {
+        width: min(100%, 440px);
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .logged-out-hero {
+        padding: 10px 2px 8px;
+      }
+      .logged-out-eyebrow {
+        color: #777;
+        font-family: -apple-system, sans-serif;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+      .logged-out-title {
+        margin-top: 9px;
+        color: #f5f5f5;
+        font-family: "Noto Serif KR", serif;
+        font-size: 1.62rem;
+        font-weight: 700;
+        line-height: 1.34;
+        word-break: keep-all;
+      }
+      .logged-out-copy {
+        margin-top: 12px;
+        color: #9a9a9a;
+        font-size: 0.93rem;
+        line-height: 1.65;
+        word-break: keep-all;
+      }
+      .logged-out-preview-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      .logged-out-preview-item {
+        min-width: 0;
+        min-height: 68px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 8px;
+        background: rgba(15, 15, 15, 0.72);
+        color: #d8d8d8;
+        font-size: 0.78rem;
+        font-weight: 600;
+        pointer-events: none;
+      }
+      .logged-out-preview-item .material-symbols-outlined {
+        color: #f0f0f0;
+        font-size: 1.22rem;
+      }
+      .login-card-heading {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .login-card-icon {
+        flex: 0 0 auto;
+        width: 38px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.05);
+        color: #f1f1f1;
+        font-size: 1.22rem;
+      }
+      .login-card-title {
+        color: #f4f4f4;
+        font-family: "Noto Serif KR", serif;
+        font-size: 1.04rem;
+        font-weight: 700;
+      }
+      .login-card-copy {
+        margin-top: 3px;
+        color: #858585;
+        font-size: 0.78rem;
+        line-height: 1.35;
+      }
+      .login-card-footnote {
+        margin-top: 12px;
+        color: #6f6f6f;
+        font-size: 0.74rem;
+        line-height: 1.45;
+        text-align: center;
+        word-break: keep-all;
       }
       .bottom-sheet {
         position: fixed;
@@ -1332,6 +1591,102 @@
         border: none;
         color: #666;
         transition: color 0.2s;
+      }
+      .app-alert-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 220;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 22px;
+        background: rgba(0, 0, 0, 0.68);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition:
+          opacity 0.2s ease,
+          visibility 0.2s ease;
+      }
+      .app-alert-backdrop.open {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+      }
+      .app-alert-dialog {
+        width: min(340px, 100%);
+        padding: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.11);
+        border-radius: 8px;
+        background: linear-gradient(180deg, #151515 0%, #0f0f0f 100%);
+        box-shadow:
+          0 24px 70px rgba(0, 0, 0, 0.62),
+          inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        transform: translateY(10px) scale(0.97);
+        transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
+        font-family: -apple-system, sans-serif;
+      }
+      .app-alert-backdrop.open .app-alert-dialog {
+        transform: translateY(0) scale(1);
+      }
+      .app-alert-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .app-alert-icon {
+        width: 38px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.05);
+        color: #f2f2f2;
+        font-size: 1.25rem;
+      }
+      .app-alert-kicker {
+        color: #777;
+        font-size: 0.68rem;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+      .app-alert-title {
+        margin: 2px 0 0;
+        color: #f4f4f4;
+        font-family: "Noto Serif KR", serif;
+        font-size: 1.08rem;
+        font-weight: 700;
+        line-height: 1.25;
+      }
+      .app-alert-message {
+        margin-top: 14px;
+        color: #d6d6d6;
+        font-size: 0.94rem;
+        line-height: 1.55;
+        white-space: pre-line;
+        word-break: keep-all;
+      }
+      .app-alert-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 18px;
+      }
+      .app-alert-button {
+        min-width: 76px;
+        min-height: 38px;
+        border: 0;
+        border-radius: 8px;
+        background: #f2f2f2;
+        color: #050505;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 700;
+        font-family: -apple-system, sans-serif;
+      }
+      .app-alert-button:active {
+        transform: scale(0.97);
       }
 
       .comment-list {
@@ -1437,45 +1792,134 @@
         color: #ff3b30;
       }
 
+      .noti-view {
+        padding: 0;
+        background:
+          linear-gradient(
+            180deg,
+            rgba(255, 255, 255, 0.025),
+            transparent 210px
+          ),
+          #050505;
+        font-family: -apple-system, sans-serif;
+      }
+      .noti-topbar {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        background: rgba(5, 5, 5, 0.88);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+      }
+      .noti-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 14px 16px 84px;
+      }
       .noti-item {
-        padding: 15px 20px;
-        border-bottom: 1px solid #222;
         display: flex;
         align-items: flex-start;
-        gap: 15px;
-        background: #0a0a0a;
+        gap: 13px;
+        position: relative;
+        overflow: hidden;
+        padding: 15px 15px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 8px;
+        background: rgba(15, 15, 15, 0.92);
+        box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
       }
       .noti-icon {
-        font-size: 1.5rem;
+        flex: 0 0 auto;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.05);
         color: #fff;
-        margin-top: 2px;
+        font-size: 1.16rem;
+        margin-top: 1px;
       }
       .noti-icon.like {
         color: #ff3b30;
         font-variation-settings: "FILL" 1;
       }
       .noti-icon.comment {
-        color: #fff;
+        color: #f2f2f2;
         font-variation-settings: "FILL" 1;
       }
       .noti-icon.follow {
         color: #4285f4;
         font-variation-settings: "FILL" 1;
       }
+      .noti-content {
+        min-width: 0;
+        flex: 1 1 auto;
+        padding-top: 1px;
+      }
       .noti-text {
         font-size: 0.95rem;
-        color: #ddd;
-        line-height: 1.4;
+        color: #dedede;
+        line-height: 1.45;
         font-family: -apple-system, sans-serif;
+        word-break: keep-all;
       }
       .noti-text strong {
         color: #fff;
+        font-weight: 700;
       }
       .noti-time {
-        font-size: 0.75rem;
-        color: #666;
-        margin-top: 6px;
+        display: inline-flex;
+        align-items: center;
+        min-height: 20px;
+        margin-top: 8px;
+        padding: 0 7px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.035);
+        color: #7b7b7b;
+        font-size: 0.72rem;
         font-family: -apple-system, sans-serif;
+      }
+      .noti-state {
+        min-height: 220px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 46px 22px;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 8px;
+        background: rgba(14, 14, 14, 0.72);
+        color: #8b8b8b;
+        text-align: center;
+        font-size: 0.92rem;
+        line-height: 1.45;
+        word-break: keep-all;
+      }
+      .noti-state-icon {
+        width: 42px;
+        height: 42px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.045);
+        color: #cfcfcf;
+        font-size: 1.35rem;
+      }
+      .noti-state-title {
+        color: #e8e8e8;
+        font-size: 0.98rem;
+        font-weight: 700;
+      }
+      .noti-state-desc {
+        max-width: 260px;
+        color: #777;
+        font-size: 0.82rem;
       }
       /* author-info 내부에 들어갈 BGM 정보창 디자인 */
       .post-bgm-info {
@@ -1630,8 +2074,26 @@
           ></textarea>
           <div class="char-count" id="charCount">0 / 300</div>
         </div>
+        <div class="write-bgm-field" style="margin-bottom: 12px">
+          <p class="write-bgm-label">이 글의 감성 온도는?</p>
+          <input type="hidden" id="postMood" value="" />
+          <button
+            type="button"
+            class="write-bgm-select-btn write-mood-select-btn"
+            id="moodSelectButton"
+            onclick="openMoodPicker()"
+          >
+            <span class="write-bgm-selected" id="selectedMoodLabel"
+              >감성을 선택해주세요</span
+            >
+            <span
+              class="material-symbols-outlined write-bgm-add-icon write-mood-icon"
+              >thermostat</span
+            >
+          </button>
+        </div>
         <div class="write-bgm-field">
-          <p class="write-bgm-label">함께 띄울 새벽 BGM</p>
+          <p class="write-bgm-label">함께 띄울 BGM</p>
           <input type="hidden" id="postBgm" value="" />
           <button
             type="button"
@@ -1660,75 +2122,108 @@
         >
           <span class="material-symbols-outlined">arrow_back</span>
         </button>
-        <h1 class="bgm-picker-title">BGM</h1>
+        <div class="bgm-picker-title-wrap">
+          <h1 class="bgm-picker-title">새벽 BGM</h1>
+          <div class="bgm-picker-subtitle">GLIM AUDIO</div>
+        </div>
       </div>
       <div class="bgm-picker-list" id="bgmPickerList"></div>
     </div>
 
-    <div id="view-noti" class="app-view" style="padding: 0">
-      <div class="profile-topbar" style="border-bottom: 1px solid #222">
+    <div id="view-noti" class="app-view noti-view">
+      <div class="profile-topbar noti-topbar">
         <h1 class="profile-title">알림</h1>
       </div>
-      <div id="notiList" style="padding-bottom: 20px">
-        <div style="text-align: center; color: #555; padding: 50px 0">
-          로그인이 필요합니다.
+      <div id="notiList" class="noti-list">
+        <div class="noti-state">
+          <span class="material-symbols-outlined noti-state-icon"
+            >notifications</span
+          >
+          <div class="noti-state-title">로그인이 필요합니다.</div>
         </div>
       </div>
     </div>
 
     <div id="view-profile" class="app-view">
-      <div
-        id="authContainer"
-        style="padding: 20px; padding-top: 80px; display: none"
-      >
-        <section id="authForm" class="profile-login-card">
-          <p
-            style="
-              text-align: center;
-              color: #aaa;
-              margin-bottom: 20px;
-              font-size: 0.9rem;
-            "
-          >
-            글림의 깊은 이야기들을 함께 나누어보세요.
-          </p>
-          <button
-            class="social-btn kakao-btn"
-            onclick="handleSocialLogin('kakao')"
-          >
-            <svg class="social-icon" viewBox="0 0 24 24">
-              <path
-                d="M12 3c-5.52 0-10 3.58-10 8 0 2.82 1.83 5.3 4.58 6.71L5.5 22.5l5.24-3.53c.41.05.82.08 1.26.08 5.52 0 10-3.58 10-8s-4.48-8-10-8z"
-                fill="#000000"
-              />
-            </svg>
-            카카오로 계속하기
-          </button>
-          <button
-            class="social-btn google-btn"
-            onclick="handleSocialLogin('google')"
-          >
-            <svg class="social-icon" viewBox="0 0 24 24">
-              <path
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                fill="#4285F4"
-              />
-              <path
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                fill="#34A853"
-              />
-              <path
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                fill="#FBBC05"
-              />
-              <path
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                fill="#EA4335"
-              />
-            </svg>
-            Google로 계속하기
-          </button>
-        </section>
+      <div id="authContainer" class="auth-container" style="display: none">
+        <div class="logged-out-profile">
+          <section class="logged-out-hero">
+            <div class="logged-out-eyebrow">GLIM PROFILE</div>
+            <h1 class="logged-out-title">당신의 문장이 머무는 자리</h1>
+            <p class="logged-out-copy">
+              마음에 남은 글을 저장하고, 조용히 이어지는 반응을 한곳에
+              모아두세요.
+            </p>
+          </section>
+
+          <div class="logged-out-preview-grid" aria-hidden="true">
+            <div class="logged-out-preview-item">
+              <span class="material-symbols-outlined">edit_note</span>
+              <span>내 글 기능</span>
+            </div>
+            <div class="logged-out-preview-item">
+              <span class="material-symbols-outlined">bookmark</span>
+              <span>저장 기능</span>
+            </div>
+            <div class="logged-out-preview-item">
+              <span class="material-symbols-outlined">notifications</span>
+              <span>알림 기능</span>
+            </div>
+          </div>
+
+          <section id="authForm" class="profile-login-card">
+            <div class="login-card-heading">
+              <span class="material-symbols-outlined login-card-icon"
+                >person</span
+              >
+              <div>
+                <div class="login-card-title">프로필 시작하기</div>
+                <p class="login-card-copy">
+                  글림의 흐름을 내 계정에 이어두세요.
+                </p>
+              </div>
+            </div>
+            <button
+              class="social-btn kakao-btn"
+              onclick="handleSocialLogin('kakao')"
+            >
+              <svg class="social-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 3c-5.52 0-10 3.58-10 8 0 2.82 1.83 5.3 4.58 6.71L5.5 22.5l5.24-3.53c.41.05.82.08 1.26.08 5.52 0 10-3.58 10-8s-4.48-8-10-8z"
+                  fill="#000000"
+                />
+              </svg>
+              카카오로 계속하기
+            </button>
+            <button
+              class="social-btn google-btn"
+              onclick="handleSocialLogin('google')"
+            >
+              <svg class="social-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  fill="#EA4335"
+                />
+              </svg>
+              Google로 계속하기
+            </button>
+            <p class="login-card-footnote">
+              로그인 후에도 글림의 조용한 분위기는 그대로 이어집니다.
+            </p>
+          </section>
+        </div>
       </div>
 
       <div id="profileContainer" style="display: none">
@@ -2122,6 +2617,25 @@
 
     <div
       class="sheet-backdrop"
+      id="moodSheetBackdrop"
+      onclick="closeMoodPicker()"
+    ></div>
+
+    <div class="bottom-sheet mood-sheet" id="moodSheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title">감성 온도</div>
+        <button class="close-btn" onclick="closeMoodPicker()">✕</button>
+      </div>
+      <p class="mood-sheet-copy">
+        글이 머무는 분위기를 골라주세요. 선택한 감성은 추천 흐름에 함께
+        반영됩니다.
+      </p>
+      <div class="mood-option-list" id="moodOptionList"></div>
+    </div>
+
+    <div
+      class="sheet-backdrop"
       id="settingsSheetBackdrop"
       onclick="closeSheet('settingsSheet')"
     ></div>
@@ -2198,6 +2712,32 @@
       >
         <div style="text-align: center; color: #555; margin-top: 20px">
           공지사항을 불러오는 중...
+        </div>
+      </div>
+    </div>
+
+    <div class="app-alert-backdrop" id="appAlert" aria-hidden="true">
+      <div
+        class="app-alert-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="appAlertTitle"
+        aria-describedby="appAlertMessage"
+      >
+        <div class="app-alert-head">
+          <span class="material-symbols-outlined app-alert-icon"
+            >notifications</span
+          >
+          <div>
+            <div class="app-alert-kicker">GLIM</div>
+            <h2 class="app-alert-title" id="appAlertTitle">알림</h2>
+          </div>
+        </div>
+        <p class="app-alert-message" id="appAlertMessage"></p>
+        <div class="app-alert-actions">
+          <button type="button" class="app-alert-button" data-app-alert-close>
+            확인
+          </button>
         </div>
       </div>
     </div>
