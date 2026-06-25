@@ -8,6 +8,7 @@ let isBgmEnabled = true;
 let currentBgmUrl = "";
 let bgmSyncFrame = null;
 let isWaitingForBgmGesture = false;
+let previewingBgmUrl = "";
 let currentUser = null;
 let currentPostIdForComment = null;
 let viewedProfileUserId = null;
@@ -67,6 +68,7 @@ const BGM_TRACKS = [
 const BGM_TRACKS_BY_URL = new Map(
   BGM_TRACKS.map((track) => [track.url, track]),
 );
+const FEED_BGM_VIEW_IDS = new Set(["view-home", "view-context-feed"]);
 
 const observerOptions = {
   root: document.querySelector("#view-home"),
@@ -258,25 +260,84 @@ function renderBgmPicker() {
   list.innerHTML = options
     .map((track) => {
       const isSelected = selectedUrl === track.url;
+      const isPreviewing = Boolean(track.url && previewingBgmUrl === track.url);
       const artistHtml = track.artist
         ? `<div class="bgm-picker-option-artist">${escapeHtml(track.artist)}</div>`
         : "";
+      const previewControlHtml = track.url
+        ? `<button
+            type="button"
+            class="bgm-picker-preview-btn${isPreviewing ? " is-previewing" : ""}"
+            data-bgm-url="${escapeHtml(track.url)}"
+            onclick="toggleBgmPreview(this.dataset.bgmUrl)"
+            aria-label="${isPreviewing ? "미리듣기 정지" : "미리듣기"}"
+          >
+            <span class="material-symbols-outlined bgm-picker-preview-icon">${isPreviewing ? "pause" : "play_arrow"}</span>
+          </button>`
+        : `<span class="bgm-picker-preview-spacer" aria-hidden="true">
+            <span class="material-symbols-outlined">music_off</span>
+          </span>`;
 
       return `
-        <button
-          type="button"
-          class="bgm-picker-option${isSelected ? " is-selected" : ""}"
-          data-bgm-url="${escapeHtml(track.url)}"
-          onclick="selectPostBgm(this.dataset.bgmUrl)"
-        >
-          <div class="bgm-picker-option-text">
-            <div class="bgm-picker-option-title">${escapeHtml(track.title)}</div>
-            ${artistHtml}
-          </div>
-          <span class="material-symbols-outlined bgm-picker-option-icon">${isSelected ? "check_circle" : "radio_button_unchecked"}</span>
-        </button>`;
+        <div class="bgm-picker-option${isSelected ? " is-selected" : ""}${isPreviewing ? " is-previewing" : ""}">
+          ${previewControlHtml}
+          <button
+            type="button"
+            class="bgm-picker-select-btn"
+            data-bgm-url="${escapeHtml(track.url)}"
+            onclick="selectPostBgm(this.dataset.bgmUrl)"
+          >
+            <div class="bgm-picker-option-text">
+              <div class="bgm-picker-option-title">${escapeHtml(track.title)}</div>
+              ${artistHtml}
+            </div>
+            <span class="material-symbols-outlined bgm-picker-option-icon">${isSelected ? "check_circle" : "radio_button_unchecked"}</span>
+          </button>
+        </div>`;
     })
     .join("");
+}
+
+function updateBgmPickerPreviewControls() {
+  document.querySelectorAll(".bgm-picker-option").forEach((option) => {
+    const button = option.querySelector(".bgm-picker-preview-btn");
+    if (!button) return;
+
+    const isPreviewing = previewingBgmUrl === button.dataset.bgmUrl;
+    option.classList.toggle("is-previewing", isPreviewing);
+    button.classList.toggle("is-previewing", isPreviewing);
+    button.setAttribute(
+      "aria-label",
+      isPreviewing ? "미리듣기 정지" : "미리듣기",
+    );
+
+    const icon = button.querySelector(".bgm-picker-preview-icon");
+    if (icon) icon.textContent = isPreviewing ? "pause" : "play_arrow";
+  });
+}
+
+function stopBgmPreview() {
+  if (!previewingBgmUrl) return;
+
+  previewingBgmUrl = "";
+  pauseBgm();
+  updateBgmPickerPreviewControls();
+}
+
+function toggleBgmPreview(bgmUrl) {
+  if (!bgmUrl) {
+    stopBgmPreview();
+    return;
+  }
+
+  if (previewingBgmUrl === bgmUrl) {
+    stopBgmPreview();
+    return;
+  }
+
+  previewingBgmUrl = bgmUrl;
+  playBgmUrl(bgmUrl);
+  updateBgmPickerPreviewControls();
 }
 
 function setupBgmPicker() {
@@ -290,6 +351,7 @@ function openBgmPicker() {
 }
 
 function closeBgmPicker() {
+  stopBgmPreview();
   activateAppView("view-write");
 }
 
@@ -300,7 +362,6 @@ function selectPostBgm(bgmUrl) {
   input.value = bgmUrl || "";
   updateSelectedBgmLabel();
   renderBgmPicker();
-  closeBgmPicker();
 }
 
 function escapeHtml(value) {
@@ -346,6 +407,16 @@ function updateBgmControls() {
   });
 }
 
+function getActiveViewId() {
+  return document.querySelector(".app-view.active")?.id || "";
+}
+
+function shouldResumeBgmAfterGesture() {
+  const activeViewId = getActiveViewId();
+  if (activeViewId === "view-bgm-picker") return Boolean(previewingBgmUrl);
+  return isBgmEnabled && FEED_BGM_VIEW_IDS.has(activeViewId);
+}
+
 function pauseBgm() {
   const bgmPlayer = document.getElementById("bgmPlayer");
   if (!bgmPlayer) return;
@@ -358,7 +429,16 @@ function resumeBgmAfterGesture() {
   document.removeEventListener("pointerdown", resumeBgmAfterGesture);
   document.removeEventListener("touchstart", resumeBgmAfterGesture);
   document.removeEventListener("keydown", resumeBgmAfterGesture);
-  if (isBgmEnabled) syncBgmToVisiblePost();
+
+  if (!shouldResumeBgmAfterGesture()) return;
+
+  if (getActiveViewId() === "view-bgm-picker") {
+    playBgmUrl(previewingBgmUrl);
+    updateBgmPickerPreviewControls();
+    return;
+  }
+
+  syncBgmToVisiblePost();
 }
 
 function waitForBgmGesture() {
@@ -371,6 +451,20 @@ function waitForBgmGesture() {
     passive: true,
   });
   document.addEventListener("keydown", resumeBgmAfterGesture);
+}
+
+function setupBgmAudioUnlock() {
+  waitForBgmGesture();
+
+  const bgmPlayer = document.getElementById("bgmPlayer");
+  if (!bgmPlayer) return;
+
+  bgmPlayer.addEventListener("play", updateBgmPickerPreviewControls);
+  bgmPlayer.addEventListener("pause", () => {
+    if (getActiveViewId() !== "view-bgm-picker" || !previewingBgmUrl) return;
+    previewingBgmUrl = "";
+    updateBgmPickerPreviewControls();
+  });
 }
 
 function playBgmUrl(bgmUrl) {
@@ -391,7 +485,7 @@ function playBgmUrl(bgmUrl) {
   const playPromise = bgmPlayer.play();
   if (playPromise?.catch) {
     playPromise.catch(() => {
-      if (isBgmEnabled) waitForBgmGesture();
+      if (shouldResumeBgmAfterGesture()) waitForBgmGesture();
     });
   }
 }
@@ -433,7 +527,7 @@ function syncBgmToVisiblePost(
     : document.querySelector(".app-view.active");
   if (
     !activeView ||
-    !["view-home", "view-context-feed"].includes(activeView.id)
+    !FEED_BGM_VIEW_IDS.has(activeView.id)
   )
     return;
 
@@ -454,8 +548,21 @@ function requestBgmSyncForView(view) {
 }
 
 function requestBgmSyncForActiveFeed(viewId) {
-  if (!["view-home", "view-context-feed"].includes(viewId)) return;
-  requestBgmSyncForView(document.getElementById(viewId));
+  if (bgmSyncFrame) {
+    cancelAnimationFrame(bgmSyncFrame);
+    bgmSyncFrame = null;
+  }
+
+  if (viewId !== "view-bgm-picker") stopBgmPreview();
+
+  if (!FEED_BGM_VIEW_IDS.has(viewId)) {
+    pauseBgm();
+    return;
+  }
+
+  const view = document.getElementById(viewId);
+  syncBgmToVisiblePost(view);
+  requestBgmSyncForView(view);
 }
 
 function toggleBgmFromPost(button) {
@@ -551,6 +658,8 @@ function generateRandomNickname() {
 }
 
 async function init() {
+  setupBgmAudioUnlock();
+
   const {
     data: { session },
   } = await client.auth.getSession();
