@@ -19,6 +19,8 @@ let isRefreshing = false;
 let lastNavTapTab = null;
 let lastNavTapTime = 0;
 let pullIndicatorHideTimer = null;
+let exploreFetchRequestId = 0;
+let postTextMeasureElement = null;
 let selectedProfileAvatarFile = null;
 let shouldRemoveProfileAvatar = false;
 let editAvatarPreviewObjectUrl = null;
@@ -26,6 +28,12 @@ let avatarCropSourceUrl = null;
 let avatarCropOriginalFile = null;
 const AVATAR_CROP_OUTPUT_SIZE = 512;
 const MAX_AVATAR_SOURCE_SIZE = 15 * 1024 * 1024;
+const DEFAULT_PROFILE_AVATAR_URL = "image/glimmer-profile-image.png";
+const POST_MIN_CHARACTERS = 5;
+const POST_MAX_CHARACTERS = 120;
+const POST_MAX_VISUAL_LINES = 12;
+const POST_CENTERED_VISUAL_LINES = 8;
+const POST_REFERENCE_LINE_HEIGHT = 17 * 1.65;
 const ALLOWED_AVATAR_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -210,14 +218,6 @@ function timeForToday(value) {
   return `${timeValue.getFullYear()}.${timeValue.getMonth() + 1}.${timeValue.getDate()}`;
 }
 
-function getPostTextSizeClass(content) {
-  const length = content.trim().length;
-  if (length > 250) return "text-content-very-long";
-  if (length > 180) return "text-content-long";
-  if (length > 110) return "text-content-medium";
-  return "";
-}
-
 function fitPostTextToViewport(postElement) {
   const textElement = postElement.querySelector(".text-content");
   if (!textElement) return;
@@ -225,16 +225,26 @@ function fitPostTextToViewport(postElement) {
   textElement.style.fontSize = "";
   textElement.style.lineHeight = "";
   textElement.style.maxHeight = "";
-  textElement.classList.remove("text-content-scrollable");
+  textElement.style.removeProperty("--home-text-lift");
+  textElement.classList.remove(
+    "text-content-scrollable",
+    "text-content-tall",
+  );
 
   const viewportHeight = window.visualViewport?.height || window.innerHeight;
-  const availableHeight = Math.max(160, viewportHeight - 250);
-  let fontSize = parseFloat(getComputedStyle(textElement).fontSize);
+  const computedStyle = getComputedStyle(textElement);
+  const lineHeight = parseFloat(computedStyle.lineHeight);
+  const renderedLines = Math.round(textElement.scrollHeight / lineHeight);
+  const availableHeight = Math.max(
+    Math.ceil(POST_REFERENCE_LINE_HEIGHT * POST_MAX_VISUAL_LINES) + 1,
+    viewportHeight - 340,
+  );
 
-  while (textElement.scrollHeight > availableHeight && fontSize > 10) {
-    fontSize -= 0.5;
-    textElement.style.fontSize = `${fontSize}px`;
-    textElement.style.lineHeight = "1.35";
+  if (viewportHeight <= 600 && renderedLines > POST_CENTERED_VISUAL_LINES) {
+    const lift =
+      (renderedLines - POST_CENTERED_VISUAL_LINES) * (lineHeight / 2);
+    textElement.style.setProperty("--home-text-lift", `${-lift}px`);
+    textElement.classList.add("text-content-tall");
   }
 
   if (textElement.scrollHeight > availableHeight) {
@@ -832,7 +842,11 @@ function switchTab(tabName) {
   requestBgmSyncForActiveFeed(`view-${tabName}`);
 
   if (tabName === "home") fetchPosts();
-  if (tabName === "explore") fetchExplorePosts();
+  if (tabName === "explore") {
+    fetchExplorePosts(
+      document.getElementById("searchInput")?.value.trim() || "",
+    );
+  }
   if (tabName === "noti") fetchNotifications();
   if (tabName === "profile") {
     updateAuthUI();
@@ -987,8 +1001,10 @@ async function init() {
   setupSwipeBackNavigation();
   setupPullToRefresh();
   setupPostTextFitting();
+  window.addEventListener("resize", updateExploreCardMoreLabels);
   setupAvatarCropper();
   setupBgmPicker();
+  updateCharCount();
 }
 
 function activateAppView(viewId) {
@@ -1239,10 +1255,7 @@ function getCurrentProfileData() {
       currentUser.email.split("@")[0],
     custom_id:
       currentUser.user_metadata?.custom_id || currentUser.email.split("@")[0],
-    avatar_url:
-      currentUser.user_metadata?.avatar_url ||
-      currentUser.user_metadata?.picture ||
-      null,
+    avatar_url: currentUser.user_metadata?.avatar_url || null,
     updated_at: new Date().toISOString(),
   };
 }
@@ -1284,19 +1297,18 @@ function renderAvatarElement(avatar, avatarUrl, iconSize = "3rem") {
   if (!avatar) return;
   avatar.replaceChildren();
 
-  if (avatarUrl) {
-    const image = document.createElement("img");
-    image.src = avatarUrl;
-    image.alt = "";
-    image.style.cssText = "width:100%; height:100%; object-fit:cover;";
-    avatar.appendChild(image);
-  } else {
+  const image = document.createElement("img");
+  image.src = avatarUrl || DEFAULT_PROFILE_AVATAR_URL;
+  image.alt = "";
+  image.style.cssText = "width:100%; height:100%; object-fit:cover;";
+  image.addEventListener("error", () => {
     const icon = document.createElement("span");
     icon.className = "material-symbols-outlined";
     icon.style.cssText = `font-size:${iconSize}; color:#555;`;
     icon.innerText = "person";
-    avatar.appendChild(icon);
-  }
+    avatar.replaceChildren(icon);
+  });
+  avatar.appendChild(image);
 }
 
 function setOwnProfileAvatar(avatarUrl) {
@@ -1317,8 +1329,7 @@ function setEditProfileAvatarPreview(avatarUrl) {
 function getCurrentAvatarUrl() {
   return (
     currentUser?.user_metadata?.avatar_url ||
-    currentUser?.user_metadata?.picture ||
-    null
+    DEFAULT_PROFILE_AVATAR_URL
   );
 }
 
@@ -1663,7 +1674,7 @@ function handleProfileAvatarChange(event) {
 function removeProfileAvatar() {
   resetEditProfileAvatarState();
   shouldRemoveProfileAvatar = true;
-  setEditProfileAvatarPreview(currentUser?.user_metadata?.picture || null);
+  setEditProfileAvatarPreview(DEFAULT_PROFILE_AVATAR_URL);
 }
 
 async function uploadProfileAvatar(file) {
@@ -1895,17 +1906,7 @@ function createFollowListRow(profile) {
 
   const avatar = document.createElement("span");
   avatar.className = "follow-list-avatar";
-  if (profile.avatar_url) {
-    const image = document.createElement("img");
-    image.src = profile.avatar_url;
-    image.alt = "";
-    avatar.appendChild(image);
-  } else {
-    const icon = document.createElement("span");
-    icon.className = "material-symbols-outlined";
-    icon.innerText = "person";
-    avatar.appendChild(icon);
-  }
+  renderAvatarElement(avatar, profile.avatar_url, "1.6rem");
 
   const text = document.createElement("span");
   text.className = "follow-list-profile";
@@ -2237,7 +2238,7 @@ function createContextFeedPost(post) {
     : "저장";
 
   postElement.innerHTML = `
-    <div class="text-content ${getPostTextSizeClass(post.content)}">${post.content.replace(/\n/g, "<br>")}</div>
+    <div class="text-content">${post.content.replace(/\n/g, "<br>")}</div>
     <div class="author-info">
       <div
         class="author-name${post.user_id ? " author-link" : ""}"
@@ -2555,40 +2556,168 @@ async function fetchPosts() {
   requestBgmSyncForView(document.getElementById("view-home"));
 }
 
+function renderExploreRailState(rail, message, isError = false) {
+  const state = document.createElement("div");
+  state.className = `explore-rail-state${isError ? " is-error" : ""}`;
+  state.innerText = message;
+  rail.replaceChildren(state);
+}
+
+function updateExploreCardMoreLabels() {
+  document.querySelectorAll(".explore-hot-card").forEach((card) => {
+    const copy = card.querySelector(".explore-card-copy");
+    const copyText = card.querySelector(".explore-card-copy-text");
+    const more = card.querySelector(".explore-card-more");
+    if (!copy || !copyText || !more) return;
+
+    const fullText = copy.dataset.fullText || "";
+    const lineHeight = parseFloat(getComputedStyle(copy).lineHeight);
+    const maxHeight = lineHeight * 6 + 1;
+    const truncatedTextMaxHeight = lineHeight * 5 + 1;
+    copy.classList.remove("is-truncated");
+    copyText.innerText = fullText;
+    more.hidden = true;
+
+    if (copy.scrollHeight <= maxHeight) return;
+
+    copy.classList.add("is-truncated");
+    more.hidden = false;
+    let low = 0;
+    let high = fullText.length;
+
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      copyText.innerText = fullText.slice(0, middle).trimEnd();
+      if (copyText.scrollHeight <= truncatedTextMaxHeight) low = middle;
+      else high = middle - 1;
+    }
+
+    let truncatedText = fullText.slice(0, low).trimEnd();
+    copyText.innerText = truncatedText;
+    while (copyText.scrollHeight > truncatedTextMaxHeight && truncatedText) {
+      truncatedText = truncatedText.slice(0, -1).trimEnd();
+      copyText.innerText = truncatedText;
+    }
+  });
+}
+
+function createExploreHotCard(post, index) {
+  const rank = String(index + 1).padStart(2, "0");
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = "explore-hot-card";
+  card.setAttribute(
+    "aria-label",
+    `${index + 1}위, ${post.author || "익명"}의 게시물 열기`,
+  );
+  card.addEventListener("click", () => openContextPostFeed("explore", index));
+
+  const rankGhost = document.createElement("span");
+  rankGhost.className = "explore-card-rank-ghost";
+  rankGhost.innerText = rank;
+  rankGhost.setAttribute("aria-hidden", "true");
+
+  const topline = document.createElement("div");
+  topline.className = "explore-card-topline";
+
+  const rankLabel = document.createElement("span");
+  rankLabel.className = "explore-card-rank";
+  rankLabel.innerText = `NO. ${rank}`;
+
+  const pickLabel = document.createElement("span");
+  pickLabel.innerText = "GLIM HOT";
+  topline.append(rankLabel, pickLabel);
+
+  const rule = document.createElement("div");
+  rule.className = "explore-card-rule";
+  rule.setAttribute("aria-hidden", "true");
+
+  const copy = document.createElement("p");
+  copy.className = "explore-card-copy";
+  copy.dataset.fullText = post.content;
+
+  const copyText = document.createElement("span");
+  copyText.className = "explore-card-copy-text";
+  copyText.innerText = post.content;
+
+  const more = document.createElement("span");
+  more.className = "explore-card-more";
+  more.innerText = "이어 읽기 →";
+  more.hidden = true;
+  more.setAttribute("aria-hidden", "true");
+  copy.append(copyText, more);
+
+  const footer = document.createElement("div");
+  footer.className = "explore-card-footer";
+
+  const author = document.createElement("span");
+  author.className = "explore-card-author";
+  author.innerText = post.author || "익명";
+
+  const likes = document.createElement("span");
+  likes.className = "explore-card-likes";
+
+  const likeIcon = document.createElement("span");
+  likeIcon.className = "material-symbols-outlined";
+  likeIcon.innerText = "favorite";
+  likeIcon.setAttribute("aria-hidden", "true");
+
+  const likeCount = document.createElement("span");
+  likeCount.innerText = post.likes_count || 0;
+  likes.append(likeIcon, likeCount);
+  footer.append(author, likes);
+
+  card.append(rankGhost, topline, rule, copy, footer);
+  return card;
+}
+
 async function fetchExplorePosts(keyword = "") {
-  const grid = document.getElementById("exploreGrid");
+  const rail = document.getElementById("exploreHotRail");
+  const description = document.getElementById("exploreHotDescription");
+  if (!rail || !description) return;
+
+  const requestId = ++exploreFetchRequestId;
   contextPostCollections.set("explore", []);
   contextPostTitles.set(
     "explore",
-    keyword ? `‘${keyword}’ 검색 결과` : "탐색 게시물",
+    keyword ? `‘${keyword}’ HOT 문장` : "오늘의 가장 따뜻한 공감",
   );
-  grid.innerHTML =
-    '<div style="grid-column: 1 / -1; padding: 50px 0; text-align: center; color: #555;">불러오는 중...</div>';
+  description.innerText = keyword
+    ? `‘${keyword}’ 안에서 공감 순으로 모았어요`
+    : "가장 많은 마음이 머문 문장 10편";
+  rail.scrollLeft = 0;
+  rail.setAttribute("aria-busy", "true");
+  renderExploreRailState(rail, "따뜻한 문장을 고르는 중...");
+
   let query = client
     .from("posts")
     .select("*")
     .neq("author", "🚨글림 운영자")
     .order("likes_count", { ascending: false })
-    .limit(30);
+    .limit(10);
   if (keyword) query = query.ilike("content", `%${keyword}%`);
 
   const { data, error } = await query;
-  if (error)
-    return (grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #ff3b30;">오류</div>`);
-  if (data.length === 0)
-    return (grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #555; padding: 50px 0;">결과 없음.</div>`);
+  if (requestId !== exploreFetchRequestId) return;
+
+  rail.setAttribute("aria-busy", "false");
+  if (error) {
+    renderExploreRailState(rail, "문장을 불러오지 못했어요.", true);
+    return;
+  }
+  if (data.length === 0) {
+    renderExploreRailState(
+      rail,
+      keyword ? "검색된 문장이 없어요." : "아직 따뜻한 문장이 없어요.",
+    );
+    return;
+  }
 
   contextPostCollections.set("explore", data);
-  grid.innerHTML = data
-    .map(
-      (post, index) => `
-    <div class="grid-item" onclick="openContextPostFeed('explore', ${index})">
-      <div class="grid-text">${post.content}</div>
-      <div class="grid-stats"><span class="material-symbols-outlined">favorite</span>${post.likes_count || 0}</div>
-    </div>
-  `,
-    )
-    .join("");
+  const cards = data.map((post, index) => createExploreHotCard(post, index));
+  rail.replaceChildren(...cards);
+  requestAnimationFrame(updateExploreCardMoreLabels);
+  document.fonts?.ready.then(updateExploreCardMoreLabels);
 }
 
 function searchPosts() {
@@ -2952,8 +3081,16 @@ async function submitPost() {
   const selectedBgmTrack = getBgmTrackByUrl(bgmUrl);
   const bgmTitle = selectedBgmTrack?.title || null;
 
-  if (!content || content.length < 5)
-    return alert("최소 5자 이상 작성해주세요.");
+  if (!content || content.length < POST_MIN_CHARACTERS)
+    return alert(`최소 ${POST_MIN_CHARACTERS}자 이상 작성해주세요.`);
+  if (
+    content.length > POST_MAX_CHARACTERS ||
+    getPostVisualLineCount(content) > POST_MAX_VISUAL_LINES
+  ) {
+    return alert(
+      `글림의 글은 ${POST_MAX_CHARACTERS}자, 한 화면 ${POST_MAX_VISUAL_LINES}줄 이내로 작성해주세요.`,
+    );
+  }
   if (!mood) return alert("글의 감성 온도를 선택해주세요."); // ✅ 감성 선택 필수 확인
 
   const authorNickname =
@@ -2988,9 +3125,99 @@ async function submitPost() {
   switchTab("home");
 }
 
-function updateCharCount() {
-  document.getElementById("charCount").innerText =
-    `${document.getElementById("postContent").value.length} / 300`;
+function getPostTextMeasureElement() {
+  if (postTextMeasureElement) return postTextMeasureElement;
+
+  postTextMeasureElement = document.createElement("div");
+  postTextMeasureElement.className = "post-text-measure";
+  postTextMeasureElement.setAttribute("aria-hidden", "true");
+  document.body.appendChild(postTextMeasureElement);
+  return postTextMeasureElement;
+}
+
+function getPostVisualLineCount(content) {
+  if (!content) return 0;
+
+  const measureElement = getPostTextMeasureElement();
+  measureElement.innerText = content;
+  return Math.max(
+    1,
+    Math.round(measureElement.scrollHeight / POST_REFERENCE_LINE_HEIGHT),
+  );
+}
+
+function constrainPostContent(content) {
+  const characters = Array.from(content).slice(0, POST_MAX_CHARACTERS);
+  const candidate = characters.join("");
+  if (getPostVisualLineCount(candidate) <= POST_MAX_VISUAL_LINES) {
+    return candidate;
+  }
+
+  let low = 0;
+  let high = characters.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    const nextValue = characters.slice(0, middle).join("");
+    if (getPostVisualLineCount(nextValue) <= POST_MAX_VISUAL_LINES) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return characters.slice(0, low).join("");
+}
+
+function handlePostContentInput(event) {
+  const input = event?.currentTarget || document.getElementById("postContent");
+  if (!input) return;
+
+  if (event?.isComposing) {
+    updateCharCount();
+    return;
+  }
+
+  const constrainedValue = constrainPostContent(input.value);
+  const reachedVisualLimit = constrainedValue !== input.value;
+  if (reachedVisualLimit) {
+    const isBulkInput =
+      event?.inputType === "insertFromPaste" ||
+      event?.inputType === "insertFromDrop" ||
+      !input.dataset.lastValidValue;
+    input.value = isBulkInput
+      ? constrainedValue
+      : input.dataset.lastValidValue;
+  } else {
+    input.dataset.lastValidValue = input.value;
+  }
+  updateCharCount(reachedVisualLimit);
+}
+
+function updateCharCount(reachedVisualLimit = false) {
+  const input = document.getElementById("postContent");
+  const counter = document.getElementById("charCount");
+  if (!input || !counter) return;
+
+  const characterCount = Array.from(input.value).length;
+  const lineCount = getPostVisualLineCount(input.value);
+  counter.innerText = `${characterCount} / ${POST_MAX_CHARACTERS} · ${lineCount} / ${POST_MAX_VISUAL_LINES}줄`;
+  counter.classList.toggle(
+    "is-near-limit",
+    characterCount >= POST_MAX_CHARACTERS - 20 ||
+      lineCount >= POST_MAX_VISUAL_LINES - 1,
+  );
+  counter.classList.toggle(
+    "is-limit",
+    reachedVisualLimit ||
+      characterCount >= POST_MAX_CHARACTERS ||
+      lineCount >= POST_MAX_VISUAL_LINES,
+  );
+
+  if (
+    characterCount <= POST_MAX_CHARACTERS &&
+    lineCount <= POST_MAX_VISUAL_LINES
+  ) {
+    input.dataset.lastValidValue = input.value;
+  }
 }
 
 function sharePost(encodedContent) {
