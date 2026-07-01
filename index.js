@@ -2,6 +2,7 @@ const SUPABASE_URL = "https://qdnpeliqtxdglqewbvgg.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_mwYlhge63nnNjL9lAFhxRw_fxRtRGvO";
 const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const ADMIN_EMAIL = "weardockm@gmail.com";
+const nativeConfirm = window.confirm.bind(window);
 
 let currentPlayingBtn = null; // 현재 재생중인 버튼 기억
 let isBgmEnabled = true;
@@ -10,16 +11,23 @@ let bgmSyncFrame = null;
 let isWaitingForBgmGesture = false;
 let previewingBgmUrl = "";
 let currentUser = null;
+const blockedUserIds = new Set();
+const blockedUserNicknames = new Set();
 let currentPostIdForComment = null;
 let viewedProfileUserId = null;
 let viewedProfileIsFollowing = false;
 let userProfileReturnViewId = "view-home";
 let contextFeedReturnViewId = "view-home";
+let noticeReturnViewId = "view-settings";
 let isRefreshing = false;
 let lastNavTapTab = null;
 let lastNavTapTime = 0;
 let pullIndicatorHideTimer = null;
 let exploreFetchRequestId = 0;
+let exploreMoodFetchRequestId = 0;
+let exploreSearchRequestId = 0;
+let isExploreSearchOpen = false;
+let selectedExploreMood = "사색";
 let postTextMeasureElement = null;
 let selectedProfileAvatarFile = null;
 let shouldRemoveProfileAvatar = false;
@@ -34,6 +42,12 @@ const POST_MAX_CHARACTERS = 120;
 const POST_MAX_VISUAL_LINES = 12;
 const POST_CENTERED_VISUAL_LINES = 8;
 const POST_REFERENCE_LINE_HEIGHT = 17 * 1.65;
+const EXPLORE_SEARCH_HISTORY_KEY = "glim_explore_search_history";
+const EXPLORE_SEARCH_HISTORY_LIMIT = 8;
+const THEME_PREFERENCE_KEY = "glim_theme_preference";
+const systemThemeMediaQuery = window.matchMedia(
+  "(prefers-color-scheme: dark)",
+);
 const ALLOWED_AVATAR_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -100,32 +114,32 @@ const BGM_TRACKS = [
 const MOOD_OPTIONS = [
   {
     value: "사색",
-    label: "조용한 사색",
-    description: "천천히 가라앉는 생각",
+    label: "생각",
+    description: "조용히 머무는 마음",
     icon: "psychology",
   },
   {
     value: "위로",
-    label: "따뜻한 위로",
-    description: "부드럽게 건네는 말",
+    label: "위로",
+    description: "마음에 닿는 한마디",
     icon: "volunteer_activism",
   },
   {
     value: "우울",
-    label: "비 오는 우울",
-    description: "조금 낮게 내려앉은 마음",
+    label: "우울",
+    description: "비처럼 흐린 마음",
     icon: "water_drop",
   },
   {
     value: "설렘",
-    label: "기분 좋은 설렘",
-    description: "가볍게 뛰는 순간",
+    label: "설렘",
+    description: "살짝 뛰는 마음",
     icon: "auto_awesome",
   },
   {
     value: "일상",
-    label: "소소한 일상",
-    description: "작게 남겨둔 하루",
+    label: "일상",
+    description: "문득 빛나는 하루",
     icon: "local_cafe",
   },
 ];
@@ -140,6 +154,7 @@ const nativeAlert = window.alert.bind(window);
 let isAppAlertReady = false;
 let appAlertPreviousFocus = null;
 let appAlertOnClose = null;
+let appAlertOnConfirm = null;
 
 const observerOptions = {
   root: document.querySelector("#view-home"),
@@ -280,9 +295,16 @@ function setGlobalHeaderView(viewId) {
 }
 
 function setBottomNavView(viewId) {
+  const hiddenViews = new Set([
+    "view-bgm-picker",
+    "view-settings",
+    "view-theme-settings",
+    "view-account-center",
+    "view-notice-detail",
+  ]);
   document
     .querySelector(".bottom-nav")
-    ?.classList.toggle("is-hidden", viewId === "view-bgm-picker");
+    ?.classList.toggle("is-hidden", hiddenViews.has(viewId));
 }
 
 function getBgmDisplayName(bgmUrl) {
@@ -489,26 +511,57 @@ function setupAppAlert() {
   isAppAlertReady = true;
 
   alertElement.addEventListener("click", (event) => {
-    const closeTarget =
+    const primaryTarget =
       event.target instanceof Element &&
-      event.target.closest("[data-app-alert-close]");
+      event.target.closest("[data-app-alert-primary]");
+    const cancelTarget =
+      event.target instanceof Element &&
+      event.target.closest("[data-app-alert-cancel]");
 
-    if (closeTarget) {
-      closeAppAlert();
+    if (primaryTarget) {
+      closeAppAlert(true);
+    } else if (cancelTarget) {
+      closeAppAlert(false);
     }
   });
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && alertElement.classList.contains("open")) {
-      closeAppAlert();
+      closeAppAlert(false);
     }
   });
+}
+
+function setAppAlertPresentation({
+  title,
+  icon,
+  primaryText,
+  showCancel,
+  isDestructive,
+}) {
+  const alertElement = document.getElementById("appAlert");
+  const titleElement = document.getElementById("appAlertTitle");
+  const iconElement = alertElement?.querySelector(".app-alert-icon");
+  const primaryButton = alertElement?.querySelector(
+    "[data-app-alert-primary]",
+  );
+  const cancelButton = alertElement?.querySelector("[data-app-alert-cancel]");
+
+  if (titleElement) titleElement.textContent = title;
+  if (iconElement) iconElement.textContent = icon;
+  if (primaryButton) {
+    primaryButton.textContent = primaryText;
+    primaryButton.classList.toggle("is-destructive", isDestructive);
+  }
+  if (cancelButton) cancelButton.hidden = !showCancel;
 }
 
 function showAppAlert(message, onClose) {
   const alertElement = document.getElementById("appAlert");
   const messageElement = document.getElementById("appAlertMessage");
-  const closeButton = alertElement?.querySelector("[data-app-alert-close]");
+  const primaryButton = alertElement?.querySelector(
+    "[data-app-alert-primary]",
+  );
 
   if (!alertElement || !messageElement) {
     nativeAlert(String(message ?? ""));
@@ -521,23 +574,77 @@ function showAppAlert(message, onClose) {
       ? document.activeElement
       : null;
   appAlertOnClose = typeof onClose === "function" ? onClose : null;
+  appAlertOnConfirm = null;
+  setAppAlertPresentation({
+    title: "알림",
+    icon: "notifications",
+    primaryText: "확인",
+    showCancel: false,
+    isDestructive: false,
+  });
   messageElement.textContent = String(message ?? "");
   alertElement.classList.add("open");
   alertElement.setAttribute("aria-hidden", "false");
 
   requestAnimationFrame(() => {
-    closeButton?.focus({ preventScroll: true });
+    primaryButton?.focus({ preventScroll: true });
   });
 }
 
-function closeAppAlert() {
+function showAppConfirm(
+  message,
+  onConfirm,
+  {
+    title = "확인",
+    icon = "help",
+    confirmText = "확인",
+    isDestructive = false,
+  } = {},
+) {
+  const alertElement = document.getElementById("appAlert");
+  const messageElement = document.getElementById("appAlertMessage");
+  const primaryButton = alertElement?.querySelector(
+    "[data-app-alert-primary]",
+  );
+
+  if (!alertElement || !messageElement) {
+    if (nativeConfirm(String(message ?? ""))) onConfirm?.();
+    return;
+  }
+
+  appAlertPreviousFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  appAlertOnClose = null;
+  appAlertOnConfirm = typeof onConfirm === "function" ? onConfirm : null;
+  setAppAlertPresentation({
+    title,
+    icon,
+    primaryText: confirmText,
+    showCancel: true,
+    isDestructive,
+  });
+  messageElement.textContent = String(message ?? "");
+  alertElement.classList.add("open");
+  alertElement.setAttribute("aria-hidden", "false");
+
+  requestAnimationFrame(() => {
+    primaryButton?.focus({ preventScroll: true });
+  });
+}
+
+function closeAppAlert(confirmed = false) {
   const alertElement = document.getElementById("appAlert");
   if (!alertElement) return;
   const onClose = appAlertOnClose;
+  const onConfirm = appAlertOnConfirm;
+  const isConfirmDialog = typeof onConfirm === "function";
 
   alertElement.classList.remove("open");
   alertElement.setAttribute("aria-hidden", "true");
   appAlertOnClose = null;
+  appAlertOnConfirm = null;
 
   if (
     appAlertPreviousFocus &&
@@ -547,7 +654,11 @@ function closeAppAlert() {
     appAlertPreviousFocus.focus({ preventScroll: true });
   }
   appAlertPreviousFocus = null;
-  if (typeof onClose === "function") onClose();
+  if (isConfirmDialog) {
+    if (confirmed) onConfirm();
+  } else if (typeof onClose === "function") {
+    onClose();
+  }
 }
 
 function getMoodOption(value) {
@@ -843,9 +954,8 @@ function switchTab(tabName) {
 
   if (tabName === "home") fetchPosts();
   if (tabName === "explore") {
-    fetchExplorePosts(
-      document.getElementById("searchInput")?.value.trim() || "",
-    );
+    closeExploreSearch();
+    fetchExplorePosts("");
   }
   if (tabName === "noti") fetchNotifications();
   if (tabName === "profile") {
@@ -890,6 +1000,7 @@ function generateRandomNickname() {
 }
 
 async function init() {
+  setupThemePreferences();
   setupAppAlert();
   setupBgmAudioUnlock();
 
@@ -905,6 +1016,7 @@ async function init() {
   }
 
   await syncCurrentUserProfile();
+  await loadBlockedUsersState();
   updateAuthUI();
   await fetchPosts();
 
@@ -916,15 +1028,16 @@ async function init() {
       currentUser.user_metadata.random_nickname = newNick;
     }
     await syncCurrentUserProfile();
+    await loadBlockedUsersState();
     updateAuthUI();
   });
 
   [
     "commentSheet",
-    "settingsSheet",
     "noticeSheet",
     "editProfileSheet",
     "followListSheet",
+    "blockedUsersSheet",
     "moodSheet",
   ].forEach((sheetId) => {
     const sheet = document.getElementById(sheetId);
@@ -1118,9 +1231,7 @@ async function refreshTab(tabName) {
     if (tabName === "home") {
       await fetchPosts();
     } else if (tabName === "explore") {
-      await fetchExplorePosts(
-        document.getElementById("searchInput").value.trim(),
-      );
+      await refreshExploreCurrentContent();
     } else if (tabName === "noti") {
       await fetchNotifications();
     } else if (tabName === "profile") {
@@ -1255,17 +1366,79 @@ function getCurrentProfileData() {
       currentUser.email.split("@")[0],
     custom_id:
       currentUser.user_metadata?.custom_id || currentUser.email.split("@")[0],
-    avatar_url: currentUser.user_metadata?.avatar_url || null,
+    avatar_url:
+      currentUser.user_metadata?.avatar_url || DEFAULT_PROFILE_AVATAR_URL,
     updated_at: new Date().toISOString(),
   };
 }
 
-async function syncCurrentUserProfile() {
+async function syncCurrentUserProfile({ preserveStoredAvatar = true } = {}) {
   const profile = getCurrentProfileData();
   if (!profile) return;
 
+  if (preserveStoredAvatar) {
+    const { data: storedProfile, error: readError } = await client
+      .from("profiles")
+      .select("avatar_url")
+      .eq("id", currentUser.id)
+      .maybeSingle();
+
+    if (!readError && storedProfile) {
+      profile.avatar_url =
+        storedProfile.avatar_url || DEFAULT_PROFILE_AVATAR_URL;
+      currentUser.user_metadata = {
+        ...currentUser.user_metadata,
+        avatar_url: profile.avatar_url,
+      };
+    }
+  }
+
   const { error } = await client.from("profiles").upsert(profile);
   if (error) console.warn("프로필 동기화 실패:", error.message);
+}
+
+async function loadBlockedUsersState() {
+  blockedUserIds.clear();
+  blockedUserNicknames.clear();
+  if (!currentUser) return;
+
+  const { data: blocks, error } = await client
+    .from("blocks")
+    .select("blocked_id")
+    .eq("blocker_id", currentUser.id);
+  if (error) {
+    console.warn("차단 목록을 불러오지 못했습니다:", error.message);
+    return;
+  }
+
+  const userIds = (blocks || []).map((block) => block.blocked_id);
+  userIds.forEach((userId) => blockedUserIds.add(userId));
+  if (!userIds.length) return;
+
+  const { data: profiles } = await client
+    .from("profiles")
+    .select("id, nickname")
+    .in("id", userIds);
+  (profiles || []).forEach((profile) => {
+    if (profile.nickname) blockedUserNicknames.add(profile.nickname);
+  });
+}
+
+function filterBlockedPosts(posts) {
+  if (!Array.isArray(posts) || !blockedUserIds.size) return posts || [];
+  return posts.filter(
+    (post) => !post.user_id || !blockedUserIds.has(post.user_id),
+  );
+}
+
+function filterBlockedComments(comments) {
+  if (!Array.isArray(comments) || !blockedUserIds.size) return comments || [];
+  return comments.filter(
+    (comment) =>
+      (!comment.user_id || !blockedUserIds.has(comment.user_id)) &&
+      (!comment.user_email ||
+        !blockedUserNicknames.has(comment.user_email.split("@")[0])),
+  );
 }
 
 async function getFollowCounts(userId) {
@@ -1791,6 +1964,12 @@ async function openUserProfile(userId) {
     switchTab("profile");
     return;
   }
+  if (blockedUserIds.has(userId)) {
+    showAppAlert(
+      "차단한 사용자입니다.\n설정의 차단한 사용자 관리에서 해제할 수 있습니다.",
+    );
+    return;
+  }
 
   const activeView = document.querySelector(".app-view.active");
   if (activeView?.id !== "view-user-profile") {
@@ -1853,6 +2032,10 @@ async function toggleFollow() {
     return;
   }
   if (!viewedProfileUserId || viewedProfileUserId === currentUser.id) return;
+  if (blockedUserIds.has(viewedProfileUserId)) {
+    showAppAlert("차단한 사용자는 팔로우할 수 없습니다.");
+    return;
+  }
 
   const button = document.getElementById("viewedProfileFollowButton");
   button.disabled = true;
@@ -1956,7 +2139,9 @@ async function openFollowList(userId, type) {
     return;
   }
 
-  const userIds = relations.map((relation) => relation[idColumn]);
+  const userIds = relations
+    .map((relation) => relation[idColumn])
+    .filter((profileId) => !blockedUserIds.has(profileId));
   if (!userIds.length) {
     list.innerHTML = `<div class="profile-list-empty">아직 ${title} 사용자가 없습니다.</div>`;
     return;
@@ -2066,7 +2251,7 @@ async function saveProfile() {
     if (selectedProfileAvatarFile) {
       avatarUrl = await uploadProfileAvatar(selectedProfileAvatarFile);
     } else if (shouldRemoveProfileAvatar) {
-      avatarUrl = null;
+      avatarUrl = DEFAULT_PROFILE_AVATAR_URL;
     }
 
     const userData = { random_nickname: newNick, custom_id: newId };
@@ -2087,7 +2272,7 @@ async function saveProfile() {
     };
     if (avatarChanged) currentUser.user_metadata.avatar_url = avatarUrl;
 
-    await syncCurrentUserProfile();
+    await syncCurrentUserProfile({ preserveStoredAvatar: false });
 
     if (oldNick !== newNick) {
       await client
@@ -2123,11 +2308,391 @@ async function handleSocialLogin(provider) {
   if (error) alert(provider + " 로그인 실패");
 }
 
+function getThemePreference() {
+  let storedPreference = null;
+  try {
+    storedPreference = localStorage.getItem(THEME_PREFERENCE_KEY);
+  } catch (_error) {}
+  const preference =
+    storedPreference ||
+    document.documentElement.dataset.themePreference ||
+    "system";
+  return ["dark", "light", "system"].includes(preference)
+    ? preference
+    : "system";
+}
+
+function getResolvedTheme(preference) {
+  if (preference === "system") {
+    return systemThemeMediaQuery.matches ? "dark" : "light";
+  }
+  return preference;
+}
+
+function getThemePreferenceLabel(preference) {
+  const labels = {
+    dark: "다크모드 사용",
+    light: "다크모드 해제",
+    system: "시스템 테마",
+  };
+  return labels[preference] || labels.system;
+}
+
+function updateThemeSettingsUI(preference = getThemePreference()) {
+  const currentLabel = document.getElementById(
+    "currentThemePreferenceLabel",
+  );
+  if (currentLabel) currentLabel.innerText = getThemePreferenceLabel(preference);
+
+  document.querySelectorAll("[data-theme-option]").forEach((option) => {
+    const isSelected = option.dataset.themeOption === preference;
+    option.classList.toggle("is-selected", isSelected);
+    option.setAttribute("aria-pressed", String(isSelected));
+    const check = option.querySelector(".theme-choice-check");
+    if (check) {
+      check.innerText = isSelected
+        ? "check_circle"
+        : "radio_button_unchecked";
+    }
+  });
+}
+
+function applyThemePreference(preference, { persist = true } = {}) {
+  const safePreference = ["dark", "light", "system"].includes(preference)
+    ? preference
+    : "system";
+  if (persist) {
+    try {
+      localStorage.setItem(THEME_PREFERENCE_KEY, safePreference);
+    } catch (_error) {}
+  }
+
+  const resolvedTheme = getResolvedTheme(safePreference);
+  document.documentElement.dataset.themePreference = safePreference;
+  document.documentElement.dataset.theme = resolvedTheme;
+  document.documentElement.style.colorScheme = resolvedTheme;
+  const themeColor = document.getElementById("themeColorMeta");
+  if (themeColor) {
+    themeColor.setAttribute(
+      "content",
+      resolvedTheme === "dark" ? "#050505" : "#f6f2ee",
+    );
+  }
+  updateThemeSettingsUI(safePreference);
+}
+
+function setupThemePreferences() {
+  applyThemePreference(getThemePreference(), { persist: false });
+  const handleSystemThemeChange = () => {
+    if (getThemePreference() === "system") {
+      applyThemePreference("system", { persist: false });
+    }
+  };
+  if (systemThemeMediaQuery.addEventListener) {
+    systemThemeMediaQuery.addEventListener("change", handleSystemThemeChange);
+  } else {
+    systemThemeMediaQuery.addListener(handleSystemThemeChange);
+  }
+}
+
+function setThemePreference(preference) {
+  applyThemePreference(preference);
+}
+
+function openSettingsView() {
+  if (!currentUser) return;
+  updateThemeSettingsUI();
+  activateAppView("view-settings");
+}
+
+function closeSettingsView() {
+  switchTab("profile");
+}
+
+function openThemeSettingsView() {
+  updateThemeSettingsUI();
+  activateAppView("view-theme-settings");
+}
+
+function closeThemeSettingsView() {
+  activateAppView("view-settings");
+}
+
+function getCurrentLoginProviderLabel() {
+  const provider =
+    currentUser?.app_metadata?.provider ||
+    currentUser?.identities?.[0]?.provider ||
+    "email";
+  const labels = {
+    kakao: "카카오 계정으로 로그인",
+    google: "Google 계정으로 로그인",
+    apple: "Apple 계정으로 로그인",
+    email: "이메일로 로그인",
+  };
+  return labels[provider] || `${provider} 계정으로 로그인`;
+}
+
+function updateAccountCenterInfo() {
+  const provider = document.getElementById("accountLoginProvider");
+  const email = document.getElementById("accountLoginEmail");
+  if (!provider || !email || !currentUser) return;
+
+  provider.innerText = getCurrentLoginProviderLabel();
+  email.innerText = currentUser.email || "연결된 이메일 정보가 없습니다.";
+}
+
+function openAccountCenterView() {
+  if (!currentUser) return;
+  updateAccountCenterInfo();
+  activateAppView("view-account-center");
+}
+
+function closeAccountCenterView() {
+  activateAppView("view-settings");
+}
+
 async function handleSignOut() {
   await client.auth.signOut();
-  closeSheet("settingsSheet");
+  blockedUserIds.clear();
+  blockedUserNicknames.clear();
   alert("로그아웃 되었습니다.");
   switchTab("home");
+}
+
+function removeBlockedUserContent(userId) {
+  contextPostCollections.forEach((posts, contextKey) => {
+    contextPostCollections.set(
+      contextKey,
+      posts.filter((post) => post.user_id !== userId),
+    );
+  });
+
+  document.querySelectorAll(".post").forEach((postElement) => {
+    if (postElement.dataset.userId === String(userId)) {
+      observer.unobserve(postElement);
+      contextObserver.unobserve(postElement);
+      postElement.remove();
+    }
+  });
+
+  if (
+    document.querySelector(".app-view.active")?.id === "view-context-feed" &&
+    !document.querySelector("#contextPostFeed .post")
+  ) {
+    closeContextPostFeed();
+  }
+  if (
+    document.querySelector(".app-view.active")?.id === "view-user-profile" &&
+    viewedProfileUserId === userId
+  ) {
+    closeUserProfile();
+  }
+}
+
+function blockUser(userId) {
+  if (!currentUser) {
+    showAppAlert("사용자를 차단하려면 로그인이 필요합니다.");
+    return;
+  }
+  if (!userId || userId === currentUser.id) return;
+  if (blockedUserIds.has(userId)) {
+    showAppAlert("이미 차단한 사용자입니다.");
+    return;
+  }
+
+  showAppConfirm(
+    "이 사용자의 글과 댓글이 피드에서 보이지 않습니다.\n차단하시겠습니까?",
+    () => submitUserBlock(userId),
+    {
+      title: "사용자 차단",
+      icon: "block",
+      confirmText: "차단",
+      isDestructive: true,
+    },
+  );
+}
+
+async function submitUserBlock(userId) {
+  if (!currentUser || !userId) return;
+
+  const { error } = await client.from("blocks").insert([
+    {
+      blocker_id: currentUser.id,
+      blocked_id: userId,
+    },
+  ]);
+  if (error && error.code !== "23505") {
+    showAppAlert("사용자를 차단하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
+
+  blockedUserIds.add(userId);
+  await loadBlockedUsersState();
+  removeBlockedUserContent(userId);
+  closeSheet("followListSheet");
+  showAppAlert("사용자를 차단했습니다.");
+
+  const activeViewId = document.querySelector(".app-view.active")?.id;
+  const sourceViewId =
+    activeViewId === "view-context-feed" ? contextFeedReturnViewId : activeViewId;
+  if (sourceViewId === "view-explore") {
+    await refreshExploreCurrentContent();
+  } else {
+    await fetchPosts();
+  }
+  if (sourceViewId === "view-profile") {
+    await Promise.all([
+      loadProfileGrid("my"),
+      loadProfileGrid("bookmark"),
+      loadProfileGrid("like"),
+      loadMyFollowStats(),
+    ]);
+  }
+}
+
+function createBlockedUserRow(profile, userId) {
+  const row = document.createElement("div");
+  row.className = "blocked-user-row";
+
+  const avatar = document.createElement("span");
+  avatar.className = "follow-list-avatar";
+  renderAvatarElement(avatar, profile?.avatar_url, "1.6rem");
+
+  const text = document.createElement("span");
+  text.className = "follow-list-profile";
+  const nickname = document.createElement("strong");
+  nickname.innerText = profile?.nickname || "알 수 없는 사용자";
+  const customId = document.createElement("small");
+  customId.innerText = profile
+    ? `@${profile.custom_id || profile.nickname}`
+    : "탈퇴했거나 삭제된 계정";
+  text.append(nickname, customId);
+
+  const unblockButton = document.createElement("button");
+  unblockButton.type = "button";
+  unblockButton.className = "blocked-user-unblock";
+  unblockButton.innerText = "차단 해제";
+  unblockButton.addEventListener("click", () => unblockUser(userId));
+
+  row.append(avatar, text, unblockButton);
+  return row;
+}
+
+async function loadBlockedUsersList() {
+  const list = document.getElementById("blockedUsersList");
+  if (!list || !currentUser) return;
+
+  list.innerHTML =
+    '<div class="profile-list-empty">차단 목록을 불러오는 중...</div>';
+  await loadBlockedUsersState();
+  const userIds = Array.from(blockedUserIds);
+  if (!userIds.length) {
+    list.innerHTML =
+      '<div class="profile-list-empty">차단한 사용자가 없습니다.</div>';
+    return;
+  }
+
+  const { data: profiles, error } = await client
+    .from("profiles")
+    .select("id, nickname, custom_id, avatar_url")
+    .in("id", userIds);
+  if (error) {
+    list.innerHTML =
+      '<div class="profile-list-empty">차단 목록을 불러오지 못했습니다.</div>';
+    return;
+  }
+
+  const profilesById = new Map(
+    (profiles || []).map((profile) => [profile.id, profile]),
+  );
+  list.replaceChildren(
+    ...userIds.map((userId) =>
+      createBlockedUserRow(profilesById.get(userId), userId),
+    ),
+  );
+}
+
+function openBlockedUsersSheet() {
+  if (!currentUser) return;
+  openSheet("blockedUsersSheet");
+  loadBlockedUsersList();
+}
+
+async function unblockUser(userId) {
+  if (!currentUser || !userId) return;
+
+  const { error } = await client
+    .from("blocks")
+    .delete()
+    .eq("blocker_id", currentUser.id)
+    .eq("blocked_id", userId);
+  if (error) {
+    showAppAlert("차단을 해제하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
+
+  await loadBlockedUsersState();
+  await loadBlockedUsersList();
+  showAppAlert("차단을 해제했습니다.");
+  await fetchPosts();
+}
+
+function requestAccountDeletion() {
+  if (!currentUser) return;
+
+  showAppConfirm(
+    "작성한 글, 댓글, 프로필과 계정 정보가 모두 삭제됩니다.\n삭제 후에는 복구할 수 없습니다.",
+    performAccountDeletion,
+    {
+      title: "회원 탈퇴",
+      icon: "person_remove",
+      confirmText: "계정 삭제",
+      isDestructive: true,
+    },
+  );
+}
+
+function clearDeletedAccountLocalData(userId) {
+  const keysToRemove = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (
+      key &&
+      (key.includes(userId) ||
+        key.startsWith("glim_") ||
+        key.startsWith("liked_") ||
+        key.startsWith("bookmarked_") ||
+        key.startsWith("comment_liked_"))
+    ) {
+      keysToRemove.push(key);
+    }
+  }
+  keysToRemove.forEach((key) => localStorage.removeItem(key));
+}
+
+async function performAccountDeletion() {
+  if (!currentUser) return;
+  const deletingUserId = currentUser.id;
+  showAppAlert("계정 정보를 안전하게 삭제하고 있습니다...");
+
+  const { error } = await client.functions.invoke("delete-account", {
+    body: { confirm: true },
+  });
+  if (error) {
+    showAppAlert(
+      "회원 탈퇴를 완료하지 못했습니다.\n잠시 후 다시 시도해주세요.",
+    );
+    return;
+  }
+
+  clearDeletedAccountLocalData(deletingUserId);
+  await client.auth.signOut({ scope: "local" });
+  currentUser = null;
+  blockedUserIds.clear();
+  blockedUserNicknames.clear();
+  updateAuthUI();
+  switchTab("home");
+  showAppAlert("회원 탈퇴가 완료되었습니다.");
 }
 
 function scrollToProfileTab(index) {
@@ -2202,11 +2767,12 @@ async function loadProfileGrid(tabType) {
   const { data, error } = await query;
   if (error)
     return (grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #ff3b30;">오류</div>`);
-  if (data.length === 0)
+  const visiblePosts = filterBlockedPosts(data);
+  if (visiblePosts.length === 0)
     return (grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #555; padding: 50px 0;">기록이 없습니다.</div>`);
 
-  contextPostCollections.set(contextKey, data);
-  grid.innerHTML = data
+  contextPostCollections.set(contextKey, visiblePosts);
+  grid.innerHTML = visiblePosts
     .map(
       (post, index) => `
     <div class="grid-item" onclick="openContextPostFeed('${contextKey}', ${index})">
@@ -2220,9 +2786,14 @@ async function loadProfileGrid(tabType) {
 function createContextFeedPost(post) {
   const postElement = document.createElement("div");
   postElement.className = "post";
+  const isOwnPost = Boolean(currentUser && post.user_id === currentUser.id);
+  const moreMenuAction = isOwnPost
+    ? `<button class="more-menu-item" onclick="deletePost('${post.id}')">삭제</button>`
+    : `<button class="more-menu-item" onclick="reportPost('${post.id}')">신고하기</button>`;
 
   // ✅ 타이머와 알고리즘 계산을 위해 데이터 심어두기
   postElement.dataset.postId = post.id;
+  postElement.dataset.userId = post.user_id || "";
   postElement.dataset.mood = post.mood || "";
   postElement.dataset.bgmUrl = post.bgm_url || "";
 
@@ -2260,17 +2831,23 @@ function createContextFeedPost(post) {
         <span class="material-symbols-outlined icon-bookmark" style="${hasBookmarked}">bookmark</span>
         <span class="action-count">${bookmarkText}</span>
       </div>
-      <div class="action-btn" onclick="sharePost('${encodeURIComponent(post.content)}')">
+      <div class="action-btn" data-share-post>
         <span class="material-symbols-outlined">share</span>
         <span class="action-count">공유</span>
       </div>
       <div class="action-btn more-menu-wrapper" onclick="toggleMoreMenu(this, event)">
         <span class="material-symbols-outlined">more_vert</span>
         <div class="more-menu">
-          <button class="more-menu-item" onclick="reportPost('${post.id}')">신고하기</button>
+          ${moreMenuAction}
         </div>
       </div>
     </div>`;
+
+  postElement
+    .querySelector("[data-share-post]")
+    ?.addEventListener("click", (event) =>
+      sharePost(post, event.currentTarget),
+    );
 
   return postElement;
 }
@@ -2462,7 +3039,7 @@ function cancelNoticeSwipeUnderlay() {
 }
 
 function completeNoticeSwipeBack() {
-  switchTab("profile");
+  activateAppView(noticeReturnViewId);
   openSheet("noticeSheet");
 }
 
@@ -2483,8 +3060,23 @@ function setupSwipeBackNavigation() {
     closeUserProfile,
   );
   addInteractiveSwipeBack(
-    document.getElementById("view-notice-detail"),
+    document.getElementById("view-settings"),
     () => "view-profile",
+    closeSettingsView,
+  );
+  addInteractiveSwipeBack(
+    document.getElementById("view-account-center"),
+    () => "view-settings",
+    closeAccountCenterView,
+  );
+  addInteractiveSwipeBack(
+    document.getElementById("view-theme-settings"),
+    () => "view-settings",
+    closeThemeSettingsView,
+  );
+  addInteractiveSwipeBack(
+    document.getElementById("view-notice-detail"),
+    () => noticeReturnViewId,
     completeNoticeSwipeBack,
     {
       onStart: prepareNoticeSwipeUnderlay,
@@ -2508,8 +3100,9 @@ async function fetchPosts() {
 
   observer.disconnect();
   feedContainer.innerHTML = "";
-  if (data.length === 0)
-    return (feedContainer.innerHTML = `<div style="height:100vh; display:flex; justify-content:center; align-items:center; color:#555;">첫 번째 문장을 공유해 보세요.</div>`);
+  const visiblePosts = filterBlockedPosts(data);
+  if (visiblePosts.length === 0)
+    return (feedContainer.innerHTML = `<div style="height:100vh; display:flex; justify-content:center; align-items:center; color:#555;">아직 보여드릴 문장이 없습니다.</div>`);
 
   // ✅ 2. 내 취향 점수를 불러와서 알고리즘 정렬 (Sorting)
   const userMoodScores = JSON.parse(
@@ -2518,7 +3111,7 @@ async function fetchPosts() {
 
   const seenPosts = JSON.parse(localStorage.getItem("glim_seen_posts") || "[]");
 
-  data.sort((a, b) => {
+  visiblePosts.sort((a, b) => {
     // 기본 점수: 내가 좋아하는 감성일수록 가산점 + 남들이 누른 좋아요 점수
     let scoreA = (userMoodScores[a.mood] || 0) * 1.5 + (a.likes_count || 0) * 2;
     let scoreB = (userMoodScores[b.mood] || 0) * 1.5 + (b.likes_count || 0) * 2;
@@ -2546,7 +3139,7 @@ async function fetchPosts() {
   });
 
   // ✅ 3. 정렬된 순서대로 화면에 그림
-  data.forEach((post) => {
+  visiblePosts.forEach((post) => {
     const postElement = createContextFeedPost(post);
     feedContainer.appendChild(postElement);
     fitPostTextToViewport(postElement);
@@ -2564,6 +3157,9 @@ function renderExploreRailState(rail, message, isError = false) {
 }
 
 function updateExploreCardMoreLabels() {
+  const maxVisibleLines = 4;
+  const truncatedTextLines = 3;
+
   document.querySelectorAll(".explore-hot-card").forEach((card) => {
     const copy = card.querySelector(".explore-card-copy");
     const copyText = card.querySelector(".explore-card-copy-text");
@@ -2572,8 +3168,8 @@ function updateExploreCardMoreLabels() {
 
     const fullText = copy.dataset.fullText || "";
     const lineHeight = parseFloat(getComputedStyle(copy).lineHeight);
-    const maxHeight = lineHeight * 6 + 1;
-    const truncatedTextMaxHeight = lineHeight * 5 + 1;
+    const maxHeight = lineHeight * maxVisibleLines + 1;
+    const truncatedTextMaxHeight = lineHeight * truncatedTextLines + 1;
     copy.classList.remove("is-truncated");
     copyText.innerText = fullText;
     more.hidden = true;
@@ -2601,16 +3197,24 @@ function updateExploreCardMoreLabels() {
   });
 }
 
-function createExploreHotCard(post, index) {
+function createExploreHotCard(
+  post,
+  index,
+  contextKey = "explore-today",
+  collectionLabel = "GLIM TODAY",
+  orderLabel = "NO.",
+) {
   const rank = String(index + 1).padStart(2, "0");
   const card = document.createElement("button");
   card.type = "button";
   card.className = "explore-hot-card";
   card.setAttribute(
     "aria-label",
-    `${index + 1}위, ${post.author || "익명"}의 게시물 열기`,
+    `${index + 1}번째, ${post.author || "익명"}의 게시물 열기`,
   );
-  card.addEventListener("click", () => openContextPostFeed("explore", index));
+  card.addEventListener("click", () =>
+    openContextPostFeed(contextKey, index),
+  );
 
   const rankGhost = document.createElement("span");
   rankGhost.className = "explore-card-rank-ghost";
@@ -2622,10 +3226,10 @@ function createExploreHotCard(post, index) {
 
   const rankLabel = document.createElement("span");
   rankLabel.className = "explore-card-rank";
-  rankLabel.innerText = `NO. ${rank}`;
+  rankLabel.innerText = `${orderLabel} ${rank}`;
 
   const pickLabel = document.createElement("span");
-  pickLabel.innerText = "GLIM HOT";
+  pickLabel.innerText = collectionLabel;
   topline.append(rankLabel, pickLabel);
 
   const rule = document.createElement("div");
@@ -2671,57 +3275,535 @@ function createExploreHotCard(post, index) {
   return card;
 }
 
-async function fetchExplorePosts(keyword = "") {
-  const rail = document.getElementById("exploreHotRail");
-  const description = document.getElementById("exploreHotDescription");
+function scheduleExploreCardLayout() {
+  requestAnimationFrame(updateExploreCardMoreLabels);
+  document.fonts?.ready.then(updateExploreCardMoreLabels);
+}
+
+function renderExplorePostCollection({
+  rail,
+  data,
+  error,
+  contextKey,
+  contextTitle,
+  collectionLabel,
+  orderLabel = "NO.",
+  emptyMessage,
+}) {
+  rail.setAttribute("aria-busy", "false");
+  if (error) {
+    contextPostCollections.set(contextKey, []);
+    renderExploreRailState(rail, "문장을 불러오지 못했어요.", true);
+    return;
+  }
+  const visiblePosts = filterBlockedPosts(data).slice(0, 10);
+  if (!visiblePosts.length) {
+    contextPostCollections.set(contextKey, []);
+    renderExploreRailState(rail, emptyMessage);
+    return;
+  }
+
+  contextPostCollections.set(contextKey, visiblePosts);
+  contextPostTitles.set(contextKey, contextTitle);
+  const cards = visiblePosts.map((post, index) =>
+    createExploreHotCard(
+      post,
+      index,
+      contextKey,
+      collectionLabel,
+      orderLabel,
+    ),
+  );
+  rail.replaceChildren(...cards);
+  scheduleExploreCardLayout();
+}
+
+function renderExploreMoodTabs() {
+  const tabs = document.getElementById("exploreMoodTabs");
+  if (!tabs) return;
+
+  const buttons = MOOD_OPTIONS.map((mood) => {
+    const button = document.createElement("button");
+    const isSelected = mood.value === selectedExploreMood;
+    button.type = "button";
+    button.className = `explore-mood-tab${isSelected ? " is-selected" : ""}`;
+    button.innerText = mood.label;
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(isSelected));
+    button.addEventListener("click", () => selectExploreMood(mood.value));
+    return button;
+  });
+  tabs.replaceChildren(...buttons);
+}
+
+async function fetchExploreMoodPosts(keyword = "") {
+  const rail = document.getElementById("exploreMoodRail");
+  const description = document.getElementById("exploreMoodDescription");
   if (!rail || !description) return;
 
-  const requestId = ++exploreFetchRequestId;
-  contextPostCollections.set("explore", []);
-  contextPostTitles.set(
-    "explore",
-    keyword ? `‘${keyword}’ HOT 문장` : "오늘의 가장 따뜻한 공감",
-  );
+  const requestId = ++exploreMoodFetchRequestId;
+  const mood =
+    MOOD_OPTIONS_BY_VALUE.get(selectedExploreMood) || MOOD_OPTIONS[0];
+  const contextKey = "explore-mood";
+  contextPostCollections.set(contextKey, []);
+  contextPostTitles.set(contextKey, `${mood.label} 감성`);
   description.innerText = keyword
-    ? `‘${keyword}’ 안에서 공감 순으로 모았어요`
-    : "가장 많은 마음이 머문 문장 10편";
+    ? `‘${keyword}’이 담긴 ${mood.label} 글`
+    : mood.description;
   rail.scrollLeft = 0;
   rail.setAttribute("aria-busy", "true");
-  renderExploreRailState(rail, "따뜻한 문장을 고르는 중...");
+  renderExploreRailState(rail, `${mood.label} 글을 모으는 중...`);
 
   let query = client
     .from("posts")
     .select("*")
     .neq("author", "🚨글림 운영자")
-    .order("likes_count", { ascending: false })
-    .limit(10);
+    .eq("mood", mood.value)
+    .order("created_at", { ascending: false })
+    .limit(30);
   if (keyword) query = query.ilike("content", `%${keyword}%`);
 
   const { data, error } = await query;
-  if (requestId !== exploreFetchRequestId) return;
+  if (requestId !== exploreMoodFetchRequestId) return;
 
-  rail.setAttribute("aria-busy", "false");
-  if (error) {
-    renderExploreRailState(rail, "문장을 불러오지 못했어요.", true);
-    return;
-  }
-  if (data.length === 0) {
-    renderExploreRailState(
-      rail,
-      keyword ? "검색된 문장이 없어요." : "아직 따뜻한 문장이 없어요.",
-    );
-    return;
-  }
-
-  contextPostCollections.set("explore", data);
-  const cards = data.map((post, index) => createExploreHotCard(post, index));
-  rail.replaceChildren(...cards);
-  requestAnimationFrame(updateExploreCardMoreLabels);
-  document.fonts?.ready.then(updateExploreCardMoreLabels);
+  renderExplorePostCollection({
+    rail,
+    data,
+    error,
+    contextKey,
+    contextTitle: `${mood.label} 감성`,
+    collectionLabel: `${mood.label} MOOD`,
+    orderLabel: "NEW",
+    emptyMessage: keyword
+      ? `검색된 ${mood.label} 글이 없어요.`
+      : `아직 ${mood.label} 글이 없어요.`,
+  });
 }
 
-function searchPosts() {
-  fetchExplorePosts(document.getElementById("searchInput").value.trim());
+function selectExploreMood(moodValue) {
+  if (!MOOD_OPTIONS_BY_VALUE.has(moodValue)) return;
+  selectedExploreMood = moodValue;
+  renderExploreMoodTabs();
+  fetchExploreMoodPosts(
+    document.getElementById("searchInput")?.value.trim() || "",
+  );
+}
+
+async function fetchExplorePosts(keyword = "") {
+  const todayRail = document.getElementById("exploreHotRail");
+  const allTimeRail = document.getElementById("exploreAllTimeRail");
+  const todayDescription = document.getElementById("exploreHotDescription");
+  const allTimeDescription = document.getElementById(
+    "exploreAllTimeDescription",
+  );
+  if (
+    !todayRail ||
+    !allTimeRail ||
+    !todayDescription ||
+    !allTimeDescription
+  )
+    return;
+
+  const requestId = ++exploreFetchRequestId;
+  const todayContextKey = "explore-today";
+  const allTimeContextKey = "explore-all-time";
+  contextPostCollections.set(todayContextKey, []);
+  contextPostCollections.set(allTimeContextKey, []);
+  contextPostTitles.set(
+    todayContextKey,
+    keyword ? `‘${keyword}’ 오늘의 공감` : "오늘의 가장 따뜻한 공감",
+  );
+  contextPostTitles.set(
+    allTimeContextKey,
+    keyword ? `‘${keyword}’ 역대 인기 문장` : "역대 좋아요 TOP 10",
+  );
+
+  todayDescription.innerText = keyword
+    ? `오늘의 ‘${keyword}’ 글을 공감 순으로 모았어요`
+    : "오늘 가장 많은 마음이 머문 문장 10편";
+  allTimeDescription.innerText = keyword
+    ? `‘${keyword}’ 글을 역대 좋아요 순으로 모았어요`
+    : "지금까지 좋아요가 가장 많았던 문장";
+
+  [todayRail, allTimeRail].forEach((rail) => {
+    rail.scrollLeft = 0;
+    rail.setAttribute("aria-busy", "true");
+    renderExploreRailState(rail, "문장을 고르는 중...");
+  });
+  renderExploreMoodTabs();
+  const moodRequest = fetchExploreMoodPosts(keyword);
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
+  let todayQuery = client
+    .from("posts")
+    .select("*")
+    .neq("author", "🚨글림 운영자")
+    .gte("created_at", startOfToday.toISOString())
+    .order("likes_count", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(30);
+  let allTimeQuery = client
+    .from("posts")
+    .select("*")
+    .neq("author", "🚨글림 운영자")
+    .order("likes_count", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(30);
+  if (keyword) {
+    todayQuery = todayQuery.ilike("content", `%${keyword}%`);
+    allTimeQuery = allTimeQuery.ilike("content", `%${keyword}%`);
+  }
+
+  const [todayResult, allTimeResult] = await Promise.all([
+    todayQuery,
+    allTimeQuery,
+  ]);
+  if (requestId !== exploreFetchRequestId) {
+    await moodRequest;
+    return;
+  }
+
+  renderExplorePostCollection({
+    rail: todayRail,
+    ...todayResult,
+    contextKey: todayContextKey,
+    contextTitle: keyword
+      ? `‘${keyword}’ 오늘의 공감`
+      : "오늘의 가장 따뜻한 공감",
+    collectionLabel: "GLIM TODAY",
+    emptyMessage: keyword
+      ? "오늘 검색된 문장이 없어요."
+      : "오늘 올라온 문장이 아직 없어요.",
+  });
+  renderExplorePostCollection({
+    rail: allTimeRail,
+    ...allTimeResult,
+    contextKey: allTimeContextKey,
+    contextTitle: keyword
+      ? `‘${keyword}’ 역대 인기 문장`
+      : "역대 좋아요 TOP 10",
+    collectionLabel: "ALL-TIME",
+    emptyMessage: keyword
+      ? "검색된 문장이 없어요."
+      : "아직 좋아요를 받은 문장이 없어요.",
+  });
+  await moodRequest;
+}
+
+function getExploreSearchHistory() {
+  try {
+    const history = JSON.parse(
+      localStorage.getItem(EXPLORE_SEARCH_HISTORY_KEY) || "[]",
+    );
+    return Array.isArray(history)
+      ? history.filter((item) => typeof item === "string" && item.trim())
+      : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function saveExploreSearchHistory(query) {
+  const nextHistory = [
+    query,
+    ...getExploreSearchHistory().filter((item) => item !== query),
+  ].slice(0, EXPLORE_SEARCH_HISTORY_LIMIT);
+  localStorage.setItem(
+    EXPLORE_SEARCH_HISTORY_KEY,
+    JSON.stringify(nextHistory),
+  );
+}
+
+function renderExploreSearchHistory() {
+  const list = document.getElementById("exploreSearchHistoryList");
+  if (!list) return;
+
+  const history = getExploreSearchHistory();
+  if (!history.length) {
+    list.innerHTML =
+      '<div class="explore-search-state">최근 검색 기록 없음</div>';
+    return;
+  }
+
+  const rows = history.map((query) => {
+    const row = document.createElement("div");
+    row.className = "explore-search-history-row";
+
+    const queryButton = document.createElement("button");
+    queryButton.type = "button";
+    queryButton.className = "explore-search-history-query";
+    const icon = document.createElement("span");
+    icon.className = "material-symbols-outlined";
+    icon.innerText = "history";
+    const text = document.createElement("span");
+    text.innerText = query;
+    queryButton.append(icon, text);
+    queryButton.addEventListener("click", () => searchPosts(query));
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "explore-search-history-remove";
+    removeButton.setAttribute("aria-label", `${query} 검색 기록 삭제`);
+    const removeIcon = document.createElement("span");
+    removeIcon.className = "material-symbols-outlined";
+    removeIcon.innerText = "close";
+    removeButton.appendChild(removeIcon);
+    removeButton.addEventListener("click", () => {
+      const nextHistory = getExploreSearchHistory().filter(
+        (item) => item !== query,
+      );
+      localStorage.setItem(
+        EXPLORE_SEARCH_HISTORY_KEY,
+        JSON.stringify(nextHistory),
+      );
+      renderExploreSearchHistory();
+    });
+
+    row.append(queryButton, removeButton);
+    return row;
+  });
+  list.replaceChildren(...rows);
+}
+
+function openExploreSearch() {
+  const wasOpen = isExploreSearchOpen;
+  isExploreSearchOpen = true;
+  document.getElementById("exploreHeader")?.classList.add("is-searching");
+  const discovery = document.getElementById("exploreDiscoveryContent");
+  const searchContent = document.getElementById("exploreSearchContent");
+  if (discovery) discovery.hidden = true;
+  if (searchContent) searchContent.hidden = false;
+  if (!wasOpen) {
+    document.getElementById("view-explore")?.scrollTo({ top: 0 });
+  }
+
+  const query = document.getElementById("searchInput")?.value.trim() || "";
+  if (!query) {
+    document.getElementById("exploreRecentSearches").hidden = false;
+    document.getElementById("exploreSearchResults").hidden = true;
+    renderExploreSearchHistory();
+  }
+}
+
+function closeExploreSearch() {
+  exploreSearchRequestId += 1;
+  isExploreSearchOpen = false;
+  document.getElementById("exploreHeader")?.classList.remove("is-searching");
+  const input = document.getElementById("searchInput");
+  const discovery = document.getElementById("exploreDiscoveryContent");
+  const searchContent = document.getElementById("exploreSearchContent");
+  if (input) {
+    input.value = "";
+    input.blur();
+  }
+  if (discovery) discovery.hidden = false;
+  if (searchContent) searchContent.hidden = true;
+}
+
+async function refreshExploreCurrentContent() {
+  const query = document.getElementById("searchInput")?.value.trim() || "";
+  if (isExploreSearchOpen && query) {
+    await searchPosts(query);
+  } else {
+    await fetchExplorePosts("");
+  }
+}
+
+function handleExploreSearchInput() {
+  openExploreSearch();
+  document.getElementById("exploreRecentSearches").hidden = false;
+  document.getElementById("exploreSearchResults").hidden = true;
+  renderExploreSearchHistory();
+}
+
+function clearExploreSearchHistory() {
+  localStorage.removeItem(EXPLORE_SEARCH_HISTORY_KEY);
+  renderExploreSearchHistory();
+}
+
+function createExploreUserResult(profile) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "explore-user-result";
+  button.addEventListener("click", () => openUserProfile(profile.id));
+
+  const avatar = document.createElement("span");
+  avatar.className = "explore-user-result-avatar";
+  renderAvatarElement(avatar, profile.avatar_url, "1.5rem");
+
+  const copy = document.createElement("span");
+  copy.className = "explore-user-result-copy";
+  const name = document.createElement("span");
+  name.className = "explore-user-result-name";
+  name.innerText = profile.nickname || "이름 없는 사용자";
+  const customId = document.createElement("span");
+  customId.className = "explore-user-result-id";
+  customId.innerText = `@${profile.custom_id || profile.nickname || "user"}`;
+  copy.append(name, customId);
+
+  const chevron = document.createElement("span");
+  chevron.className = "material-symbols-outlined settings-row-chevron";
+  chevron.innerText = "chevron_right";
+  button.append(avatar, copy, chevron);
+  return button;
+}
+
+function createExploreSearchPost(post, index) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "explore-search-post";
+  button.addEventListener("click", () =>
+    openContextPostFeed("explore-search", index),
+  );
+
+  const content = document.createElement("p");
+  content.className = "explore-search-post-content";
+  content.innerText = post.content;
+
+  const meta = document.createElement("div");
+  meta.className = "explore-search-post-meta";
+  const author = document.createElement("span");
+  author.innerText = post.author || "익명";
+  const mood = document.createElement("span");
+  const moodOption = getMoodOption(post.mood);
+  mood.innerText = `${moodOption?.label || "감성"} · 좋아요 ${post.likes_count || 0}`;
+  meta.append(author, mood);
+  button.append(content, meta);
+  return button;
+}
+
+function renderExploreSearchLoading(query) {
+  document.getElementById("exploreRecentSearches").hidden = true;
+  document.getElementById("exploreSearchResults").hidden = false;
+  document.getElementById("exploreSearchSummary").innerText =
+    `‘${query}’ 검색 중...`;
+  document.getElementById("exploreSearchEmptyAll").hidden = true;
+  document.getElementById("exploreUserResultGroup").hidden = false;
+  document.getElementById("explorePostResultGroup").hidden = false;
+  document.getElementById("exploreUserResults").innerHTML =
+    '<div class="explore-search-state">유저를 찾는 중...</div>';
+  document.getElementById("explorePostResults").innerHTML =
+    '<div class="explore-search-state">게시물을 찾는 중...</div>';
+}
+
+function renderExploreSearchResults(query, users, posts) {
+  const userGroup = document.getElementById("exploreUserResultGroup");
+  const postGroup = document.getElementById("explorePostResultGroup");
+  const userList = document.getElementById("exploreUserResults");
+  const postList = document.getElementById("explorePostResults");
+  const emptyAll = document.getElementById("exploreSearchEmptyAll");
+
+  document.getElementById("exploreSearchSummary").innerText =
+    `‘${query}’ 검색 결과`;
+  if (!users.length && !posts.length) {
+    userGroup.hidden = true;
+    postGroup.hidden = true;
+    emptyAll.hidden = false;
+    emptyAll.className = "explore-search-empty-all";
+    emptyAll.innerHTML = `
+      <span class="material-symbols-outlined">search_off</span>
+      <span>검색 결과 없음</span>
+    `;
+    return;
+  }
+
+  emptyAll.hidden = true;
+  userGroup.hidden = false;
+  postGroup.hidden = false;
+  if (users.length) {
+    userList.replaceChildren(...users.map(createExploreUserResult));
+  } else {
+    userList.innerHTML = '<div class="explore-search-state">유저 없음</div>';
+  }
+  if (posts.length) {
+    contextPostCollections.set("explore-search", posts);
+    contextPostTitles.set("explore-search", `‘${query}’ 게시물`);
+    postList.replaceChildren(
+      ...posts.map((post, index) => createExploreSearchPost(post, index)),
+    );
+  } else {
+    contextPostCollections.set("explore-search", []);
+    postList.innerHTML =
+      '<div class="explore-search-state">게시물 없음</div>';
+  }
+}
+
+async function searchPosts(forcedQuery = null) {
+  const input = document.getElementById("searchInput");
+  const query = String(forcedQuery ?? input?.value ?? "").trim();
+  if (!query) {
+    openExploreSearch();
+    renderExploreSearchHistory();
+    return;
+  }
+
+  if (input) input.value = query;
+  openExploreSearch();
+  saveExploreSearchHistory(query);
+  renderExploreSearchLoading(query);
+  const requestId = ++exploreSearchRequestId;
+  contextPostCollections.set("explore-search", []);
+
+  const profileFields = "id, nickname, custom_id, avatar_url";
+  const [nicknameResult, customIdResult, postResult] = await Promise.all([
+    client
+      .from("profiles")
+      .select(profileFields)
+      .ilike("nickname", `%${query}%`)
+      .limit(10),
+    client
+      .from("profiles")
+      .select(profileFields)
+      .ilike("custom_id", `%${query}%`)
+      .limit(10),
+    client
+      .from("posts")
+      .select("*")
+      .neq("author", "🚨글림 운영자")
+      .ilike("content", `%${query}%`)
+      .order("created_at", { ascending: false })
+      .limit(50),
+  ]);
+  if (requestId !== exploreSearchRequestId) return;
+
+  const usersById = new Map();
+  [...(nicknameResult.data || []), ...(customIdResult.data || [])].forEach(
+    (profile) => {
+      if (!blockedUserIds.has(profile.id)) usersById.set(profile.id, profile);
+    },
+  );
+  const normalizedQuery = query.toLocaleLowerCase("ko-KR");
+  const users = Array.from(usersById.values()).sort((a, b) => {
+    const nameA = (a.nickname || "").toLocaleLowerCase("ko-KR");
+    const nameB = (b.nickname || "").toLocaleLowerCase("ko-KR");
+    const scoreA =
+      nameA === normalizedQuery ? 0 : nameA.startsWith(normalizedQuery) ? 1 : 2;
+    const scoreB =
+      nameB === normalizedQuery ? 0 : nameB.startsWith(normalizedQuery) ? 1 : 2;
+    return scoreA - scoreB || nameA.localeCompare(nameB, "ko-KR");
+  });
+  const posts = filterBlockedPosts(postResult.data || []);
+
+  if (
+    nicknameResult.error &&
+    customIdResult.error &&
+    postResult.error
+  ) {
+    document.getElementById("exploreSearchSummary").innerText =
+      `‘${query}’ 검색 결과`;
+    document.getElementById("exploreUserResultGroup").hidden = true;
+    document.getElementById("explorePostResultGroup").hidden = true;
+    const emptyAll = document.getElementById("exploreSearchEmptyAll");
+    emptyAll.hidden = false;
+    emptyAll.className = "explore-search-empty-all";
+    emptyAll.innerHTML =
+      '<span class="material-symbols-outlined">error</span><span>검색 결과를 불러오지 못했어요.</span>';
+    return;
+  }
+
+  renderExploreSearchResults(query, users, posts);
 }
 
 async function incrementMetric(postId, column, element) {
@@ -2832,11 +3914,12 @@ async function fetchComments(postId) {
     .order("created_at", { ascending: true });
 
   if (error) return (list.innerHTML = "오류 발생");
-  if (data.length === 0)
+  const visibleComments = filterBlockedComments(data);
+  if (visibleComments.length === 0)
     return (list.innerHTML =
       '<div style="text-align:center; color:#555; margin-top:20px;">첫 번째로 댓글을 남겨 보세요.</div>');
 
-  list.innerHTML = data
+  list.innerHTML = visibleComments
     .map((c) => {
       // ✅ 옛날 데이터에 이메일이 들어있을 경우를 대비하여 @ 뒷부분 제거
       let authorNickname = c.user_email || "익명";
@@ -2913,18 +3996,40 @@ async function toggleCommentLike(commentId, element) {
   }
 }
 
-async function reportComment(commentId) {
-  if (!confirm("이 댓글을 신고하시겠습니까?")) return;
-  const { data } = await client
+function reportComment(commentId) {
+  showAppConfirm(
+    "이 댓글을 신고하시겠습니까?",
+    () => submitCommentReport(commentId),
+    {
+      title: "댓글 신고",
+      icon: "report",
+      confirmText: "신고하기",
+      isDestructive: true,
+    },
+  );
+}
+
+async function submitCommentReport(commentId) {
+  const { data, error: readError } = await client
     .from("comments")
     .select("reports_count")
     .eq("id", commentId)
     .single();
-  await client
+  if (readError || !data) {
+    showAppAlert("신고를 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
+
+  const { error: updateError } = await client
     .from("comments")
     .update({ reports_count: (data.reports_count || 0) + 1 })
     .eq("id", commentId);
-  alert("신고가 접수되었습니다. 관리자 검토 후 조치됩니다.");
+  if (updateError) {
+    showAppAlert("신고를 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
+
+  showAppAlert("신고가 접수되었습니다. 관리자 검토 후 조치됩니다.");
 }
 
 async function submitComment() {
@@ -2942,13 +4047,23 @@ async function submitComment() {
     currentUser.user_metadata?.random_nickname ||
     currentUser.email.split("@")[0];
 
-  const { error } = await client.from("comments").insert([
+  let { error } = await client.from("comments").insert([
     {
       post_id: currentPostIdForComment,
+      user_id: currentUser.id,
       user_email: myNickname,
       content: content,
     },
   ]);
+  if (error?.code === "PGRST204") {
+    ({ error } = await client.from("comments").insert([
+      {
+        post_id: currentPostIdForComment,
+        user_email: myNickname,
+        content: content,
+      },
+    ]));
+  }
 
   if (!error) {
     document.getElementById("commentInput").value = "";
@@ -3024,14 +4139,18 @@ async function fetchNotifications() {
       "오류가 발생했습니다.",
       "잠시 후 다시 확인해주세요.",
     ));
-  if (!data?.length)
+  const visibleNotifications = (data || []).filter(
+    (notification) =>
+      !blockedUserNicknames.has(notification.actor_nickname || ""),
+  );
+  if (!visibleNotifications.length)
     return (notiList.innerHTML = renderNotificationState(
       "notifications_off",
       "새로운 알림이 없습니다.",
       "조용한 새벽처럼 아직 도착한 소식이 없어요.",
     ));
 
-  notiList.innerHTML = data
+  notiList.innerHTML = visibleNotifications
     .map((n) => {
       let icon = "notifications";
       let iconClass = "";
@@ -3220,12 +4339,276 @@ function updateCharCount(reachedVisualLimit = false) {
   }
 }
 
-function sharePost(encodedContent) {
-  const text = decodeURIComponent(encodedContent);
-  if (navigator.share) {
-    navigator.share({ title: "글림", text: text });
-  } else {
-    alert("공유 기능을 지원하지 않는 환경입니다.");
+function traceRoundedRectangle(context, x, y, width, height, radius) {
+  const safeRadius = Math.min(radius, width / 2, height / 2);
+  context.beginPath();
+  context.moveTo(x + safeRadius, y);
+  context.lineTo(x + width - safeRadius, y);
+  context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+  context.lineTo(x + width, y + height - safeRadius);
+  context.quadraticCurveTo(
+    x + width,
+    y + height,
+    x + width - safeRadius,
+    y + height,
+  );
+  context.lineTo(x + safeRadius, y + height);
+  context.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+  context.lineTo(x, y + safeRadius);
+  context.quadraticCurveTo(x, y, x + safeRadius, y);
+  context.closePath();
+}
+
+function wrapShareCardText(context, text, maxWidth) {
+  const lines = [];
+  const paragraphs = String(text).replace(/\r/g, "").split("\n");
+
+  paragraphs.forEach((paragraph) => {
+    if (!paragraph) {
+      lines.push("");
+      return;
+    }
+
+    let line = "";
+    Array.from(paragraph).forEach((character) => {
+      const candidate = line + character;
+      if (line && context.measureText(candidate).width > maxWidth) {
+        const lastSpace = line.lastIndexOf(" ");
+        if (lastSpace > line.length * 0.45) {
+          lines.push(line.slice(0, lastSpace).trimEnd());
+          line = `${line.slice(lastSpace + 1)}${character}`.trimStart();
+        } else {
+          lines.push(line.trimEnd());
+          line = character.trimStart();
+        }
+      } else {
+        line = candidate;
+      }
+    });
+    if (line) lines.push(line.trimEnd());
+  });
+
+  return lines;
+}
+
+function drawShareCardBackground(context, width, height, seedText) {
+  context.fillStyle = "#080706";
+  context.fillRect(0, 0, width, height);
+
+  const warmGlow = context.createRadialGradient(
+    width * 0.82,
+    height * 0.1,
+    0,
+    width * 0.82,
+    height * 0.1,
+    width * 0.82,
+  );
+  warmGlow.addColorStop(0, "rgba(244, 126, 63, 0.24)");
+  warmGlow.addColorStop(0.45, "rgba(117, 56, 30, 0.09)");
+  warmGlow.addColorStop(1, "rgba(8, 7, 6, 0)");
+  context.fillStyle = warmGlow;
+  context.fillRect(0, 0, width, height);
+
+  const lowerGlow = context.createRadialGradient(
+    width * 0.12,
+    height * 0.88,
+    0,
+    width * 0.12,
+    height * 0.88,
+    width * 0.9,
+  );
+  lowerGlow.addColorStop(0, "rgba(107, 70, 54, 0.14)");
+  lowerGlow.addColorStop(1, "rgba(8, 7, 6, 0)");
+  context.fillStyle = lowerGlow;
+  context.fillRect(0, 0, width, height);
+
+  let seed = Array.from(String(seedText)).reduce(
+    (value, character) => (value * 31 + character.codePointAt(0)) >>> 0,
+    2166136261,
+  );
+  const random = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+
+  context.save();
+  for (let index = 0; index < 700; index += 1) {
+    const alpha = 0.012 + random() * 0.025;
+    context.fillStyle = `rgba(255, 241, 226, ${alpha})`;
+    context.fillRect(random() * width, random() * height, 1.2, 1.2);
+  }
+  context.restore();
+}
+
+function canvasToPngBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("이미지를 만들지 못했습니다."));
+    }, "image/png");
+  });
+}
+
+async function createPostShareImage(post) {
+  await document.fonts?.ready;
+
+  const canvas = document.createElement("canvas");
+  const width = 1080;
+  const height = 1920;
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("이미지 캔버스를 열 수 없습니다.");
+
+  const content = String(post.content || "").trim();
+  const author = String(post.author || "익명");
+  const mood = getMoodOption(post.mood);
+  drawShareCardBackground(context, width, height, content);
+
+  traceRoundedRectangle(context, 72, 72, 936, 1776, 52);
+  context.fillStyle = "rgba(17, 15, 14, 0.76)";
+  context.fill();
+  context.strokeStyle = "rgba(255, 255, 255, 0.13)";
+  context.lineWidth = 2;
+  context.stroke();
+
+  context.textBaseline = "middle";
+  context.textAlign = "left";
+  context.fillStyle = "#f4eee9";
+  context.font = '700 48px "Noto Serif KR", serif';
+  context.fillText("글림", 142, 178);
+
+  context.fillStyle = "rgba(255, 255, 255, 0.42)";
+  context.font = '600 20px -apple-system, sans-serif';
+  context.fillText("A MOMENT THAT STAYS", 272, 181);
+
+  const moodLabel = mood?.label || "오늘의 문장";
+  context.font = '700 24px -apple-system, sans-serif';
+  const moodPillWidth = context.measureText(moodLabel).width + 52;
+  traceRoundedRectangle(context, 142, 250, moodPillWidth, 52, 26);
+  context.fillStyle = "rgba(255, 145, 88, 0.13)";
+  context.fill();
+  context.strokeStyle = "rgba(255, 168, 118, 0.35)";
+  context.lineWidth = 1.5;
+  context.stroke();
+  context.fillStyle = "#ffc09d";
+  context.textAlign = "center";
+  context.fillText(moodLabel, 142 + moodPillWidth / 2, 277);
+
+  const contentLength = Array.from(content).length;
+  let fontSize = contentLength <= 38 ? 76 : contentLength <= 78 ? 64 : 54;
+  let lines = [];
+  let lineHeight = fontSize * 1.62;
+  do {
+    context.font = `400 ${fontSize}px "Noto Serif KR", serif`;
+    lines = wrapShareCardText(context, content, 760);
+    lineHeight = fontSize * 1.62;
+    if (lines.length * lineHeight <= 900) break;
+    fontSize -= 2;
+  } while (fontSize > 42);
+
+  const textHeight = Math.max(1, lines.length) * lineHeight;
+  const textStartY = 900 - textHeight / 2 + lineHeight / 2;
+
+  context.textAlign = "left";
+  context.fillStyle = "rgba(255, 176, 130, 0.42)";
+  context.font = '400 132px "Noto Serif KR", serif';
+  context.fillText("“", 135, Math.max(390, textStartY - 88));
+
+  context.save();
+  context.textAlign = "center";
+  context.fillStyle = "#f4f0ec";
+  context.font = `400 ${fontSize}px "Noto Serif KR", serif`;
+  context.shadowColor = "rgba(0, 0, 0, 0.42)";
+  context.shadowBlur = 18;
+  lines.forEach((line, index) => {
+    context.fillText(line, width / 2, textStartY + index * lineHeight);
+  });
+  context.restore();
+
+  context.textAlign = "center";
+  context.fillStyle = "rgba(241, 229, 220, 0.64)";
+  context.font = '400 30px "Noto Serif KR", serif';
+  context.fillText(`— ${author}`, width / 2, 1495);
+
+  context.strokeStyle = "rgba(255, 255, 255, 0.12)";
+  context.lineWidth = 1;
+  context.beginPath();
+  context.moveTo(142, 1690);
+  context.lineTo(938, 1690);
+  context.stroke();
+
+  context.textAlign = "left";
+  context.fillStyle = "rgba(255, 255, 255, 0.78)";
+  context.font = '700 26px -apple-system, sans-serif';
+  context.fillText("GLIM", 142, 1758);
+  context.textAlign = "right";
+  context.fillStyle = "rgba(255, 255, 255, 0.34)";
+  context.font = '400 22px "Noto Serif KR", serif';
+  context.fillText("마음이 머무는 문장", 938, 1758);
+
+  return canvasToPngBlob(canvas);
+}
+
+function downloadPostShareImage(blob, fileName) {
+  const imageUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = imageUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(imageUrl), 1000);
+}
+
+async function sharePost(post, triggerElement) {
+  if (!post?.content || triggerElement?.dataset.sharing === "true") return;
+
+  const label = triggerElement?.querySelector(".action-count");
+  if (triggerElement) triggerElement.dataset.sharing = "true";
+  if (label) label.innerText = "제작 중";
+
+  try {
+    const blob = await createPostShareImage(post);
+    const fileName = `glim-story-${Date.now()}.png`;
+    const file =
+      typeof File === "function"
+        ? new File([blob], fileName, { type: "image/png" })
+        : null;
+    let canShareImage = false;
+
+    if (file && navigator.share && navigator.canShare) {
+      try {
+        canShareImage = navigator.canShare({ files: [file] });
+      } catch (_error) {
+        canShareImage = false;
+      }
+    }
+
+    if (canShareImage) {
+      try {
+        await navigator.share({
+          title: "글림",
+          text: "글림에서 발견한 문장",
+          files: [file],
+        });
+        return;
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+      }
+    }
+
+    downloadPostShareImage(blob, fileName);
+    showAppAlert(
+      "스토리용 이미지를 저장했습니다.\n인스타그램 스토리에서 불러와 공유해보세요.",
+    );
+  } catch (error) {
+    console.error("공유 이미지 생성 실패:", error);
+    showAppAlert("공유 이미지를 만들지 못했습니다. 잠시 후 다시 시도해주세요.");
+  } finally {
+    if (triggerElement) delete triggerElement.dataset.sharing;
+    if (label) label.innerText = "공유";
   }
 }
 
@@ -3245,22 +4628,124 @@ document.addEventListener("click", () => {
     .forEach((m) => m.classList.remove("show"));
 });
 
-async function reportPost(postId) {
-  if (!confirm("이 글을 신고하시겠습니까?")) return;
-  const { data } = await client
+function reportPost(postId) {
+  showAppConfirm("이 글을 신고하시겠습니까?", () => submitPostReport(postId), {
+    title: "게시글 신고",
+    icon: "report",
+    confirmText: "신고하기",
+    isDestructive: true,
+  });
+}
+
+async function submitPostReport(postId) {
+  const { data, error: readError } = await client
     .from("posts")
-    .select("reports_count")
+    .select("reports_count, user_id")
     .eq("id", postId)
     .single();
-  await client
+  if (readError || !data) {
+    showAppAlert("신고를 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
+  if (currentUser && data.user_id === currentUser.id) {
+    showAppAlert("본인이 작성한 글은 신고할 수 없습니다.");
+    return;
+  }
+
+  const { error: updateError } = await client
     .from("posts")
     .update({ reports_count: (data.reports_count || 0) + 1 })
     .eq("id", postId);
-  alert("신고가 접수되었습니다.");
+  if (updateError) {
+    showAppAlert("신고를 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
+
+  showAppAlert("신고가 접수되었습니다. 관리자 검토 후 조치됩니다.");
+}
+
+function deletePost(postId) {
+  if (!currentUser) {
+    showAppAlert("글을 삭제하려면 로그인이 필요합니다.");
+    return;
+  }
+
+  showAppConfirm(
+    "삭제한 글은 되돌릴 수 없습니다.\n정말 삭제하시겠습니까?",
+    () => submitPostDelete(postId),
+    {
+      title: "게시글 삭제",
+      icon: "delete",
+      confirmText: "삭제",
+      isDestructive: true,
+    },
+  );
+}
+
+async function submitPostDelete(postId) {
+  if (!currentUser) return;
+
+  const { data, error } = await client
+    .from("posts")
+    .delete()
+    .eq("id", postId)
+    .eq("user_id", currentUser.id)
+    .select("id");
+
+  if (error || !data?.length) {
+    showAppAlert("글을 삭제하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
+
+  localStorage.removeItem(`liked_${currentUser.id}_${postId}`);
+  localStorage.removeItem(`bookmarked_${currentUser.id}_${postId}`);
+  contextPostCollections.forEach((posts, contextKey) => {
+    contextPostCollections.set(
+      contextKey,
+      posts.filter((post) => post.id !== postId),
+    );
+  });
+  document.querySelectorAll(".post").forEach((postElement) => {
+    if (postElement.dataset.postId === String(postId)) {
+      observer.unobserve(postElement);
+      contextObserver.unobserve(postElement);
+      postElement.remove();
+    }
+  });
+
+  const activeView = document.querySelector(".app-view.active");
+  const sourceViewId =
+    activeView?.id === "view-context-feed"
+      ? contextFeedReturnViewId
+      : activeView?.id;
+  if (
+    activeView?.id === "view-context-feed" &&
+    !document.querySelector("#contextPostFeed .post")
+  ) {
+    closeContextPostFeed();
+  }
+
+  showAppAlert("글이 삭제되었습니다.");
+
+  if (sourceViewId === "view-explore") {
+    await refreshExploreCurrentContent();
+  } else if (sourceViewId === "view-profile") {
+    await Promise.all([
+      loadProfileGrid("my"),
+      loadProfileGrid("bookmark"),
+      loadProfileGrid("like"),
+    ]);
+    updateAuthUI();
+  } else {
+    await fetchPosts();
+  }
 }
 
 async function openNoticeSheet() {
-  closeSheet("settingsSheet");
+  const activeView = document.querySelector(".app-view.active");
+  if (activeView?.id && activeView.id !== "view-notice-detail") {
+    noticeReturnViewId = activeView.id;
+  }
   openSheet("noticeSheet");
   const list = document.getElementById("noticeList");
   list.innerHTML =
@@ -3313,16 +4798,13 @@ async function openNoticeSheet() {
 }
 
 function closeNoticeDetail() {
-  switchTab("profile");
+  activateAppView(noticeReturnViewId);
   openSheet("noticeSheet");
 }
 
 function viewNoticeDetail(title, date, content) {
   closeSheet("noticeSheet");
-  document
-    .querySelectorAll(".app-view")
-    .forEach((view) => view.classList.remove("active"));
-  document.getElementById("view-notice-detail").classList.add("active");
+  activateAppView("view-notice-detail");
 
   const container = document.getElementById("noticeDetailContainer");
   container.innerHTML = `

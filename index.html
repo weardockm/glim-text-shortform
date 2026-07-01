@@ -6,6 +6,36 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
+    <meta name="theme-color" id="themeColorMeta" content="#050505" />
+    <script>
+      (() => {
+        const key = "glim_theme_preference";
+        let preference = "system";
+        try {
+          const stored = localStorage.getItem(key);
+          if (["dark", "light", "system"].includes(stored)) {
+            preference = stored;
+          }
+        } catch (_error) {}
+        const isSystemDark = window.matchMedia(
+          "(prefers-color-scheme: dark)",
+        ).matches;
+        const resolved =
+          preference === "system"
+            ? isSystemDark
+              ? "dark"
+              : "light"
+            : preference;
+        document.documentElement.dataset.theme = resolved;
+        document.documentElement.dataset.themePreference = preference;
+        document
+          .getElementById("themeColorMeta")
+          ?.setAttribute(
+            "content",
+            resolved === "dark" ? "#050505" : "#f6f2ee",
+          );
+      })();
+    </script>
     <title>글림 - 텍스트 숏폼</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -18,7 +48,7 @@
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0..1,0"
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="index.js?v=36" defer></script>
+    <script src="index.js?v=46" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -88,6 +118,10 @@
           transform 0.55s cubic-bezier(0.25, 1, 0.5, 1),
           visibility 0s linear 0.75s;
         backdrop-filter: blur(10px);
+      }
+      #refreshIndicatorText {
+        text-align: center;
+        white-space: nowrap;
       }
       .refresh-indicator.visible {
         opacity: 1;
@@ -385,6 +419,12 @@
       .more-menu-item:active {
         background: rgba(255, 59, 48, 0.1);
       }
+      .more-menu-item + .more-menu-item {
+        border-top: 1px solid rgba(255, 255, 255, 0.07);
+      }
+      .more-menu-item.block-user {
+        color: #c8c8c8;
+      }
       .bottom-nav {
         position: fixed;
         bottom: 0;
@@ -473,9 +513,15 @@
         backdrop-filter: blur(16px);
         -webkit-backdrop-filter: blur(16px);
       }
+      .explore-search-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
       .search-wrapper {
         position: relative;
-        width: 100%;
+        flex: 1 1 auto;
+        min-width: 0;
       }
       .search-bar {
         width: 100%;
@@ -507,17 +553,226 @@
         color: #ad9b91;
         cursor: pointer;
       }
+      .search-cancel-btn {
+        flex: 0 0 auto;
+        display: none;
+        border: 0;
+        background: none;
+        color: #cfb7a9;
+        cursor: pointer;
+        font-family: -apple-system, sans-serif;
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+      .explore-header.is-searching .search-cancel-btn {
+        display: block;
+      }
       .explore-content {
-        padding: 23px 0 40px;
+        padding: 18px 0 28px;
         background: linear-gradient(
           180deg,
           rgba(17, 12, 9, 0.72) 0%,
           rgba(5, 5, 5, 0) 390px
         );
       }
+      .explore-search-content {
+        min-height: calc(100% - 74px);
+        padding: 22px 16px 92px;
+        background: #080706;
+        font-family: -apple-system, sans-serif;
+      }
+      .explore-search-content[hidden],
+      .explore-search-section[hidden] {
+        display: none !important;
+      }
+      .explore-search-section-header {
+        min-height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+      .explore-search-section-title {
+        color: #eee9e5;
+        font-family: "Noto Serif KR", serif;
+        font-size: 1rem;
+        font-weight: 700;
+      }
+      .explore-search-clear {
+        border: 0;
+        background: none;
+        color: #746c67;
+        cursor: pointer;
+        font-family: -apple-system, sans-serif;
+        font-size: 0.72rem;
+      }
+      .explore-search-history-list {
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 10px;
+        background: rgba(17, 16, 15, 0.9);
+      }
+      .explore-search-history-row {
+        min-height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 12px;
+      }
+      .explore-search-history-row + .explore-search-history-row {
+        border-top: 1px solid rgba(255, 255, 255, 0.055);
+      }
+      .explore-search-history-query {
+        min-width: 0;
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border: 0;
+        background: none;
+        color: #d8d2ce;
+        cursor: pointer;
+        text-align: left;
+        font-family: -apple-system, sans-serif;
+        font-size: 0.86rem;
+      }
+      .explore-search-history-query .material-symbols-outlined {
+        color: #6f6864;
+        font-size: 1.05rem;
+      }
+      .explore-search-history-remove {
+        width: 30px;
+        height: 30px;
+        border: 0;
+        background: none;
+        color: #5f5955;
+        cursor: pointer;
+      }
+      .explore-search-history-remove .material-symbols-outlined {
+        font-size: 1rem;
+      }
+      .explore-search-results-summary {
+        margin-bottom: 22px;
+        color: #897f79;
+        font-size: 0.8rem;
+      }
+      .explore-search-result-group {
+        margin-bottom: 30px;
+      }
+      .explore-search-user-list,
+      .explore-search-post-list {
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+      .explore-user-result {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 10px;
+        background: rgba(17, 16, 15, 0.92);
+        color: #eee;
+        cursor: pointer;
+        text-align: left;
+      }
+      .explore-user-result-avatar {
+        width: 44px;
+        height: 44px;
+        flex: 0 0 auto;
+        overflow: hidden;
+        border: 1px solid #333;
+        border-radius: 50%;
+        background: #222;
+      }
+      .explore-user-result-copy {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+      .explore-user-result-name {
+        display: block;
+        overflow: hidden;
+        color: #eee;
+        font-size: 0.9rem;
+        font-weight: 700;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .explore-user-result-id {
+        display: block;
+        margin-top: 4px;
+        overflow: hidden;
+        color: #777;
+        font-size: 0.75rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .explore-search-post {
+        width: 100%;
+        padding: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.075);
+        border-radius: 10px;
+        background: rgba(17, 16, 15, 0.92);
+        color: #eee;
+        cursor: pointer;
+        text-align: left;
+      }
+      .explore-search-post-content {
+        display: -webkit-box;
+        overflow: hidden;
+        color: #ebe7e3;
+        font-family: "Noto Serif KR", serif;
+        font-size: 0.94rem;
+        font-weight: 400;
+        line-height: 1.7;
+        line-clamp: 4;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 4;
+      }
+      .explore-search-post-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 13px;
+        padding-top: 11px;
+        border-top: 1px solid rgba(255, 255, 255, 0.065);
+        color: #746d68;
+        font-size: 0.72rem;
+      }
+      .explore-search-state {
+        min-height: 110px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #68615d;
+        font-size: 0.82rem;
+        text-align: center;
+      }
+      .explore-search-empty-all {
+        min-height: 280px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        color: #6e6762;
+        text-align: center;
+      }
+      .explore-search-empty-all .material-symbols-outlined {
+        color: #514b47;
+        font-size: 2rem;
+      }
       .explore-section {
         width: 100%;
-        margin-bottom: 34px;
+        margin-bottom: 24px;
+      }
+      .explore-section + .explore-section {
+        padding-top: 20px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
       }
       .explore-section-header {
         display: flex;
@@ -555,18 +810,59 @@
         letter-spacing: 0.08em;
       }
       .explore-section-description {
-        padding: 9px 18px 16px;
+        padding: 7px 18px 12px;
         color: #777;
         font-family: -apple-system, sans-serif;
         font-size: 0.78rem;
         line-height: 1.5;
       }
-      .explore-card-rail {
+      .explore-mood-tabs {
         display: flex;
-        gap: 14px;
+        gap: 8px;
         width: 100%;
         overflow-x: auto;
-        padding: 2px 18px 14px;
+        padding: 0 18px 10px;
+        scroll-padding-inline: 18px;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+      }
+      .explore-mood-tabs::after {
+        content: "";
+        flex: 0 0 4px;
+      }
+      .explore-mood-tab {
+        flex: 0 0 auto;
+        min-width: 66px;
+        padding: 8px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.035);
+        color: #817b77;
+        cursor: pointer;
+        font-family: -apple-system, sans-serif;
+        font-size: 0.78rem;
+        font-weight: 700;
+        text-align: center;
+        transition:
+          color 0.18s ease,
+          border-color 0.18s ease,
+          background 0.18s ease,
+          transform 0.18s ease;
+      }
+      .explore-mood-tab:active {
+        transform: scale(0.96);
+      }
+      .explore-mood-tab.is-selected {
+        border-color: rgba(255, 171, 123, 0.38);
+        background: rgba(255, 132, 68, 0.12);
+        color: #ffd1b7;
+      }
+      .explore-card-rail {
+        display: flex;
+        gap: 10px;
+        width: 100%;
+        overflow-x: auto;
+        padding: 2px 18px 10px;
         scroll-padding-inline: 18px;
         scroll-snap-type: x mandatory;
         overscroll-behavior-x: contain;
@@ -578,11 +874,11 @@
       }
       .explore-hot-card {
         position: relative;
-        flex: 0 0 clamp(260px, 76vw, 315px);
-        aspect-ratio: 4 / 5;
-        min-height: 330px;
+        flex: 0 0 clamp(215px, 64vw, 250px);
+        height: 248px;
+        min-height: 248px;
         overflow: hidden;
-        padding: 21px;
+        padding: 17px;
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 6px;
         background:
@@ -620,11 +916,11 @@
       }
       .explore-card-rank-ghost {
         position: absolute;
-        top: -14px;
+        top: -10px;
         right: 8px;
         color: rgba(255, 255, 255, 0.035);
         font-family: -apple-system, sans-serif;
-        font-size: 7.4rem;
+        font-size: 5.4rem;
         font-weight: 900;
         line-height: 1;
         pointer-events: none;
@@ -650,28 +946,28 @@
         z-index: 1;
         width: 36px;
         height: 1px;
-        margin: 23px 0 22px;
+        margin: 14px 0 13px;
         background: rgba(255, 171, 123, 0.6);
       }
       .explore-card-copy {
         position: relative;
         z-index: 1;
         display: block;
-        max-height: calc(1.82em * 6);
+        max-height: calc(1.68em * 4);
         overflow: hidden;
         color: #f0ede7;
-        font-size: clamp(1rem, 4.4vw, 1.18rem);
+        font-size: clamp(0.92rem, 4vw, 1.06rem);
         font-weight: 400;
-        line-height: 1.82;
+        line-height: 1.68;
         letter-spacing: -0.015em;
         word-break: keep-all;
       }
       .explore-card-copy.is-truncated {
-        height: calc(1.82em * 6);
+        height: calc(1.68em * 4);
       }
       .explore-card-copy.is-truncated .explore-card-copy-text {
         display: block;
-        max-height: calc(1.82em * 5);
+        max-height: calc(1.68em * 3);
         overflow: hidden;
         -webkit-mask-image: linear-gradient(
           to bottom,
@@ -709,7 +1005,7 @@
         justify-content: space-between;
         gap: 12px;
         margin-top: auto;
-        padding-top: 17px;
+        padding-top: 12px;
         border-top: 1px solid rgba(255, 255, 255, 0.08);
         color: #85817c;
         font-family: -apple-system, sans-serif;
@@ -735,7 +1031,7 @@
       }
       .explore-rail-state {
         flex: 0 0 calc(100vw - 36px);
-        min-height: 260px;
+        min-height: 210px;
         border: 1px dashed rgba(255, 255, 255, 0.09);
         border-radius: 6px;
         color: #666;
@@ -1543,6 +1839,30 @@
       .user-profile-topbar-spacer {
         width: 32px;
       }
+      .user-profile-more-wrapper {
+        position: relative;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .user-profile-more-btn {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        background: none;
+        color: #fff;
+        cursor: pointer;
+      }
+      .user-profile-more-wrapper .more-menu {
+        top: 35px;
+        right: 0;
+        bottom: auto;
+      }
       .user-profile-posts-title {
         width: 100%;
         padding: 14px 18px;
@@ -1645,6 +1965,28 @@
       }
       .follow-list-chevron {
         color: #555;
+      }
+      .blocked-user-row {
+        width: 100%;
+        min-height: 68px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 4px;
+        border-bottom: 1px solid #222;
+      }
+      .blocked-user-unblock {
+        flex: 0 0 auto;
+        min-width: 68px;
+        padding: 8px 10px;
+        border: 1px solid #3a3a3a;
+        border-radius: 8px;
+        background: #171717;
+        color: #ccc;
+        font-family: -apple-system, sans-serif;
+        font-size: 0.76rem;
+        font-weight: 700;
+        cursor: pointer;
       }
       .profile-tabs-container {
         position: relative;
@@ -1955,6 +2297,7 @@
       .app-alert-actions {
         display: flex;
         justify-content: flex-end;
+        gap: 8px;
         margin-top: 18px;
       }
       .app-alert-button {
@@ -1971,6 +2314,15 @@
       }
       .app-alert-button:active {
         transform: scale(0.97);
+      }
+      .app-alert-button.secondary {
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.05);
+        color: #aaa;
+      }
+      .app-alert-button.is-destructive {
+        background: #e9554f;
+        color: #fff;
       }
 
       .comment-list {
@@ -2074,6 +2426,169 @@
       }
       .logout-text {
         color: #ff3b30;
+      }
+      .account-delete-text {
+        color: #a95a57;
+        font-size: 0.92rem;
+      }
+      .settings-view {
+        padding: 0;
+        background:
+          radial-gradient(
+            circle at 90% 0%,
+            rgba(255, 142, 82, 0.08),
+            transparent 24rem
+          ),
+          #080706;
+        font-family: -apple-system, sans-serif;
+      }
+      .settings-page-topbar {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        min-height: 64px;
+        display: grid;
+        grid-template-columns: 42px 1fr 42px;
+        align-items: center;
+        padding: 8px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+        background: rgba(8, 7, 6, 0.9);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+      }
+      .settings-page-back {
+        width: 38px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        background: none;
+        color: #fff;
+        cursor: pointer;
+      }
+      .settings-page-title {
+        color: #f4f1ed;
+        font-family: "Noto Serif KR", serif;
+        font-size: 1.1rem;
+        font-weight: 700;
+        text-align: center;
+      }
+      .settings-page-content {
+        width: min(100%, 620px);
+        margin: 0 auto;
+        padding: 22px 16px calc(38px + env(safe-area-inset-bottom));
+      }
+      .settings-section {
+        margin-bottom: 28px;
+      }
+      .settings-section-title {
+        margin: 0 4px 10px;
+        color: #8d837d;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+      }
+      .settings-card {
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.075);
+        border-radius: 12px;
+        background: rgba(18, 17, 16, 0.92);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+      }
+      .settings-row {
+        width: 100%;
+        min-height: 64px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 14px;
+        border: 0;
+        background: none;
+        color: #eee;
+        cursor: pointer;
+        text-align: left;
+        font-family: -apple-system, sans-serif;
+      }
+      .settings-row + .settings-row {
+        border-top: 1px solid rgba(255, 255, 255, 0.065);
+      }
+      .settings-row:active {
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .settings-row-icon {
+        flex: 0 0 auto;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.055);
+        color: #d9c8bd;
+        font-size: 1.18rem;
+      }
+      .settings-row-copy {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+      .settings-row-title {
+        display: block;
+        color: #eee;
+        font-size: 0.93rem;
+        font-weight: 700;
+      }
+      .settings-row-description {
+        display: block;
+        margin-top: 4px;
+        color: #777;
+        font-size: 0.74rem;
+        line-height: 1.4;
+      }
+      .settings-row-chevron {
+        flex: 0 0 auto;
+        color: #555;
+        font-size: 1.25rem;
+      }
+      .settings-row.is-danger .settings-row-icon,
+      .settings-row.is-danger .settings-row-title {
+        color: #d66b65;
+      }
+      .theme-choice.is-selected {
+        background: rgba(255, 145, 88, 0.08);
+      }
+      .theme-choice-check {
+        flex: 0 0 auto;
+        color: #555;
+        font-size: 1.25rem;
+      }
+      .theme-choice.is-selected .theme-choice-check {
+        color: #ff9e69;
+        font-variation-settings: "FILL" 1;
+      }
+      .settings-account-summary {
+        padding: 18px;
+      }
+      .settings-account-kicker {
+        color: #817771;
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+      }
+      .settings-account-provider {
+        margin-top: 9px;
+        color: #f2efeb;
+        font-family: "Noto Serif KR", serif;
+        font-size: 1.05rem;
+        font-weight: 700;
+      }
+      .settings-account-email {
+        margin-top: 6px;
+        overflow: hidden;
+        color: #777;
+        font-size: 0.78rem;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .noti-view {
@@ -2284,6 +2799,387 @@
           transform: translateX(-50%);
         }
       }
+      /* Light theme */
+      html[data-theme="dark"] {
+        color-scheme: dark;
+      }
+      html[data-theme="light"] {
+        color-scheme: light;
+      }
+      html[data-theme="light"],
+      html[data-theme="light"] body {
+        background: #f6f2ee;
+        color: #2d2926;
+      }
+      html[data-theme="light"] .app-view,
+      html[data-theme="light"] #view-home,
+      html[data-theme="light"] #view-context-feed,
+      html[data-theme="light"] #view-write,
+      html[data-theme="light"] #view-profile,
+      html[data-theme="light"] #view-user-profile,
+      html[data-theme="light"] #view-notice-detail {
+        background: #f6f2ee;
+      }
+      html[data-theme="light"] .header {
+        background: linear-gradient(
+          to bottom,
+          rgba(246, 242, 238, 0.96),
+          transparent
+        );
+      }
+      html[data-theme="light"] .logo,
+      html[data-theme="light"] .page-title,
+      html[data-theme="light"] .profile-title,
+      html[data-theme="light"] .profile-name,
+      html[data-theme="light"] .sheet-title {
+        color: #2c2825;
+        text-shadow: none;
+      }
+      html[data-theme="light"] .refresh-indicator {
+        border-color: rgba(79, 60, 48, 0.14);
+        background: rgba(255, 252, 248, 0.96);
+        color: #544b45;
+        box-shadow: 0 8px 25px rgba(74, 52, 37, 0.12);
+      }
+      html[data-theme="light"] .text-content {
+        color: #302b28;
+        text-shadow: none;
+      }
+      html[data-theme="light"] .author-name,
+      html[data-theme="light"] .post-time,
+      html[data-theme="light"] .action-btn,
+      html[data-theme="light"] .action-count {
+        color: #716861;
+      }
+      html[data-theme="light"] .action-btn:hover,
+      html[data-theme="light"] .author-link:active {
+        color: #211e1c;
+      }
+      html[data-theme="light"] .context-feed-back-btn,
+      html[data-theme="light"] .context-feed-title {
+        border-color: rgba(70, 53, 43, 0.12);
+        background: rgba(255, 252, 248, 0.9);
+        color: #39332f;
+      }
+      html[data-theme="light"] .bottom-nav {
+        border-color: rgba(67, 49, 39, 0.1);
+        background: rgba(250, 247, 243, 0.9);
+      }
+      html[data-theme="light"] .nav-item {
+        color: #a59b94;
+      }
+      html[data-theme="light"] .nav-item.active,
+      html[data-theme="light"] .nav-item.write-btn,
+      html[data-theme="light"] .nav-item.write-btn .nav-icon {
+        color: #2c2724;
+      }
+      html[data-theme="light"] .more-menu {
+        border-color: #ded6d0;
+        background: #fffdfa;
+        box-shadow: 0 6px 20px rgba(75, 55, 42, 0.15);
+      }
+      html[data-theme="light"] .more-menu-item.block-user {
+        color: #5d554f;
+      }
+      html[data-theme="light"] #view-explore {
+        background:
+          radial-gradient(
+            circle at 8% 16%,
+            rgba(255, 150, 94, 0.12),
+            transparent 30rem
+          ),
+          #f7f2ed;
+      }
+      html[data-theme="light"] .explore-header {
+        border-color: rgba(96, 68, 51, 0.1);
+        background: rgba(249, 245, 241, 0.94);
+        box-shadow: 0 10px 24px rgba(80, 57, 43, 0.08);
+      }
+      html[data-theme="light"] .search-bar,
+      html[data-theme="light"] .auth-input,
+      html[data-theme="light"] .comment-input,
+      html[data-theme="light"] .post-textarea {
+        border-color: #ddd4cd;
+        background: #fffdfa;
+        color: #2f2a27;
+      }
+      html[data-theme="light"] .search-bar:focus,
+      html[data-theme="light"] .auth-input:focus,
+      html[data-theme="light"] .post-textarea:focus {
+        border-color: #c99373;
+        background: #fff;
+      }
+      html[data-theme="light"] .search-bar::placeholder,
+      html[data-theme="light"] .post-textarea::placeholder,
+      html[data-theme="light"] .comment-input::placeholder {
+        color: #a59b94;
+      }
+      html[data-theme="light"] .search-icon,
+      html[data-theme="light"] .search-cancel-btn {
+        color: #8d7769;
+      }
+      html[data-theme="light"] .explore-content {
+        background: linear-gradient(
+          180deg,
+          rgba(255, 247, 241, 0.78),
+          transparent 390px
+        );
+      }
+      html[data-theme="light"] .explore-search-content {
+        background: #f7f2ed;
+      }
+      html[data-theme="light"] .explore-section + .explore-section {
+        border-color: rgba(74, 54, 43, 0.1);
+      }
+      html[data-theme="light"] .explore-section-title,
+      html[data-theme="light"] .explore-search-section-title {
+        color: #322c28;
+      }
+      html[data-theme="light"] .explore-section-kicker,
+      html[data-theme="light"] .explore-section-description,
+      html[data-theme="light"] .explore-search-results-summary,
+      html[data-theme="light"] .explore-search-state {
+        color: #877b73;
+      }
+      html[data-theme="light"] .explore-mood-tab {
+        border-color: rgba(78, 58, 47, 0.12);
+        background: rgba(255, 255, 255, 0.56);
+        color: #81756e;
+      }
+      html[data-theme="light"] .explore-mood-tab.is-selected {
+        border-color: rgba(207, 119, 70, 0.42);
+        background: rgba(255, 143, 81, 0.13);
+        color: #9e4e25;
+      }
+      html[data-theme="light"] .explore-hot-card {
+        border-color: #dfd6d0;
+        background:
+          linear-gradient(155deg, rgba(255, 255, 255, 0.72), transparent 42%),
+          #fffdfa;
+        box-shadow:
+          0 14px 28px rgba(76, 54, 41, 0.1),
+          inset 0 1px 0 #fff;
+        color: #312c29;
+      }
+      html[data-theme="light"] .explore-hot-card:first-child {
+        border-color: rgba(218, 126, 74, 0.36);
+        background:
+          radial-gradient(
+            circle at 88% 7%,
+            rgba(255, 145, 83, 0.15),
+            transparent 36%
+          ),
+          #fffdfa;
+      }
+      html[data-theme="light"] .explore-card-rank-ghost {
+        color: rgba(88, 62, 47, 0.045);
+      }
+      html[data-theme="light"] .explore-card-copy {
+        color: #332e2a;
+      }
+      html[data-theme="light"] .explore-card-topline,
+      html[data-theme="light"] .explore-card-footer {
+        color: #8a7e76;
+      }
+      html[data-theme="light"] .explore-card-footer,
+      html[data-theme="light"] .explore-search-post-meta {
+        border-color: rgba(76, 56, 45, 0.1);
+      }
+      html[data-theme="light"] .explore-search-history-list,
+      html[data-theme="light"] .explore-user-result,
+      html[data-theme="light"] .explore-search-post,
+      html[data-theme="light"] .grid-item {
+        border-color: #e0d8d2;
+        background: #fffdfa;
+        color: #312c29;
+      }
+      html[data-theme="light"] .explore-search-history-row + .explore-search-history-row {
+        border-color: rgba(74, 54, 43, 0.08);
+      }
+      html[data-theme="light"] .explore-search-history-query,
+      html[data-theme="light"] .explore-user-result-name,
+      html[data-theme="light"] .explore-search-post-content,
+      html[data-theme="light"] .grid-text {
+        color: #3a3430;
+      }
+      html[data-theme="light"] .explore-user-result-avatar,
+      html[data-theme="light"] .profile-avatar,
+      html[data-theme="light"] .follow-list-avatar {
+        border-color: #d9d0c9;
+        background: #ede7e2;
+      }
+      html[data-theme="light"] .textarea-wrapper,
+      html[data-theme="light"] .write-bgm-select-btn,
+      html[data-theme="light"] .mood-option-btn,
+      html[data-theme="light"] .bgm-picker-option {
+        border-color: #dfd6d0;
+        background: #fffdfa;
+        color: #332e2a;
+      }
+      html[data-theme="light"] .write-bgm-label,
+      html[data-theme="light"] .write-bgm-selected,
+      html[data-theme="light"] .mood-option-title,
+      html[data-theme="light"] .bgm-picker-option-title {
+        color: #39322e;
+      }
+      html[data-theme="light"] .write-bgm-add-icon,
+      html[data-theme="light"] .write-mood-icon,
+      html[data-theme="light"] .mood-option-icon {
+        border-color: #ddd4ce;
+        background: #f1ebe6;
+        color: #5a504a;
+      }
+      html[data-theme="light"] .mood-option-btn.is-selected,
+      html[data-theme="light"] .bgm-picker-option.is-selected {
+        border-color: #cda58d;
+        background: #fff8f3;
+      }
+      html[data-theme="light"] .bgm-picker-view {
+        background: #f6f2ee;
+      }
+      html[data-theme="light"] .bgm-picker-topbar,
+      html[data-theme="light"] .profile-topbar,
+      html[data-theme="light"] .noti-topbar {
+        border-color: rgba(75, 54, 43, 0.1);
+        background: rgba(248, 244, 240, 0.92);
+      }
+      html[data-theme="light"] .bgm-picker-back-btn,
+      html[data-theme="light"] .user-profile-back-btn,
+      html[data-theme="light"] .user-profile-more-btn {
+        color: #302b28;
+      }
+      html[data-theme="light"] .bgm-picker-title,
+      html[data-theme="light"] .profile-name,
+      html[data-theme="light"] .logged-out-title,
+      html[data-theme="light"] .login-card-title {
+        color: #302b28;
+      }
+      html[data-theme="light"] #view-profile,
+      html[data-theme="light"] #view-user-profile,
+      html[data-theme="light"] .auth-container {
+        background: #f6f2ee;
+      }
+      html[data-theme="light"] .profile-tabs-container,
+      html[data-theme="light"] .user-profile-posts-title,
+      html[data-theme="light"] .comment-item,
+      html[data-theme="light"] .blocked-user-row,
+      html[data-theme="light"] .follow-list-row {
+        border-color: #ded6d0;
+      }
+      html[data-theme="light"] .p-tab {
+        color: #9b918a;
+      }
+      html[data-theme="light"] .p-tab.active {
+        color: #2e2926;
+      }
+      html[data-theme="light"] .profile-tabs-indicator {
+        background: #3d3530;
+      }
+      html[data-theme="light"] .profile-edit-btn,
+      html[data-theme="light"] .viewed-profile-follow-btn.following,
+      html[data-theme="light"] .blocked-user-unblock,
+      html[data-theme="light"] .edit-avatar-btn.secondary {
+        border-color: #d4cbc4;
+        background: #eee8e3;
+        color: #4d4540;
+      }
+      html[data-theme="light"] .viewed-profile-follow-btn,
+      html[data-theme="light"] .submit-btn,
+      html[data-theme="light"] .comment-submit-btn,
+      html[data-theme="light"] .app-alert-button {
+        background: #332e2a;
+        color: #fff;
+      }
+      html[data-theme="light"] .profile-login-card,
+      html[data-theme="light"] .logged-out-preview-item,
+      html[data-theme="light"] .noti-item,
+      html[data-theme="light"] .settings-card {
+        border-color: #dfd7d1;
+        background: rgba(255, 253, 250, 0.94);
+        box-shadow: 0 12px 28px rgba(76, 55, 42, 0.08);
+      }
+      html[data-theme="light"] .follow-list-profile strong,
+      html[data-theme="light"] .comment-text,
+      html[data-theme="light"] .noti-text {
+        color: #37312d;
+      }
+      html[data-theme="light"] .bottom-sheet {
+        border-color: #dcd3cc;
+        background: #fbf8f5;
+        color: #312c29;
+      }
+      html[data-theme="light"] .sheet-handle {
+        background: #c9bfb7;
+      }
+      html[data-theme="light"] .close-btn {
+        color: #81766f;
+      }
+      html[data-theme="light"] .app-alert-dialog {
+        border-color: #ddd4cd;
+        background: linear-gradient(180deg, #fffdfa, #f8f3ef);
+        box-shadow: 0 24px 70px rgba(73, 51, 37, 0.2);
+      }
+      html[data-theme="light"] .app-alert-icon {
+        border-color: #ddd4cd;
+        background: #f0e9e4;
+        color: #4b433e;
+      }
+      html[data-theme="light"] .app-alert-title,
+      html[data-theme="light"] .app-alert-message {
+        color: #332e2a;
+      }
+      html[data-theme="light"] .app-alert-button.secondary {
+        border-color: #d8cfc8;
+        background: #eee8e3;
+        color: #5f5650;
+      }
+      html[data-theme="light"] .app-alert-button.is-destructive {
+        background: #e9554f;
+        color: #fff;
+      }
+      html[data-theme="light"] .settings-view {
+        background:
+          radial-gradient(
+            circle at 90% 0%,
+            rgba(255, 145, 87, 0.1),
+            transparent 24rem
+          ),
+          #f6f2ee;
+      }
+      html[data-theme="light"] .settings-page-topbar {
+        border-color: rgba(74, 53, 42, 0.1);
+        background: rgba(248, 244, 240, 0.92);
+      }
+      html[data-theme="light"] .settings-page-back,
+      html[data-theme="light"] .settings-page-title,
+      html[data-theme="light"] .settings-row-title,
+      html[data-theme="light"] .settings-account-provider {
+        color: #322d29;
+      }
+      html[data-theme="light"] .settings-section-title,
+      html[data-theme="light"] .settings-row-description,
+      html[data-theme="light"] .settings-account-kicker,
+      html[data-theme="light"] .settings-account-email {
+        color: #897e77;
+      }
+      html[data-theme="light"] .settings-row + .settings-row {
+        border-color: rgba(75, 55, 44, 0.08);
+      }
+      html[data-theme="light"] .settings-row-icon {
+        background: #f0eae5;
+        color: #6f5f55;
+      }
+      html[data-theme="light"] .theme-choice.is-selected {
+        background: rgba(255, 145, 88, 0.12);
+      }
+      html[data-theme="light"] .noti-view {
+        background: #f6f2ee;
+      }
+      html[data-theme="light"] .post-bgm-info {
+        border-color: #d8cfc8;
+        background: rgba(255, 253, 250, 0.82);
+        color: #6b625c;
+      }
     </style>
   </head>
   <body>
@@ -2326,23 +3222,34 @@
     </div>
 
     <div id="view-explore" class="app-view">
-      <div class="explore-header">
-        <div class="search-wrapper">
-          <input
-            type="text"
-            class="search-bar"
-            id="searchInput"
-            placeholder="마음에 남은 문장을 검색해 보세요"
-            onkeyup="if (event.key === 'Enter') searchPosts();"
-          />
-          <span
-            class="material-symbols-outlined search-icon"
-            onclick="searchPosts()"
-            >search</span
+      <div class="explore-header" id="exploreHeader">
+        <div class="explore-search-row">
+          <div class="search-wrapper">
+            <input
+              type="text"
+              class="search-bar"
+              id="searchInput"
+              placeholder="검색"
+              onfocus="openExploreSearch()"
+              oninput="handleExploreSearchInput()"
+              onkeyup="if (event.key === 'Enter') searchPosts();"
+            />
+            <span
+              class="material-symbols-outlined search-icon"
+              onclick="searchPosts()"
+              >search</span
+            >
+          </div>
+          <button
+            type="button"
+            class="search-cancel-btn"
+            onclick="closeExploreSearch()"
           >
+            취소
+          </button>
         </div>
       </div>
-      <main class="explore-content">
+      <main class="explore-content" id="exploreDiscoveryContent">
         <section class="explore-section" aria-labelledby="exploreHotTitle">
           <div class="explore-section-header">
             <div>
@@ -2366,8 +3273,120 @@
         <section
           class="explore-section"
           id="exploreSectionTwo"
-          aria-hidden="true"
-        ></section>
+          aria-labelledby="exploreAllTimeTitle"
+        >
+          <div class="explore-section-header">
+            <div>
+              <div class="explore-section-kicker">ALL-TIME FAVORITES</div>
+              <h2 class="explore-section-title" id="exploreAllTimeTitle">
+                역대 좋아요 TOP 10
+              </h2>
+            </div>
+            <span class="explore-section-badge">ALL TIME</span>
+          </div>
+          <p
+            class="explore-section-description"
+            id="exploreAllTimeDescription"
+          >
+            지금까지 좋아요가 가장 많았던 문장
+          </p>
+          <div
+            class="explore-card-rail"
+            id="exploreAllTimeRail"
+            aria-live="polite"
+          ></div>
+        </section>
+
+        <section
+          class="explore-section"
+          id="exploreMoodSection"
+          aria-labelledby="exploreMoodTitle"
+        >
+          <div class="explore-section-header">
+            <div>
+              <div class="explore-section-kicker">BY MOOD</div>
+              <h2 class="explore-section-title" id="exploreMoodTitle">
+                감성별 글 둘러보기
+              </h2>
+            </div>
+            <span class="explore-section-badge">5 MOODS</span>
+          </div>
+          <p class="explore-section-description" id="exploreMoodDescription">
+            마음에 가까운 감성을 골라보세요
+          </p>
+          <div
+            class="explore-mood-tabs"
+            id="exploreMoodTabs"
+            role="tablist"
+            aria-label="감성 선택"
+          ></div>
+          <div
+            class="explore-card-rail"
+            id="exploreMoodRail"
+            aria-live="polite"
+          ></div>
+        </section>
+      </main>
+
+      <main class="explore-search-content" id="exploreSearchContent" hidden>
+        <section
+          class="explore-search-section"
+          id="exploreRecentSearches"
+        >
+          <div class="explore-search-section-header">
+            <h2 class="explore-search-section-title">최근 검색</h2>
+            <button
+              type="button"
+              class="explore-search-clear"
+              onclick="clearExploreSearchHistory()"
+            >
+              전체 삭제
+            </button>
+          </div>
+          <div
+            class="explore-search-history-list"
+            id="exploreSearchHistoryList"
+          ></div>
+        </section>
+
+        <section
+          class="explore-search-section"
+          id="exploreSearchResults"
+          hidden
+        >
+          <p
+            class="explore-search-results-summary"
+            id="exploreSearchSummary"
+          ></p>
+
+          <div id="exploreSearchEmptyAll" hidden></div>
+
+          <section
+            class="explore-search-result-group"
+            id="exploreUserResultGroup"
+          >
+            <div class="explore-search-section-header">
+              <h2 class="explore-search-section-title">유저</h2>
+            </div>
+            <div
+              class="explore-search-user-list"
+              id="exploreUserResults"
+            ></div>
+          </section>
+
+          <section
+            class="explore-search-result-group"
+            id="explorePostResultGroup"
+          >
+            <div class="explore-search-section-header">
+              <h2 class="explore-search-section-title">게시물</h2>
+            </div>
+            <div
+              class="explore-search-post-list"
+              id="explorePostResults"
+            ></div>
+          </section>
+        </section>
       </main>
     </div>
 
@@ -2386,7 +3405,7 @@
           <div class="char-count" id="charCount">0 / 120 · 0 / 12줄</div>
         </div>
         <div class="write-bgm-field" style="margin-bottom: 12px">
-          <p class="write-bgm-label">이 글의 감성 온도는?</p>
+          <p class="write-bgm-label">이 글은 어떤 느낌인가요?</p>
           <input type="hidden" id="postMood" value="" />
           <button
             type="button"
@@ -2395,7 +3414,7 @@
             onclick="openMoodPicker()"
           >
             <span class="write-bgm-selected" id="selectedMoodLabel"
-              >감성을 선택해주세요</span
+              >느낌을 선택해주세요</span
             >
             <span
               class="material-symbols-outlined write-bgm-add-icon write-mood-icon"
@@ -2543,7 +3562,7 @@
           <span
             class="material-symbols-outlined"
             style="color: #fff; font-size: 1.8rem; cursor: pointer"
-            onclick="openSheet('settingsSheet')"
+            onclick="openSettingsView()"
             >menu</span
           >
         </header>
@@ -2633,7 +3652,27 @@
           <span class="material-symbols-outlined">arrow_back</span>
         </button>
         <h1 class="profile-title">프로필</h1>
-        <span class="user-profile-topbar-spacer"></span>
+        <div
+          class="user-profile-more-wrapper"
+          onclick="toggleMoreMenu(this, event)"
+        >
+          <button
+            type="button"
+            class="user-profile-more-btn"
+            aria-label="사용자 메뉴"
+          >
+            <span class="material-symbols-outlined">more_vert</span>
+          </button>
+          <div class="more-menu">
+            <button
+              type="button"
+              class="more-menu-item block-user"
+              onclick="blockUser(viewedProfileUserId)"
+            >
+              사용자 차단
+            </button>
+          </div>
+        </div>
       </header>
 
       <div class="viewed-profile-body">
@@ -2679,6 +3718,303 @@
 
       <div class="user-profile-posts-title">작성한 글</div>
       <div class="explore-grid" id="viewedProfileGrid"></div>
+    </div>
+
+    <div id="view-settings" class="app-view settings-view">
+      <header class="settings-page-topbar">
+        <button
+          type="button"
+          class="settings-page-back"
+          onclick="closeSettingsView()"
+          aria-label="프로필로 돌아가기"
+        >
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <h1 class="settings-page-title">설정</h1>
+        <span></span>
+      </header>
+
+      <main class="settings-page-content">
+        <section class="settings-section">
+          <h2 class="settings-section-title">계정센터</h2>
+          <div class="settings-card">
+            <button
+              type="button"
+              class="settings-row"
+              onclick="openAccountCenterView()"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >manage_accounts</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">계정센터</span>
+                <span class="settings-row-description"
+                  >로그인 정보와 계정 보안 관리</span
+                >
+              </span>
+              <span class="material-symbols-outlined settings-row-chevron"
+                >chevron_right</span
+              >
+            </button>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h2 class="settings-section-title">앱 설정</h2>
+          <div class="settings-card">
+            <button
+              type="button"
+              class="settings-row"
+              onclick="openThemeSettingsView()"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >dark_mode</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">다크모드 설정</span>
+                <span
+                  class="settings-row-description"
+                  id="currentThemePreferenceLabel"
+                  >시스템 테마</span
+                >
+              </span>
+              <span class="material-symbols-outlined settings-row-chevron"
+                >chevron_right</span
+              >
+            </button>
+            <button
+              type="button"
+              class="settings-row"
+              onclick="showAppAlert('알림 설정을 준비 중입니다.')"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >notifications</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">알림 설정</span>
+              </span>
+              <span class="material-symbols-outlined settings-row-chevron"
+                >chevron_right</span
+              >
+            </button>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h2 class="settings-section-title">고객센터</h2>
+          <div class="settings-card">
+            <button
+              type="button"
+              class="settings-row"
+              onclick="openNoticeSheet()"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >campaign</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">공지사항</span>
+              </span>
+              <span class="material-symbols-outlined settings-row-chevron"
+                >chevron_right</span
+              >
+            </button>
+            <button
+              type="button"
+              class="settings-row"
+              onclick="showAppAlert('고객센터를 준비 중입니다.')"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >help</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">FAQ / 고객센터</span>
+              </span>
+              <span class="material-symbols-outlined settings-row-chevron"
+                >chevron_right</span
+              >
+            </button>
+            <button
+              type="button"
+              class="settings-row"
+              id="adminCenterMenu"
+              style="display: none"
+              onclick="location.href = 'admin.html'"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >admin_panel_settings</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">관리자 센터</span>
+              </span>
+              <span class="material-symbols-outlined settings-row-chevron"
+                >chevron_right</span
+              >
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="view-theme-settings" class="app-view settings-view">
+      <header class="settings-page-topbar">
+        <button
+          type="button"
+          class="settings-page-back"
+          onclick="closeThemeSettingsView()"
+          aria-label="설정으로 돌아가기"
+        >
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <h1 class="settings-page-title">다크모드 설정</h1>
+        <span></span>
+      </header>
+
+      <main class="settings-page-content">
+        <section class="settings-section">
+          <h2 class="settings-section-title">테마 선택</h2>
+          <div class="settings-card">
+            <button
+              type="button"
+              class="settings-row theme-choice"
+              data-theme-option="dark"
+              onclick="setThemePreference('dark')"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >dark_mode</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">다크모드 사용</span>
+                <span class="settings-row-description"
+                  >항상 어두운 화면으로 표시</span
+                >
+              </span>
+              <span class="material-symbols-outlined theme-choice-check"
+                >radio_button_unchecked</span
+              >
+            </button>
+            <button
+              type="button"
+              class="settings-row theme-choice"
+              data-theme-option="light"
+              onclick="setThemePreference('light')"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >light_mode</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">다크모드 해제</span>
+                <span class="settings-row-description"
+                  >항상 밝은 화면으로 표시</span
+                >
+              </span>
+              <span class="material-symbols-outlined theme-choice-check"
+                >radio_button_unchecked</span
+              >
+            </button>
+            <button
+              type="button"
+              class="settings-row theme-choice"
+              data-theme-option="system"
+              onclick="setThemePreference('system')"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >settings_brightness</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">시스템 테마</span>
+                <span class="settings-row-description"
+                  >기기의 라이트·다크 설정에 맞춤</span
+                >
+              </span>
+              <span class="material-symbols-outlined theme-choice-check"
+                >radio_button_unchecked</span
+              >
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="view-account-center" class="app-view settings-view">
+      <header class="settings-page-topbar">
+        <button
+          type="button"
+          class="settings-page-back"
+          onclick="closeAccountCenterView()"
+          aria-label="설정으로 돌아가기"
+        >
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <h1 class="settings-page-title">계정센터</h1>
+        <span></span>
+      </header>
+
+      <main class="settings-page-content">
+        <section class="settings-section">
+          <h2 class="settings-section-title">계정정보</h2>
+          <div class="settings-card settings-account-summary">
+            <div class="settings-account-kicker">로그인 방식</div>
+            <div
+              class="settings-account-provider"
+              id="accountLoginProvider"
+            >
+              확인 중...
+            </div>
+            <div class="settings-account-email" id="accountLoginEmail"></div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h2 class="settings-section-title">계정 관리</h2>
+          <div class="settings-card">
+            <button
+              type="button"
+              class="settings-row"
+              onclick="openBlockedUsersSheet()"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >block</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">차단한 사용자 관리</span>
+                <span class="settings-row-description"
+                  >차단 목록 확인 및 해제</span
+                >
+              </span>
+              <span class="material-symbols-outlined settings-row-chevron"
+                >chevron_right</span
+              >
+            </button>
+            <button
+              type="button"
+              class="settings-row"
+              onclick="handleSignOut()"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >logout</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">로그아웃</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              class="settings-row is-danger"
+              onclick="requestAccountDeletion()"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >person_remove</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">회원 탈퇴</span>
+                <span class="settings-row-description"
+                  >모든 계정 정보와 작성한 콘텐츠 삭제</span
+                >
+              </span>
+            </button>
+          </div>
+        </section>
+      </main>
     </div>
 
     <div id="view-notice-detail" class="app-view">
@@ -2939,69 +4275,27 @@
         <button class="close-btn" onclick="closeMoodPicker()">✕</button>
       </div>
       <p class="mood-sheet-copy">
-        글이 머무는 분위기를 골라주세요. 선택한 감성은 추천 흐름에 함께
-        반영됩니다.
+        지금 쓴 글과 가장 가까운 느낌을 골라주세요.
       </p>
       <div class="mood-option-list" id="moodOptionList"></div>
     </div>
 
     <div
       class="sheet-backdrop"
-      id="settingsSheetBackdrop"
-      onclick="closeSheet('settingsSheet')"
+      id="blockedUsersSheetBackdrop"
+      onclick="closeSheet('blockedUsersSheet')"
     ></div>
 
-    <div class="bottom-sheet" id="settingsSheet">
+    <div class="bottom-sheet" id="blockedUsersSheet" style="height: 62%">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
-        <div class="sheet-title">설정 및 고객지원</div>
-        <button class="close-btn" onclick="closeSheet('settingsSheet')">
+        <div class="sheet-title">차단한 사용자</div>
+        <button class="close-btn" onclick="closeSheet('blockedUsersSheet')">
           ✕
         </button>
       </div>
-      <div style="flex-grow: 1; overflow-y: auto">
-        <div class="profile-menu-row" onclick="openNoticeSheet()">
-          <span>공지사항</span
-          ><span class="material-symbols-outlined profile-menu-chevron"
-            >chevron_right</span
-          >
-        </div>
-        <div class="profile-menu-row">
-          <span>다크모드 설정</span
-          ><span class="material-symbols-outlined profile-menu-chevron"
-            >chevron_right</span
-          >
-        </div>
-        <div class="profile-menu-row">
-          <span>알림 설정</span
-          ><span class="material-symbols-outlined profile-menu-chevron"
-            >chevron_right</span
-          >
-        </div>
-        <div class="profile-menu-row">
-          <span>FAQ / 고객센터</span
-          ><span class="material-symbols-outlined profile-menu-chevron"
-            >chevron_right</span
-          >
-        </div>
-        <div
-          class="profile-menu-row"
-          id="adminCenterMenu"
-          style="display: none"
-          onclick="location.href = 'admin.html'"
-        >
-          <span style="color: #ff3b30; font-weight: bold">🚨 관리자 센터</span
-          ><span class="material-symbols-outlined profile-menu-chevron"
-            >chevron_right</span
-          >
-        </div>
-        <div
-          class="profile-menu-row"
-          style="margin-top: 20px; border-top: 1px solid #222"
-          onclick="handleSignOut()"
-        >
-          <span class="logout-text">로그아웃</span>
-        </div>
+      <div class="follow-list" id="blockedUsersList">
+        <div class="profile-list-empty">차단 목록을 불러오는 중...</div>
       </div>
     </div>
 
@@ -3046,7 +4340,15 @@
         </div>
         <p class="app-alert-message" id="appAlertMessage"></p>
         <div class="app-alert-actions">
-          <button type="button" class="app-alert-button" data-app-alert-close>
+          <button
+            type="button"
+            class="app-alert-button secondary"
+            data-app-alert-cancel
+            hidden
+          >
+            취소
+          </button>
+          <button type="button" class="app-alert-button" data-app-alert-primary>
             확인
           </button>
         </div>
