@@ -7,6 +7,16 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <meta name="theme-color" id="themeColorMeta" content="#050505" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="글림" />
+
+    <link rel="apple-touch-icon" href="image/app-logo.png" />
+    <link rel="manifest" href="manifest.json" />
     <script>
       (() => {
         const key = "glim_theme_preference";
@@ -2993,7 +3003,9 @@
         background: #fffdfa;
         color: #312c29;
       }
-      html[data-theme="light"] .explore-search-history-row + .explore-search-history-row {
+      html[data-theme="light"]
+        .explore-search-history-row
+        + .explore-search-history-row {
         border-color: rgba(74, 54, 43, 0.08);
       }
       html[data-theme="light"] .explore-search-history-query,
@@ -3284,10 +3296,7 @@
             </div>
             <span class="explore-section-badge">ALL TIME</span>
           </div>
-          <p
-            class="explore-section-description"
-            id="exploreAllTimeDescription"
-          >
+          <p class="explore-section-description" id="exploreAllTimeDescription">
             지금까지 좋아요가 가장 많았던 문장
           </p>
           <div
@@ -3329,10 +3338,7 @@
       </main>
 
       <main class="explore-search-content" id="exploreSearchContent" hidden>
-        <section
-          class="explore-search-section"
-          id="exploreRecentSearches"
-        >
+        <section class="explore-search-section" id="exploreRecentSearches">
           <div class="explore-search-section-header">
             <h2 class="explore-search-section-title">최근 검색</h2>
             <button
@@ -3368,10 +3374,7 @@
             <div class="explore-search-section-header">
               <h2 class="explore-search-section-title">유저</h2>
             </div>
-            <div
-              class="explore-search-user-list"
-              id="exploreUserResults"
-            ></div>
+            <div class="explore-search-user-list" id="exploreUserResults"></div>
           </section>
 
           <section
@@ -3381,10 +3384,7 @@
             <div class="explore-search-section-header">
               <h2 class="explore-search-section-title">게시물</h2>
             </div>
-            <div
-              class="explore-search-post-list"
-              id="explorePostResults"
-            ></div>
+            <div class="explore-search-post-list" id="explorePostResults"></div>
           </section>
         </section>
       </main>
@@ -3954,10 +3954,7 @@
           <h2 class="settings-section-title">계정정보</h2>
           <div class="settings-card settings-account-summary">
             <div class="settings-account-kicker">로그인 방식</div>
-            <div
-              class="settings-account-provider"
-              id="accountLoginProvider"
-            >
+            <div class="settings-account-provider" id="accountLoginProvider">
               확인 중...
             </div>
             <div class="settings-account-email" id="accountLoginEmail"></div>
@@ -4274,9 +4271,7 @@
         <div class="sheet-title">감성 온도</div>
         <button class="close-btn" onclick="closeMoodPicker()">✕</button>
       </div>
-      <p class="mood-sheet-copy">
-        지금 쓴 글과 가장 가까운 느낌을 골라주세요.
-      </p>
+      <p class="mood-sheet-copy">지금 쓴 글과 가장 가까운 느낌을 골라주세요.</p>
       <div class="mood-option-list" id="moodOptionList"></div>
     </div>
 
