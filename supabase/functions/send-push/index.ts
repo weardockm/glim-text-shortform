@@ -114,6 +114,7 @@ function getPushCopy(
   category: string,
   actorNickname: string,
   noticeTitle = "",
+  commentPreview = "",
 ) {
   if (category === "likes") {
     return {
@@ -124,7 +125,9 @@ function getPushCopy(
   if (category === "comments") {
     return {
       title: "새로운 생각이 도착했어요",
-      body: `${actorNickname}님이 회원님의 글에 댓글을 남겼어요.`,
+      body: commentPreview
+        ? `${actorNickname}님 · “${commentPreview}”`
+        : `${actorNickname}님이 회원님의 글에 댓글을 남겼어요.`,
     };
   }
   if (category === "follows") {
@@ -258,10 +261,26 @@ Deno.serve(async (request) => {
       user.user_metadata?.random_nickname ||
       user.user_metadata?.name ||
       "누군가";
+    let commentPreview = "";
+    if (category === "comments" && body.postId) {
+      const { data: latestComment } = await admin
+        .from("comments")
+        .select("content")
+        .eq("post_id", body.postId)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      commentPreview = String(latestComment?.content || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 60);
+    }
     const copy = getPushCopy(
       category,
       String(actorNickname).slice(0, 40),
       String(body.title || "").slice(0, 70),
+      commentPreview,
     );
     const accessToken = await createServiceAccountAccessToken(account);
     const dedupeKey = getDedupeKey(user.id, body);
@@ -296,7 +315,11 @@ Deno.serve(async (request) => {
                 body: copy.body,
                 category,
                 postId: String(body.postId || ""),
-                url: "./",
+                url: body.postId
+                  ? `./?notificationPost=${encodeURIComponent(
+                      String(body.postId),
+                    )}&notificationType=${encodeURIComponent(category)}`
+                  : "./?tab=noti",
               },
               webpush: {
                 headers: { Urgency: category === "announcements" ? "normal" : "high" },

@@ -19,6 +19,7 @@ let viewedProfileIsFollowing = false;
 let userProfileReturnViewId = "view-home";
 let contextFeedReturnViewId = "view-home";
 let noticeReturnViewId = "view-settings";
+let legalReturnViewId = "view-settings";
 let isRefreshing = false;
 let lastNavTapTab = null;
 let lastNavTapTime = 0;
@@ -59,11 +60,17 @@ const NOTIFICATION_PREFERENCE_KEYS = new Set(
 );
 const FIREBASE_WEB_SDK_VERSION = "12.15.0";
 const PUSH_FID_STORAGE_PREFIX = "glim_push_fid";
+const PUSH_ONBOARDING_STORAGE_PREFIX = "glim_push_onboarding_seen";
+const APP_SPLASH_MIN_VISIBLE_MS = 950;
+const appSplashStartedAt = Date.now();
 let firebasePushModulesPromise = null;
 let pushMessaging = null;
 let pushServiceWorkerRegistration = null;
 let pushEventListenersReady = false;
 let pendingPushRegistration = null;
+let pushOnboardingTimer = null;
+let appSplashHideTimer = null;
+let appSplashFinished = false;
 const systemThemeMediaQuery = window.matchMedia(
   "(prefers-color-scheme: dark)",
 );
@@ -1109,6 +1116,26 @@ function generateRandomNickname() {
   return `${adj} ${noun} ${num}`;
 }
 
+function hideAppSplash({ force = false } = {}) {
+  if (appSplashFinished) return;
+  const splash = document.getElementById("appSplash");
+  if (!splash) {
+    appSplashFinished = true;
+    return;
+  }
+
+  const remainingTime = force
+    ? 0
+    : Math.max(0, APP_SPLASH_MIN_VISIBLE_MS - (Date.now() - appSplashStartedAt));
+  clearTimeout(appSplashHideTimer);
+  appSplashHideTimer = window.setTimeout(() => {
+    if (appSplashFinished) return;
+    appSplashFinished = true;
+    splash.classList.add("is-hiding");
+    window.setTimeout(() => splash.remove(), 560);
+  }, remainingTime);
+}
+
 async function init() {
   setupThemePreferences();
   setupAppAlert();
@@ -1132,6 +1159,8 @@ async function init() {
     console.warn("푸시 알림 초기화 실패:", error);
   });
   await fetchPosts();
+  await handleNotificationDeepLink();
+  schedulePushOnboarding();
 
   client.auth.onAuthStateChange(async (_event, session) => {
     currentUser = session?.user || null;
@@ -1146,6 +1175,7 @@ async function init() {
     initializePushNotifications().catch((error) => {
       console.warn("푸시 알림 초기화 실패:", error);
     });
+    schedulePushOnboarding();
   });
 
   [
@@ -2673,6 +2703,64 @@ function getPushFidStorageKey(userId = currentUser?.id) {
   return userId ? `${PUSH_FID_STORAGE_PREFIX}_${userId}` : "";
 }
 
+function getPushOnboardingStorageKey(userId = currentUser?.id) {
+  return userId ? `${PUSH_ONBOARDING_STORAGE_PREFIX}_${userId}` : "";
+}
+
+function hasSeenPushOnboarding(userId = currentUser?.id) {
+  const storageKey = getPushOnboardingStorageKey(userId);
+  if (!storageKey) return false;
+  try {
+    return localStorage.getItem(storageKey) === "true";
+  } catch (_error) {
+    return false;
+  }
+}
+
+function markPushOnboardingSeen(userId = currentUser?.id) {
+  const storageKey = getPushOnboardingStorageKey(userId);
+  if (!storageKey) return;
+  try {
+    localStorage.setItem(storageKey, "true");
+  } catch (_error) {}
+}
+
+function schedulePushOnboarding(delay = 900) {
+  clearTimeout(pushOnboardingTimer);
+  pushOnboardingTimer = window.setTimeout(showPushOnboardingIfNeeded, delay);
+}
+
+function showPushOnboardingIfNeeded() {
+  pushOnboardingTimer = null;
+  if (
+    !currentUser ||
+    !isRunningAsInstalledApp() ||
+    !isPushConfigured() ||
+    !isPushBrowserSupported() ||
+    Notification.permission === "denied" ||
+    getStoredPushFid() ||
+    hasSeenPushOnboarding()
+  ) {
+    return;
+  }
+
+  if (document.getElementById("appAlert")?.classList.contains("open")) {
+    schedulePushOnboarding(1200);
+    return;
+  }
+
+  markPushOnboardingSeen();
+  showAppConfirm(
+    "좋아요와 댓글, 새로운 팔로우 소식을 앱을 닫은 뒤에도 받아볼 수 있어요.",
+    () => togglePushNotifications(true),
+    {
+      title: "알림을 받아볼까요?",
+      icon: "notifications_active",
+      confirmText: "알림 켜기",
+    },
+  );
+}
+
 function getStoredPushFid(userId = currentUser?.id) {
   const storageKey = getPushFidStorageKey(userId);
   if (!storageKey) return "";
@@ -2801,6 +2889,9 @@ function setupPushEventListeners(modules) {
       data.body ||
         payload?.notification?.body ||
         "글림에 새로운 소식이 도착했습니다.",
+      data.postId
+        ? () => openNotificationPost(data.postId, data.category)
+        : undefined,
     );
     if (document.getElementById("view-noti")?.classList.contains("active")) {
       fetchNotifications();
@@ -2945,6 +3036,7 @@ async function togglePushNotifications(isEnabled) {
       throw error;
     }
     await registrationPromise;
+    markPushOnboardingSeen();
     showAppAlert("이 기기의 푸시 알림을 켰습니다.");
   } catch (error) {
     console.warn("푸시 알림 설정 실패:", error);
@@ -3174,19 +3266,23 @@ function closeNotificationSettingsView() {
 }
 
 function openPrivacyPolicyView() {
+  legalReturnViewId =
+    document.querySelector(".app-view.active")?.id || "view-settings";
   activateAppView("view-privacy-policy");
 }
 
 function closePrivacyPolicyView() {
-  activateAppView("view-settings");
+  activateAppView(legalReturnViewId);
 }
 
 function openTermsOfServiceView() {
+  legalReturnViewId =
+    document.querySelector(".app-view.active")?.id || "view-settings";
   activateAppView("view-terms-of-service");
 }
 
 function closeTermsOfServiceView() {
-  activateAppView("view-settings");
+  activateAppView(legalReturnViewId);
 }
 
 function openThemeSettingsView() {
@@ -4885,16 +4981,22 @@ async function submitComment() {
       .eq("id", currentPostIdForComment);
 
     if (postData.author !== myNickname) {
-      const { error: notificationError } = await client
+      const notificationPayload = {
+        target_user: postData.author,
+        actor_nickname: myNickname,
+        type: "comment",
+        post_id: currentPostIdForComment,
+        preview_text: content.slice(0, 100),
+      };
+      let { error: notificationError } = await client
         .from("notifications")
-        .insert([
-          {
-            target_user: postData.author,
-            actor_nickname: myNickname,
-            type: "comment",
-            post_id: currentPostIdForComment,
-          },
-        ]);
+        .insert([notificationPayload]);
+      if (notificationError?.code === "PGRST204") {
+        delete notificationPayload.preview_text;
+        ({ error: notificationError } = await client
+          .from("notifications")
+          .insert([notificationPayload]));
+      }
       if (notificationError) {
         console.warn("앱 내부 댓글 알림 저장 실패:", notificationError.message);
       }
@@ -4933,6 +5035,85 @@ function getAnnouncementNotificationTitle(content) {
     : withoutPrefix.split(/\r?\n/).find((line) => line.trim());
   const title = String(titleCandidate || "").trim();
   return title ? title.slice(0, 70) : "글림의 새로운 소식";
+}
+
+async function openNotificationPost(postId, notificationType = "") {
+  if (!postId) return;
+  const { data: post, error } = await client
+    .from("posts")
+    .select("*")
+    .eq("id", postId)
+    .maybeSingle();
+  if (error || !post) {
+    showAppAlert("삭제되었거나 더 이상 볼 수 없는 글입니다.");
+    return;
+  }
+  if (
+    blockedUserIds.has(post.user_id) ||
+    blockedUserNicknames.has(post.author || "")
+  ) {
+    showAppAlert("차단한 사용자의 글은 볼 수 없습니다.");
+    return;
+  }
+
+  const contextKey = "notification-post";
+  contextPostCollections.set(contextKey, [post]);
+  contextPostTitles.set(contextKey, "알림에서 본 글");
+  openContextPostFeed(contextKey, 0);
+
+  if (["comment", "comments"].includes(notificationType)) {
+    window.setTimeout(() => openSheet("commentSheet", post.id), 260);
+  }
+}
+
+async function openNotificationTarget(element) {
+  const type = element?.dataset?.notificationType || "";
+  const postId = element?.dataset?.postId || "";
+  const actorNickname = element?.dataset?.actorNickname || "";
+
+  if (type === "announcement") {
+    openNoticeSheet();
+    return;
+  }
+  if (postId) {
+    await openNotificationPost(postId, type);
+    return;
+  }
+  if (type === "follow" && actorNickname) {
+    const { data: profile } = await client
+      .from("profiles")
+      .select("id")
+      .eq("nickname", actorNickname)
+      .maybeSingle();
+    if (profile?.id) {
+      await openUserProfile(profile.id);
+    } else {
+      showAppAlert("사용자 프로필을 찾을 수 없습니다.");
+    }
+  }
+}
+
+async function handleNotificationDeepLink() {
+  const url = new URL(window.location.href);
+  const postId = url.searchParams.get("notificationPost") || "";
+  const notificationType = url.searchParams.get("notificationType") || "";
+  const tab = url.searchParams.get("tab") || "";
+  if (!postId && tab !== "noti") return;
+
+  url.searchParams.delete("notificationPost");
+  url.searchParams.delete("notificationType");
+  url.searchParams.delete("tab");
+  window.history.replaceState(
+    {},
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
+
+  if (postId) {
+    await openNotificationPost(postId, notificationType);
+  } else if (tab === "noti") {
+    switchTab("noti");
+  }
 }
 
 async function fetchNotifications() {
@@ -5027,6 +5208,7 @@ async function fetchNotifications() {
       let icon = "notifications";
       let iconClass = "";
       let text = "";
+      let preview = "";
       const actor = escapeHtml(n.actor_nickname || "누군가");
 
       if (n.type === "like") {
@@ -5037,6 +5219,9 @@ async function fetchNotifications() {
         icon = "chat_bubble";
         iconClass = "comment";
         text = `<strong>${actor}</strong>님이 회원님의 글에 생각을 남겼습니다.`;
+        if (n.preview_text) {
+          preview = `<div class="noti-preview">“${escapeHtml(n.preview_text)}”</div>`;
+        }
       } else if (n.type === "follow") {
         icon = "person_add";
         iconClass = "follow";
@@ -5048,10 +5233,12 @@ async function fetchNotifications() {
       } else {
         text = "새로운 알림이 도착했습니다.";
       }
-      const isAnnouncement = n.type === "announcement";
-      const itemClass = `noti-item${isAnnouncement ? " is-actionable" : ""}`;
-      const itemAttributes = isAnnouncement
-        ? `role="button" tabindex="0" onclick="openNoticeSheet()" onkeydown="if(event.key === 'Enter' || event.key === ' '){event.preventDefault();openNoticeSheet();}"`
+      const isActionable = Boolean(
+        n.type === "announcement" || n.post_id || n.type === "follow",
+      );
+      const itemClass = `noti-item${isActionable ? " is-actionable" : ""}`;
+      const itemAttributes = isActionable
+        ? `role="button" tabindex="0" data-notification-type="${escapeHtml(n.type || "")}" data-post-id="${escapeHtml(n.post_id || "")}" data-actor-nickname="${escapeHtml(n.actor_nickname || "")}" onclick="openNotificationTarget(this)" onkeydown="if(event.key === 'Enter' || event.key === ' '){event.preventDefault();openNotificationTarget(this);}"`
         : `role="listitem"`;
 
       return `
@@ -5059,6 +5246,7 @@ async function fetchNotifications() {
         <span class="material-symbols-outlined noti-icon ${iconClass}">${escapeHtml(icon)}</span>
         <div class="noti-content">
           <div class="noti-text">${text}</div>
+          ${preview}
           <div class="noti-time">${timeForToday(n.created_at)}</div>
         </div>
       </div>
@@ -5695,4 +5883,9 @@ function viewNoticeDetail(title, date, content) {
   `;
 }
 
-init();
+window.setTimeout(() => hideAppSplash({ force: true }), 7000);
+init()
+  .catch((error) => {
+    console.error("앱 초기화 실패:", error);
+  })
+  .finally(() => hideAppSplash());

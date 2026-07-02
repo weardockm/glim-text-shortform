@@ -17,6 +17,7 @@
 
     <link rel="apple-touch-icon" href="image/app-logo.png" />
     <link rel="manifest" href="manifest.json" />
+    <link rel="preload" as="image" href="image/app-logo.png" />
     <script>
       (() => {
         const key = "glim_theme_preference";
@@ -59,7 +60,7 @@
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="push-config.js?v=2"></script>
-    <script src="index.js?v=57" defer></script>
+    <script src="index.js?v=61" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -85,6 +86,106 @@
         color: #f0f0f0;
         font-family: "Noto Serif KR", serif;
         overflow: hidden;
+      }
+      .app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        width: 100%;
+        height: 100vh;
+        height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: #050505;
+        opacity: 1;
+        visibility: visible;
+        transition:
+          opacity 0.52s ease,
+          visibility 0s linear 0s;
+      }
+      .app-splash::before {
+        content: "";
+        position: absolute;
+        width: min(78vw, 390px);
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle,
+          rgba(233, 173, 121, 0.11) 0%,
+          rgba(233, 173, 121, 0.035) 42%,
+          transparent 72%
+        );
+        filter: blur(5px);
+        transform: scale(0.9);
+        animation: splashGlow 2.2s ease-in-out infinite;
+      }
+      .app-splash-inner {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        transform: translateY(-2vh);
+        transition:
+          opacity 0.42s ease,
+          transform 0.52s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      .app-splash-logo-frame {
+        width: 112px;
+        height: 112px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 50%;
+        background: #ece3d3;
+        box-shadow:
+          0 24px 70px rgba(0, 0, 0, 0.48),
+          0 0 32px rgba(219, 163, 117, 0.08);
+        animation: splashBreathe 1.8s ease-in-out infinite;
+      }
+      .app-splash-logo {
+        width: 100%;
+        height: 100%;
+        display: block;
+        object-fit: cover;
+      }
+      .app-splash.is-hiding {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition:
+          opacity 0.52s ease,
+          visibility 0s linear 0.52s;
+      }
+      .app-splash.is-hiding .app-splash-inner {
+        opacity: 0;
+        transform: translateY(-2vh) scale(0.95);
+      }
+      @keyframes splashBreathe {
+        0%,
+        100% {
+          transform: scale(0.97);
+        }
+        50% {
+          transform: scale(1);
+        }
+      }
+      @keyframes splashGlow {
+        0%,
+        100% {
+          opacity: 0.62;
+          transform: scale(0.9);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .app-splash::before,
+        .app-splash-logo-frame {
+          animation: none;
+        }
       }
       .header {
         position: fixed;
@@ -2201,6 +2302,26 @@
         font-size: 0.78rem;
         line-height: 1.35;
       }
+      .login-consent {
+        margin: 14px 4px 0;
+        color: #777;
+        font-size: 0.68rem;
+        line-height: 1.55;
+        text-align: center;
+        word-break: keep-all;
+      }
+      .login-consent-link {
+        appearance: none;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: #aaa;
+        font: inherit;
+        font-weight: 700;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        cursor: pointer;
+      }
       .login-card-footnote {
         margin-top: 12px;
         color: #6f6f6f;
@@ -2956,16 +3077,16 @@
       .noti-list {
         display: flex;
         flex-direction: column;
-        gap: 10px;
-        padding: 14px 16px 84px;
+        gap: 7px;
+        padding: 10px 14px 80px;
       }
       .noti-item {
         display: flex;
         align-items: flex-start;
-        gap: 13px;
+        gap: 10px;
         position: relative;
         overflow: hidden;
-        padding: 15px 15px 14px;
+        padding: 10px 12px;
         border: 1px solid rgba(255, 255, 255, 0.07);
         border-radius: 8px;
         background: rgba(15, 15, 15, 0.92);
@@ -2987,8 +3108,8 @@
       }
       .noti-icon {
         flex: 0 0 auto;
-        width: 36px;
-        height: 36px;
+        width: 32px;
+        height: 32px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -2996,8 +3117,7 @@
         border-radius: 50%;
         background: rgba(255, 255, 255, 0.05);
         color: #fff;
-        font-size: 1.16rem;
-        margin-top: 1px;
+        font-size: 1.05rem;
       }
       .noti-icon.like {
         color: #ff3b30;
@@ -3021,7 +3141,7 @@
         padding-top: 1px;
       }
       .noti-text {
-        font-size: 0.95rem;
+        font-size: 0.88rem;
         color: #dedede;
         line-height: 1.45;
         font-family: -apple-system, sans-serif;
@@ -3031,17 +3151,29 @@
         color: #fff;
         font-weight: 700;
       }
+      .noti-preview {
+        display: -webkit-box;
+        overflow: hidden;
+        margin-top: 5px;
+        color: #9a9a9a;
+        font-size: 0.76rem;
+        line-height: 1.35;
+        font-family: -apple-system, sans-serif;
+        word-break: break-word;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
       .noti-time {
         display: inline-flex;
         align-items: center;
-        min-height: 20px;
-        margin-top: 8px;
+        min-height: 18px;
+        margin-top: 5px;
         padding: 0 7px;
         border: 1px solid rgba(255, 255, 255, 0.06);
         border-radius: 999px;
         background: rgba(255, 255, 255, 0.035);
         color: #7b7b7b;
-        font-size: 0.72rem;
+        font-size: 0.68rem;
         font-family: -apple-system, sans-serif;
       }
       .noti-state {
@@ -3648,6 +3780,12 @@
       html[data-theme="light"] .stat-label,
       html[data-theme="light"] .login-card-copy,
       html[data-theme="light"] .logged-out-copy,
+      html[data-theme="light"] .login-consent {
+        color: #8c817a;
+      }
+      html[data-theme="light"] .login-consent-link {
+        color: #65574f;
+      }
       html[data-theme="light"] .login-card-footnote,
       html[data-theme="light"] .noti-state-desc {
         color: #776d66;
@@ -3725,6 +3863,26 @@
     </style>
   </head>
   <body>
+    <div
+      class="app-splash"
+      id="appSplash"
+      role="status"
+      aria-label="글림을 불러오는 중"
+      aria-live="polite"
+    >
+      <div class="app-splash-inner">
+        <div class="app-splash-logo-frame">
+          <img
+            class="app-splash-logo"
+            src="image/app-logo.png"
+            alt=""
+            aria-hidden="true"
+            fetchpriority="high"
+            decoding="sync"
+          />
+        </div>
+      </div>
+    </div>
     <div class="header"><div class="logo">글림</div></div>
     <div class="refresh-indicator" id="refreshIndicator" aria-live="polite">
       <img
@@ -4105,6 +4263,25 @@
             </button>
             <p class="login-card-footnote">
               로그인 후에도 글림의 조용한 분위기는 그대로 이어집니다.
+            </p>
+            <p class="login-consent">
+              소셜 로그인을 계속하면 본인은
+              <button
+                type="button"
+                class="login-consent-link"
+                onclick="openTermsOfServiceView()"
+              >
+                서비스 이용약관
+              </button>
+              및
+              <button
+                type="button"
+                class="login-consent-link"
+                onclick="openPrivacyPolicyView()"
+              >
+                개인정보 처리방침
+              </button>
+              에 동의합니다.
             </p>
           </section>
         </div>
