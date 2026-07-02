@@ -2823,7 +2823,7 @@ async function getPushMessagingContext() {
 
   if (!pushServiceWorkerRegistration) {
     pushServiceWorkerRegistration = await navigator.serviceWorker.register(
-      "./firebase-messaging-sw.js",
+      "./firebase-messaging-sw.js?v=2",
       {
         scope: "./",
         updateViaCache: "none",
@@ -3018,10 +3018,35 @@ async function sendPushNotification(targetUserId, category, postId = "") {
   ) {
     return;
   }
-  const { error } = await client.functions.invoke("send-push", {
-    body: { targetUserId, category, postId },
-  });
-  if (error) console.warn("푸시 알림 발송 요청 실패:", error.message);
+
+  try {
+    const {
+      data: { session },
+    } = await client.auth.getSession();
+    if (!session?.access_token) {
+      console.warn("푸시 알림 발송 요청 실패: 로그인 세션이 없습니다.");
+      return;
+    }
+
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ targetUserId, category, postId }),
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      console.warn(
+        "푸시 알림 발송 요청 실패:",
+        result.error || `${response.status} ${response.statusText}`,
+      );
+    }
+  } catch (error) {
+    console.warn("푸시 알림 발송 요청 실패:", error);
+  }
 }
 
 function renderNotificationSettingsUI() {

@@ -1,4 +1,4 @@
-importScripts("./push-config.js");
+importScripts("./push-config.js?v=2");
 
 const pushConfig = self.GLIM_PUSH_CONFIG;
 const firebaseConfig = pushConfig?.firebase || {};

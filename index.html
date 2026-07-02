@@ -11,7 +11,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta
       name="apple-mobile-web-app-status-bar-style"
-      content="black-translucent"
+      content="black"
     />
     <meta name="apple-mobile-web-app-title" content="글림" />
 
@@ -58,8 +58,8 @@
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0..1,0"
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="push-config.js"></script>
-    <script src="index.js?v=55" defer></script>
+    <script src="push-config.js?v=2"></script>
+    <script src="index.js?v=56" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -75,11 +75,7 @@
       }
       :root {
         --top-safe-space: env(safe-area-inset-top, 0px);
-        --bottom-safe-space: clamp(
-          8px,
-          env(safe-area-inset-bottom, 0px),
-          14px
-        );
+        --bottom-safe-space: 10px;
         --bottom-nav-height: calc(60px + var(--bottom-safe-space));
       }
       body,
