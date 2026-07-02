@@ -1,7 +1,9 @@
 {
   "name": "글림 - 텍스트 숏폼",
   "short_name": "글림",
+  "id": "./",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#050505",
   "theme_color": "#050505",

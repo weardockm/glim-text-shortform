@@ -127,22 +127,39 @@ async function submitNotice() {
   if (!confirm("공지사항을 등록하시겠습니까?")) return;
 
   // DB에 저장할 때 구분자(|||)를 두어 제목과 내용을 분리 저장
-  const { error } = await client.from("posts").insert([
-    {
-      content: "[공지]" + title + "|||" + content,
-      author: "🚨글림 운영자",
-      likes_count: 0,
-      dislikes_count: 0,
-      reports_count: 0,
-    },
-  ]);
+  const { data: notice, error } = await client
+    .from("posts")
+    .insert([
+      {
+        content: "[공지]" + title + "|||" + content,
+        author: "🚨글림 운영자",
+        likes_count: 0,
+        dislikes_count: 0,
+        reports_count: 0,
+      },
+    ])
+    .select("id")
+    .single();
 
   if (error) {
     alert("공지 등록 중 오류가 발생했습니다: " + error.message);
   } else {
-    alert("공지사항이 성공적으로 등록되었습니다!");
+    const { error: pushError } = await client.functions.invoke("send-push", {
+      body: {
+        broadcast: true,
+        category: "announcements",
+        postId: notice.id,
+        title,
+      },
+    });
+    alert(
+      pushError
+        ? "공지는 등록됐지만 푸시 발송에 실패했습니다: " + pushError.message
+        : "공지사항을 등록하고 푸시 알림을 발송했습니다!",
+    );
     document.getElementById("adminNoticeTitle").value = ""; // 제목 비우기
     document.getElementById("adminNoticeContent").value = ""; // 내용 비우기
+    fetchAdminNotices();
   }
 }
 

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <meta name="theme-color" id="themeColorMeta" content="#050505" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -58,7 +58,8 @@
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0..1,0"
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="index.js?v=46" defer></script>
+    <script src="push-config.js"></script>
+    <script src="index.js?v=54" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -124,10 +125,12 @@
         pointer-events: none;
         transform: translate(-50%, -70px) scale(0.92);
         transition:
-          opacity 0.75s ease,
-          transform 0.55s cubic-bezier(0.25, 1, 0.5, 1),
-          visibility 0s linear 0.75s;
+          opacity 0.24s ease,
+          transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+          visibility 0s linear 0.42s;
         backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        will-change: transform, opacity;
       }
       #refreshIndicatorText {
         text-align: center;
@@ -138,15 +141,15 @@
         visibility: visible;
         transform: translate(-50%, 0) scale(1);
         transition:
-          opacity 0.18s ease,
-          transform 0.3s cubic-bezier(0.25, 1, 0.5, 1),
+          opacity 0.2s ease,
+          transform 0.36s cubic-bezier(0.22, 1, 0.36, 1),
           visibility 0s;
       }
       .refresh-indicator-icon {
         width: 24px; /* 글리머 크기에 맞게 조절 */
         height: 24px;
         object-fit: contain;
-        transition: transform 0.15s ease;
+        transition: transform 0.1s linear;
       }
 
       /* 빙글빙글 도는 애니메이션 대신 둥둥 떠다니는 애니메이션으로 교체 */
@@ -183,7 +186,10 @@
         height: 100vh;
         height: 100dvh;
         width: 100%;
-        padding-bottom: 65px;
+        padding-bottom: 73px;
+        padding-bottom: calc(
+          65px + max(8px, env(safe-area-inset-bottom, 0px))
+        );
         overflow-y: auto;
       }
       .app-view.active {
@@ -322,7 +328,10 @@
       }
       .author-info {
         position: absolute;
-        bottom: 90px;
+        bottom: 98px;
+        bottom: calc(
+          90px + max(8px, env(safe-area-inset-bottom, 0px))
+        );
         left: 20px;
         max-width: calc(100% - 120px);
         opacity: 0;
@@ -355,7 +364,10 @@
       .side-actions {
         position: absolute;
         right: 15px;
-        bottom: 90px;
+        bottom: 98px;
+        bottom: calc(
+          90px + max(8px, env(safe-area-inset-bottom, 0px))
+        );
         display: flex;
         flex-direction: column;
         gap: 20px;
@@ -440,7 +452,10 @@
         bottom: 0;
         left: 0;
         width: 100%;
-        height: 65px;
+        height: 73px;
+        height: calc(
+          65px + max(8px, env(safe-area-inset-bottom, 0px))
+        );
         background: rgba(5, 5, 5, 0.85);
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
@@ -449,7 +464,8 @@
         justify-content: space-around;
         align-items: center;
         z-index: 50;
-        padding-bottom: env(safe-area-inset-bottom);
+        padding-bottom: 8px;
+        padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
       }
       .bottom-nav.is-hidden {
         display: none;
@@ -1531,6 +1547,15 @@
         color: #3c4043;
         border: 1px solid #dadce0;
       }
+      .apple-btn {
+        background: #000;
+        color: #fff;
+        border: 1px solid #343434;
+        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+      }
+      .apple-icon {
+        fill: currentColor;
+      }
       .auth-input {
         width: 100%;
         background: #0a0a0a;
@@ -2056,6 +2081,7 @@
       }
       .auth-container {
         min-height: 100%;
+        position: relative;
         padding: 46px 20px 92px;
         background:
           linear-gradient(
@@ -2064,6 +2090,30 @@
             transparent 260px
           ),
           #050505;
+      }
+      .logged-out-settings-btn {
+        position: absolute;
+        top: max(14px, env(safe-area-inset-top, 0px));
+        right: 16px;
+        z-index: 5;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 50%;
+        background: rgba(18, 18, 18, 0.76);
+        color: #e6e6e6;
+        cursor: pointer;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+      .logged-out-settings-btn:active {
+        transform: scale(0.94);
+      }
+      .logged-out-settings-btn .material-symbols-outlined {
+        font-size: 1.45rem;
       }
       .logged-out-profile {
         width: min(100%, 440px);
@@ -2303,6 +2353,44 @@
         line-height: 1.55;
         white-space: pre-line;
         word-break: keep-all;
+        text-wrap: pretty;
+      }
+      .app-alert-verification {
+        margin-top: 16px;
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.035);
+      }
+      .app-alert-verification[hidden] {
+        display: none;
+      }
+      .app-alert-verification-label {
+        display: block;
+        margin-bottom: 9px;
+        color: #bdbdbd;
+        font-size: 0.8rem;
+        line-height: 1.45;
+        word-break: keep-all;
+      }
+      .app-alert-verification-input {
+        width: 100%;
+        min-height: 42px;
+        padding: 10px 12px;
+        border: 1px solid #3a3a3a;
+        border-radius: 8px;
+        outline: none;
+        background: #090909;
+        color: #f2f2f2;
+        font-size: 0.95rem;
+        font-family: -apple-system, sans-serif;
+        transition:
+          border-color 0.18s ease,
+          box-shadow 0.18s ease;
+      }
+      .app-alert-verification-input:focus {
+        border-color: #8d5e58;
+        box-shadow: 0 0 0 3px rgba(229, 85, 79, 0.1);
       }
       .app-alert-actions {
         display: flex;
@@ -2324,6 +2412,11 @@
       }
       .app-alert-button:active {
         transform: scale(0.97);
+      }
+      .app-alert-button:disabled {
+        opacity: 0.34;
+        cursor: not-allowed;
+        transform: none;
       }
       .app-alert-button.secondary {
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -2492,6 +2585,10 @@
       .settings-section {
         margin-bottom: 28px;
       }
+      .settings-section[hidden],
+      .settings-row[hidden] {
+        display: none !important;
+      }
       .settings-section-title {
         margin: 0 4px 10px;
         color: #8d837d;
@@ -2576,6 +2673,144 @@
         color: #ff9e69;
         font-variation-settings: "FILL" 1;
       }
+      .notification-settings-intro {
+        margin: 0 3px 18px;
+        color: #817a75;
+        font-size: 0.82rem;
+        line-height: 1.6;
+        word-break: keep-all;
+      }
+      .notification-setting-row {
+        min-height: 76px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 13px 14px;
+        cursor: pointer;
+        font-family: -apple-system, sans-serif;
+      }
+      .notification-setting-row + .notification-setting-row {
+        border-top: 1px solid rgba(255, 255, 255, 0.065);
+      }
+      .notification-setting-row:active {
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .notification-setting-icon {
+        flex: 0 0 auto;
+        width: 38px;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 11px;
+        background: rgba(255, 255, 255, 0.055);
+        color: #d9c8bd;
+        font-size: 1.18rem;
+      }
+      .notification-setting-icon.like {
+        color: #e75b59;
+      }
+      .notification-setting-icon.comment {
+        color: #d9d9d9;
+      }
+      .notification-setting-icon.follow {
+        color: #6699e8;
+      }
+      .notification-setting-icon.announcement {
+        color: #e9a26f;
+      }
+      .notification-setting-icon.device {
+        color: #dbac87;
+      }
+      .notification-setting-copy {
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+      .notification-setting-title {
+        display: block;
+        color: #eee;
+        font-size: 0.93rem;
+        font-weight: 700;
+      }
+      .notification-setting-description {
+        display: block;
+        margin-top: 5px;
+        color: #777;
+        font-size: 0.74rem;
+        line-height: 1.4;
+        word-break: keep-all;
+      }
+      .notification-toggle {
+        position: relative;
+        flex: 0 0 auto;
+        width: 48px;
+        height: 28px;
+      }
+      .notification-toggle-input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .notification-toggle-track {
+        position: absolute;
+        inset: 0;
+        border: 1px solid #3d3d3d;
+        border-radius: 999px;
+        background: #252525;
+        transition:
+          border-color 0.2s ease,
+          background 0.2s ease;
+      }
+      .notification-toggle-track::after {
+        content: "";
+        position: absolute;
+        top: 3px;
+        left: 3px;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #8b8b8b;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+        transition:
+          transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+          background 0.2s ease;
+      }
+      .notification-toggle-input:checked + .notification-toggle-track {
+        border-color: #bd7558;
+        background: #9f563b;
+      }
+      .notification-toggle-input:checked
+        + .notification-toggle-track::after {
+        background: #fff;
+        transform: translateX(20px);
+      }
+      .notification-toggle-input:focus-visible
+        + .notification-toggle-track {
+        outline: 2px solid #d58d6d;
+        outline-offset: 3px;
+      }
+      .notification-toggle-input:disabled + .notification-toggle-track {
+        opacity: 0.55;
+        cursor: wait;
+      }
+      .notification-settings-note {
+        margin: 13px 4px 0;
+        color: #67615d;
+        font-size: 0.72rem;
+        line-height: 1.5;
+      }
+      .push-notification-section {
+        margin-bottom: 25px;
+      }
+      .push-notification-help[data-state="warning"] {
+        color: #c58a6c;
+      }
+      .push-notification-help[data-state="ready"] {
+        color: #7d9f7b;
+      }
       .settings-account-summary {
         padding: 18px;
       }
@@ -2599,6 +2834,109 @@
         font-size: 0.78rem;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+      .legal-page-content {
+        width: min(100%, 720px);
+        margin: 0 auto;
+        padding: 20px 16px calc(44px + env(safe-area-inset-bottom, 0px));
+      }
+      .legal-article {
+        padding: 22px 18px 28px;
+        border: 1px solid rgba(255, 255, 255, 0.075);
+        border-radius: 12px;
+        background: rgba(18, 17, 16, 0.92);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+        color: #c9c5c1;
+        font-family: -apple-system, sans-serif;
+        font-size: 0.9rem;
+        line-height: 1.75;
+        word-break: keep-all;
+      }
+      .legal-document-title {
+        margin: 0;
+        color: #f2efeb;
+        font-family: "Noto Serif KR", serif;
+        font-size: 1.3rem;
+        line-height: 1.45;
+      }
+      .legal-document-subtitle {
+        margin-top: 5px;
+        color: #746d68;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+      .legal-intro {
+        margin: 18px 0 0;
+        color: #aaa39e;
+      }
+      .legal-section {
+        margin-top: 30px;
+        padding-top: 26px;
+        border-top: 1px solid rgba(255, 255, 255, 0.07);
+      }
+      .legal-section-title {
+        margin: 0 0 13px;
+        color: #eeeae6;
+        font-family: "Noto Serif KR", serif;
+        font-size: 1.02rem;
+        line-height: 1.55;
+      }
+      .legal-subtitle {
+        margin: 18px 0 8px;
+        color: #ddd7d2;
+        font-size: 0.91rem;
+      }
+      .legal-paragraph {
+        margin: 10px 0 0;
+      }
+      .legal-list {
+        display: grid;
+        gap: 9px;
+        margin: 10px 0 0;
+        padding-left: 1.25rem;
+      }
+      .legal-list strong {
+        color: #e1dcd7;
+      }
+      .legal-contact {
+        margin-top: 14px;
+        padding: 13px 14px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.045);
+      }
+      .legal-link {
+        color: #d7b29e;
+        text-decoration: none;
+        overflow-wrap: anywhere;
+      }
+      .legal-effective-date {
+        margin-top: 18px;
+        color: #8d8580;
+        font-size: 0.78rem;
+      }
+      .legal-placeholder {
+        min-height: 280px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        text-align: center;
+      }
+      .legal-placeholder .material-symbols-outlined {
+        color: #817771;
+        font-size: 2rem;
+      }
+      .legal-placeholder-title {
+        color: #e6e1dc;
+        font-family: "Noto Serif KR", serif;
+        font-size: 1.05rem;
+        font-weight: 700;
+      }
+      .legal-placeholder-copy {
+        color: #817a75;
+        font-size: 0.82rem;
       }
 
       .noti-view {
@@ -2636,6 +2974,20 @@
         background: rgba(15, 15, 15, 0.92);
         box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
       }
+      .noti-item.is-actionable {
+        cursor: pointer;
+        transition:
+          transform 0.18s ease,
+          background 0.18s ease;
+      }
+      .noti-item.is-actionable:active {
+        transform: scale(0.985);
+        background: rgba(24, 22, 20, 0.96);
+      }
+      .noti-item.is-actionable:focus-visible {
+        outline: 2px solid #b97456;
+        outline-offset: 2px;
+      }
       .noti-icon {
         flex: 0 0 auto;
         width: 36px;
@@ -2660,6 +3012,10 @@
       }
       .noti-icon.follow {
         color: #4285f4;
+        font-variation-settings: "FILL" 1;
+      }
+      .noti-icon.announcement {
+        color: #f0a06a;
         font-variation-settings: "FILL" 1;
       }
       .noti-content {
@@ -3071,6 +3427,11 @@
       html[data-theme="light"] .auth-container {
         background: #f6f2ee;
       }
+      html[data-theme="light"] .logged-out-settings-btn {
+        border-color: #ddd4cd;
+        background: rgba(255, 253, 250, 0.88);
+        color: #3a332f;
+      }
       html[data-theme="light"] .profile-tabs-container,
       html[data-theme="light"] .user-profile-posts-title,
       html[data-theme="light"] .comment-item,
@@ -3140,6 +3501,22 @@
       html[data-theme="light"] .app-alert-message {
         color: #332e2a;
       }
+      html[data-theme="light"] .app-alert-verification {
+        border-color: #e1d8d2;
+        background: #f3ede8;
+      }
+      html[data-theme="light"] .app-alert-verification-label {
+        color: #6f645d;
+      }
+      html[data-theme="light"] .app-alert-verification-input {
+        border-color: #d4cac3;
+        background: #fffdfa;
+        color: #302a27;
+      }
+      html[data-theme="light"] .app-alert-verification-input:focus {
+        border-color: #b97870;
+        box-shadow: 0 0 0 3px rgba(196, 92, 81, 0.1);
+      }
       html[data-theme="light"] .app-alert-button.secondary {
         border-color: #d8cfc8;
         background: #eee8e3;
@@ -3174,6 +3551,35 @@
       html[data-theme="light"] .settings-account-email {
         color: #897e77;
       }
+      html[data-theme="light"] .legal-article {
+        border-color: #dfd7d1;
+        background: rgba(255, 253, 250, 0.94);
+        box-shadow: 0 12px 28px rgba(76, 55, 42, 0.08);
+        color: #5f5751;
+      }
+      html[data-theme="light"] .legal-document-title,
+      html[data-theme="light"] .legal-section-title,
+      html[data-theme="light"] .legal-placeholder-title {
+        color: #322d29;
+      }
+      html[data-theme="light"] .legal-intro,
+      html[data-theme="light"] .legal-effective-date,
+      html[data-theme="light"] .legal-placeholder-copy {
+        color: #766c65;
+      }
+      html[data-theme="light"] .legal-section {
+        border-color: #e5ddd7;
+      }
+      html[data-theme="light"] .legal-subtitle,
+      html[data-theme="light"] .legal-list strong {
+        color: #49413c;
+      }
+      html[data-theme="light"] .legal-contact {
+        background: #f2ece7;
+      }
+      html[data-theme="light"] .legal-link {
+        color: #96573a;
+      }
       html[data-theme="light"] .settings-row + .settings-row {
         border-color: rgba(75, 55, 44, 0.08);
       }
@@ -3184,6 +3590,43 @@
       html[data-theme="light"] .theme-choice.is-selected {
         background: rgba(255, 145, 88, 0.12);
       }
+      html[data-theme="light"] .notification-settings-intro,
+      html[data-theme="light"] .notification-setting-description,
+      html[data-theme="light"] .notification-settings-note {
+        color: #7c716a;
+      }
+      html[data-theme="light"] .notification-setting-row + .notification-setting-row {
+        border-color: rgba(75, 55, 44, 0.08);
+      }
+      html[data-theme="light"] .notification-setting-row:active {
+        background: #f3ede8;
+      }
+      html[data-theme="light"] .notification-setting-icon {
+        background: #f0eae5;
+      }
+      html[data-theme="light"] .notification-setting-icon.comment,
+      html[data-theme="light"] .notification-setting-title {
+        color: #3c3531;
+      }
+      html[data-theme="light"] .notification-toggle-track {
+        border-color: #cec4bd;
+        background: #ddd5cf;
+      }
+      html[data-theme="light"] .notification-toggle-track::after {
+        background: #fff;
+      }
+      html[data-theme="light"]
+        .notification-toggle-input:checked
+        + .notification-toggle-track {
+        border-color: #b96848;
+        background: #b96848;
+      }
+      html[data-theme="light"] .noti-icon.announcement {
+        color: #b8673d;
+      }
+      html[data-theme="light"] .noti-item.is-actionable:active {
+        background: #f4ede7;
+      }
       html[data-theme="light"] .noti-view {
         background: #f6f2ee;
       }
@@ -3191,6 +3634,96 @@
         border-color: #d8cfc8;
         background: rgba(255, 253, 250, 0.82);
         color: #6b625c;
+      }
+      html[data-theme="light"] .profile-settings-btn,
+      html[data-theme="light"] .stat-num,
+      html[data-theme="light"] .profile-menu-row,
+      html[data-theme="light"] .follow-list-row,
+      html[data-theme="light"] .noti-text strong,
+      html[data-theme="light"] .noti-state-title,
+      html[data-theme="light"] .logged-out-preview-item,
+      html[data-theme="light"] .logged-out-preview-item .material-symbols-outlined,
+      html[data-theme="light"] .login-card-icon,
+      html[data-theme="light"] .bgm-line {
+        color: #39322e !important;
+      }
+      html[data-theme="light"] .profile-id,
+      html[data-theme="light"] .stat-label,
+      html[data-theme="light"] .login-card-copy,
+      html[data-theme="light"] .logged-out-copy,
+      html[data-theme="light"] .login-card-footnote,
+      html[data-theme="light"] .noti-state-desc {
+        color: #776d66;
+      }
+      html[data-theme="light"] .profile-menu-row {
+        border-color: #e1d9d3;
+      }
+      html[data-theme="light"] .profile-menu-row:active {
+        background: #f1ebe6;
+      }
+      html[data-theme="light"] .logged-out-preview-item,
+      html[data-theme="light"] .login-card-icon,
+      html[data-theme="light"] .noti-icon,
+      html[data-theme="light"] .noti-state-icon {
+        border-color: #ded5ce;
+        background: #f1ebe6;
+      }
+      html[data-theme="light"] .noti-icon.comment,
+      html[data-theme="light"] .noti-state-icon {
+        color: #514842;
+      }
+      html[data-theme="light"] .noti-icon.like {
+        color: #e34e48;
+      }
+      html[data-theme="light"] .noti-icon.follow {
+        color: #3978c8;
+      }
+      html[data-theme="light"] .noti-time {
+        border-color: #e3dbd5;
+        background: #f4efeb;
+        color: #81766f;
+      }
+      html[data-theme="light"] .noti-state {
+        border-color: #dfd7d1;
+        background: rgba(255, 253, 250, 0.9);
+        color: #776d66;
+      }
+      html[data-theme="light"] .mood-option-btn.is-selected .mood-option-check,
+      html[data-theme="light"]
+        .bgm-picker-option.is-selected
+        .bgm-picker-option-icon {
+        color: #a85831;
+      }
+      html[data-theme="light"] .post-bgm-info.is-enabled {
+        background: #eee4dc;
+        color: #4e443e;
+      }
+      html[data-theme="light"] .notice-list-item {
+        border-color: #dfd7d1 !important;
+        background: #fffdfa !important;
+      }
+      html[data-theme="light"] .notice-list-item-title,
+      html[data-theme="light"] .notice-detail-title,
+      html[data-theme="light"] .notice-detail-content {
+        color: #37312d !important;
+      }
+      html[data-theme="light"] .notice-list-item-icon,
+      html[data-theme="light"] .notice-detail-date,
+      html[data-theme="light"] .notice-detail-back {
+        color: #81766f !important;
+      }
+      html[data-theme="light"] .notice-detail-date {
+        border-color: #e1d8d2 !important;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .refresh-indicator,
+        .refresh-indicator.visible,
+        .refresh-indicator-icon {
+          transition-duration: 0.01ms !important;
+        }
+        .refresh-indicator.refreshing .refresh-indicator-icon {
+          animation: none;
+        }
       }
     </style>
   </head>
@@ -3476,6 +4009,14 @@
 
     <div id="view-profile" class="app-view">
       <div id="authContainer" class="auth-container" style="display: none">
+        <button
+          type="button"
+          class="logged-out-settings-btn"
+          onclick="openSettingsView()"
+          aria-label="설정 열기"
+        >
+          <span class="material-symbols-outlined">menu</span>
+        </button>
         <div class="logged-out-profile">
           <section class="logged-out-hero">
             <div class="logged-out-eyebrow">GLIM PROFILE</div>
@@ -3549,6 +4090,22 @@
               </svg>
               Google로 계속하기
             </button>
+            <button
+              type="button"
+              class="social-btn apple-btn"
+              onclick="handleSocialLogin('apple')"
+            >
+              <svg
+                class="social-icon apple-icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.32.03-1.75-.79-3.27-.79-1.53 0-2.01.76-3.26.82-1.31.05-2.3-1.32-3.14-2.55-1.71-2.48-3.01-7.01-1.26-10.06.87-1.52 2.43-2.48 4.08-2.51 1.27-.03 2.47.86 3.27.86.76 0 2.22-1.07 3.74-.91.64.03 2.43.26 3.58 1.94-.09.06-2.14 1.26-2.12 3.75.03 2.98 2.61 3.97 2.64 3.98-.02.07-.41 1.42-1.46 2.94M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.7.84-1.84 1.49-2.97 1.4-.15-1.15.41-2.35 1.07-3.09"
+                />
+              </svg>
+              Apple로 계속하기
+            </button>
             <p class="login-card-footnote">
               로그인 후에도 글림의 조용한 분위기는 그대로 이어집니다.
             </p>
@@ -3560,8 +4117,8 @@
         <header class="profile-topbar">
           <h1 class="profile-title">MY</h1>
           <span
-            class="material-symbols-outlined"
-            style="color: #fff; font-size: 1.8rem; cursor: pointer"
+            class="material-symbols-outlined profile-settings-btn"
+            style="font-size: 1.8rem; cursor: pointer"
             onclick="openSettingsView()"
             >menu</span
           >
@@ -3735,7 +4292,7 @@
       </header>
 
       <main class="settings-page-content">
-        <section class="settings-section">
+        <section class="settings-section" id="settingsAccountSection">
           <h2 class="settings-section-title">계정센터</h2>
           <div class="settings-card">
             <button
@@ -3785,13 +4342,19 @@
             <button
               type="button"
               class="settings-row"
-              onclick="showAppAlert('알림 설정을 준비 중입니다.')"
+              id="settingsNotificationRow"
+              onclick="openNotificationSettingsView()"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >notifications</span
               >
               <span class="settings-row-copy">
                 <span class="settings-row-title">알림 설정</span>
+                <span
+                  class="settings-row-description"
+                  id="notificationSettingsSummary"
+                  >모든 알림 받기</span
+                >
               </span>
               <span class="material-symbols-outlined settings-row-chevron"
                 >chevron_right</span
@@ -3852,6 +4415,764 @@
             </button>
           </div>
         </section>
+
+        <section class="settings-section">
+          <h2 class="settings-section-title">정보</h2>
+          <div class="settings-card">
+            <button
+              type="button"
+              class="settings-row"
+              onclick="openPrivacyPolicyView()"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >policy</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">개인정보 처리방침</span>
+              </span>
+              <span class="material-symbols-outlined settings-row-chevron"
+                >chevron_right</span
+              >
+            </button>
+            <button
+              type="button"
+              class="settings-row"
+              onclick="openTermsOfServiceView()"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >gavel</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">이용약관</span>
+              </span>
+              <span class="material-symbols-outlined settings-row-chevron"
+                >chevron_right</span
+              >
+            </button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="view-notification-settings" class="app-view settings-view">
+      <header class="settings-page-topbar">
+        <button
+          type="button"
+          class="settings-page-back"
+          onclick="closeNotificationSettingsView()"
+          aria-label="설정으로 돌아가기"
+        >
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <h1 class="settings-page-title">알림 설정</h1>
+        <span></span>
+      </header>
+
+      <main class="settings-page-content">
+        <p class="notification-settings-intro">
+          받고 싶은 소식만 골라보세요. 꺼둔 알림은 알림 탭에 표시되지
+          않습니다.
+        </p>
+        <section class="settings-section push-notification-section">
+          <h2 class="settings-section-title">기기 알림</h2>
+          <div class="settings-card">
+            <label class="notification-setting-row">
+              <span
+                class="material-symbols-outlined notification-setting-icon device"
+                >notifications_active</span
+              >
+              <span class="notification-setting-copy">
+                <span class="notification-setting-title"
+                  >이 기기 푸시 알림</span
+                >
+                <span
+                  id="pushNotificationStatus"
+                  class="notification-setting-description"
+                  >설정 확인 중...</span
+                >
+              </span>
+              <span class="notification-toggle">
+                <input
+                  id="pushNotificationToggle"
+                  type="checkbox"
+                  class="notification-toggle-input"
+                  onchange="togglePushNotifications(this.checked)"
+                />
+                <span class="notification-toggle-track"></span>
+              </span>
+            </label>
+          </div>
+          <p
+            id="pushNotificationHelp"
+            class="notification-settings-note push-notification-help"
+          >
+            앱을 닫아도 새 소식을 받을 수 있습니다.
+          </p>
+        </section>
+        <section class="settings-section">
+          <h2 class="settings-section-title">알림 카테고리</h2>
+          <div class="settings-card">
+            <label class="notification-setting-row">
+              <span
+                class="material-symbols-outlined notification-setting-icon like"
+                >favorite</span
+              >
+              <span class="notification-setting-copy">
+                <span class="notification-setting-title">공감 알림</span>
+                <span class="notification-setting-description"
+                  >내 글에 마음이 머물렀을 때</span
+                >
+              </span>
+              <span class="notification-toggle">
+                <input
+                  type="checkbox"
+                  class="notification-toggle-input"
+                  data-notification-preference="likes"
+                  onchange="setNotificationPreference('likes', this.checked)"
+                />
+                <span class="notification-toggle-track"></span>
+              </span>
+            </label>
+
+            <label class="notification-setting-row">
+              <span
+                class="material-symbols-outlined notification-setting-icon comment"
+                >chat_bubble</span
+              >
+              <span class="notification-setting-copy">
+                <span class="notification-setting-title">댓글 알림</span>
+                <span class="notification-setting-description"
+                  >내 글에 누군가 생각을 남겼을 때</span
+                >
+              </span>
+              <span class="notification-toggle">
+                <input
+                  type="checkbox"
+                  class="notification-toggle-input"
+                  data-notification-preference="comments"
+                  onchange="setNotificationPreference('comments', this.checked)"
+                />
+                <span class="notification-toggle-track"></span>
+              </span>
+            </label>
+
+            <label class="notification-setting-row">
+              <span
+                class="material-symbols-outlined notification-setting-icon follow"
+                >person_add</span
+              >
+              <span class="notification-setting-copy">
+                <span class="notification-setting-title">팔로우 알림</span>
+                <span class="notification-setting-description"
+                  >누군가 내 글의 흐름을 구독하기 시작했을 때</span
+                >
+              </span>
+              <span class="notification-toggle">
+                <input
+                  type="checkbox"
+                  class="notification-toggle-input"
+                  data-notification-preference="follows"
+                  onchange="setNotificationPreference('follows', this.checked)"
+                />
+                <span class="notification-toggle-track"></span>
+              </span>
+            </label>
+
+            <label class="notification-setting-row">
+              <span
+                class="material-symbols-outlined notification-setting-icon announcement"
+                >campaign</span
+              >
+              <span class="notification-setting-copy">
+                <span class="notification-setting-title"
+                  >공지/이벤트 알림</span
+                >
+                <span class="notification-setting-description"
+                  >글림의 새로운 소식</span
+                >
+              </span>
+              <span class="notification-toggle">
+                <input
+                  type="checkbox"
+                  class="notification-toggle-input"
+                  data-notification-preference="announcements"
+                  onchange="setNotificationPreference('announcements', this.checked)"
+                />
+                <span class="notification-toggle-track"></span>
+              </span>
+            </label>
+          </div>
+          <p class="notification-settings-note">
+            설정은 로그인한 글림 계정에 저장됩니다.
+          </p>
+        </section>
+      </main>
+    </div>
+
+    <div id="view-privacy-policy" class="app-view settings-view">
+      <header class="settings-page-topbar">
+        <button
+          type="button"
+          class="settings-page-back"
+          onclick="closePrivacyPolicyView()"
+          aria-label="설정으로 돌아가기"
+        >
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <h1 class="settings-page-title">개인정보 처리방침</h1>
+        <span></span>
+      </header>
+
+      <main class="legal-page-content">
+        <article class="legal-article">
+          <h2 class="legal-document-title">개인정보 처리방침</h2>
+          <div class="legal-document-subtitle">PRIVACY POLICY</div>
+          <p class="legal-intro">
+            ‘글림(Glim)’(이하 ‘서비스’)은(는) 이용자의 개인정보를 매우
+            중요하게 생각하며, 「개인정보 보호법」, 「정보통신망 이용촉진 및
+            정보보호 등에 관한 법률」 등 관련 법령을 준수하고 있습니다. 본
+            개인정보 처리방침을 통하여 이용자가 제공하는 개인정보가 어떠한
+            용도와 방식으로 이용되고 있으며, 개인정보 보호를 위해 어떠한
+            조치가 취해지고 있는지 알려드립니다.
+          </p>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 1조 (수집하는 개인정보의 항목 및 수집 방법)
+            </h3>
+            <p class="legal-paragraph">
+              서비스는 회원가입, 원활한 고객상담, 각종 맞춤형 서비스의 제공을
+              위해 아래와 같은 개인정보를 수집하고 있습니다.
+            </p>
+            <h4 class="legal-subtitle">1. 수집하는 개인정보 항목</h4>
+            <ul class="legal-list">
+              <li>
+                <strong>필수 항목 (소셜 로그인 시):</strong> 소셜
+                로그인(구글, 카카오)에서 제공받는 이메일 주소, 소셜
+                식별자(토큰), 이름(닉네임), 프로필 사진
+              </li>
+              <li>
+                <strong>선택 항목 (서비스 이용 시):</strong> 사용자가 직접
+                설정한 프로필 아이디(@id), 감성 온도(Mood) 데이터, 등록한
+                게시글(텍스트), BGM 설정, 프로필 이미지
+              </li>
+              <li>
+                <strong>서비스 이용 과정에서 자동 수집되는 정보:</strong>
+                기기 정보(OS, 모델명), 접속 로그, 서비스 이용 기록(좋아요,
+                북마크, 댓글, 팔로우/차단 기록), 쿠키 및 로컬 스토리지
+                데이터(다크모드 등 테마 설정 값)
+              </li>
+            </ul>
+            <h4 class="legal-subtitle">2. 수집 방법</h4>
+            <ul class="legal-list">
+              <li>
+                앱 최초 실행 후 소셜 로그인(구글, 카카오)을 통한 계정 연동 시
+                수집
+              </li>
+              <li>
+                서비스 내 프로필 편집, 글쓰기, 댓글 작성, 팔로우 등 이용자의
+                직접 입력 및 조작
+              </li>
+              <li>서비스 실행 및 사용 과정에서 시스템을 통한 자동 수집</li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 2조 (개인정보의 수집 및 이용 목적)
+            </h3>
+            <p class="legal-paragraph">
+              서비스는 수집한 개인정보를 다음의 목적을 위해 활용합니다.
+            </p>
+            <ul class="legal-list">
+              <li>
+                <strong>회원 관리:</strong> 본인 확인, 개인 식별, 불량
+                회원의 부정 이용 방지와 비인가 사용 방지, 가입 의사 확인,
+                회원 탈퇴 의사 확인
+              </li>
+              <li>
+                <strong>서비스 제공 및 맞춤형 콘텐츠 제공:</strong> 글쓰기
+                및 커뮤니티 기능(피드, 댓글 등) 제공, 사용자의 취향 및 감성
+                온도(Mood)에 기반한 개인화된 알고리즘 추천, BGM 및 테마 환경
+                제공
+              </li>
+              <li>
+                <strong>서비스 운영 및 보호:</strong> 사용자 간 차단 기능
+                제공, 부적절한 게시물 관리 및 제재, 분쟁 조정을 위한 기록
+                보존, 민원 및 고객 불만 처리, 공지사항 전달
+              </li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 3조 (개인정보의 보유 및 이용 기간)
+            </h3>
+            <p class="legal-paragraph">
+              원칙적으로, 개인정보 수집 및 이용 목적이 달성된 후(회원 탈퇴
+              시)에는 해당 정보를 지체 없이 파기합니다. 단, 다음의 정보에
+              대해서는 아래의 이유로 명시한 기간 동안 보존합니다.
+            </p>
+            <h4 class="legal-subtitle">
+              1. 회사 내부 방침에 의한 정보 보유
+            </h4>
+            <ul class="legal-list">
+              <li>
+                <strong>부정 이용 기록 및 차단 기록:</strong> 부정 가입 및
+                징계 기록 등의 재발 방지를 위해 탈퇴 후 6개월간 보관 후 파기
+              </li>
+            </ul>
+            <h4 class="legal-subtitle">2. 관련 법령에 의한 정보 보유</h4>
+            <p class="legal-paragraph">
+              상법, 전자상거래 등에서의 소비자보호에 관한 법률 등 관계
+              법령의 규정에 의하여 보존할 필요가 있는 경우, 서비스는 관계
+              법령에서 정한 일정한 기간 동안 회원정보를 보관합니다.
+            </p>
+            <ul class="legal-list">
+              <li>
+                소비자의 불만 또는 분쟁 처리에 관한 기록: 3년
+                (전자상거래법)
+              </li>
+              <li>웹사이트 방문 기록: 3개월 (통신비밀보호법)</li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 4조 (개인정보의 제3자 제공 및 위탁)
+            </h3>
+            <p class="legal-paragraph">
+              서비스는 이용자의 개인정보를 원칙적으로 외부에 제공하지
+              않습니다. 다만, 안정적인 서비스 제공 및 데이터 관리를 위하여
+              아래와 같이 외부 클라우드 서버 및 인프라를 이용(위탁)하고
+              있습니다.
+            </p>
+            <ul class="legal-list">
+              <li><strong>수탁 업체:</strong> Supabase, Inc.</li>
+              <li>
+                <strong>위탁 업무 내용:</strong> BaaS 데이터베이스 및 인증
+                관리, 데이터베이스 서버 스토리지 제공, 소셜 로그인 인증 처리
+                보관 및 유지 관리
+              </li>
+              <li>
+                <strong>보유 및 이용 기간:</strong> 회원 탈퇴 시 혹은 위탁
+                계약 종료 시까지
+              </li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 5조 (개인정보의 파기 절차 및 방법)
+            </h3>
+            <p class="legal-paragraph">
+              서비스는 애플 앱스토어 및 구글 플레이 스토어의 데이터 삭제
+              정책을 엄격히 준수합니다.
+            </p>
+            <ul class="legal-list">
+              <li>
+                <strong>파기 절차:</strong> 이용자가 앱 내 [설정 &gt;
+                계정센터 &gt; 회원 탈퇴]를 통해 탈퇴를 요청하면, 입력하신
+                정보는 목적이 달성된 후 내부 방침 및 기타 관련 법령에 의한
+                정보보호 사유에 따라 즉시(또는 최대 30일 이내) Supabase
+                데이터베이스에서 영구 삭제됩니다.
+              </li>
+              <li>
+                <strong>데이터 삭제 요청:</strong> 이용자는 앱 내 회원 탈퇴
+                기능 외에도 개인정보 보호책임자 이메일을 통해 계정 및 데이터
+                삭제를 직접 요청할 수 있으며, 요청 접수 시 본인 확인 후
+                즉각적으로 모든 데이터를 파기합니다.
+              </li>
+              <li>
+                <strong>파기 방법:</strong> 전자적 파일 형태로 저장된
+                개인정보는 기록을 재생할 수 없는 기술적 방법을 사용하여 영구
+                삭제합니다.
+              </li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 6조 (이용자의 권리와 그 행사 방법)
+            </h3>
+            <p class="legal-paragraph">
+              이용자는 언제든지 등록되어 있는 자신의 개인정보를 조회하거나
+              수정할 수 있으며, 가입 해지(회원 탈퇴)를 요청할 수 있습니다.
+            </p>
+            <p class="legal-paragraph">
+              이용자의 개인정보 조회/수정을 위해서는 '프로필 편집'을, 가입
+              해지를 위해서는 '설정 &gt; 계정센터 &gt; 회원 탈퇴'를 클릭하여
+              본인 확인 절차를 거치신 후 직접 열람, 정정 또는 탈퇴가
+              가능합니다.
+            </p>
+            <p class="legal-paragraph">
+              이용자가 개인정보의 오류에 대한 정정을 요청하신 경우에는 정정을
+              완료하기 전까지 당해 개인정보를 이용 또는 제공하지 않습니다.
+            </p>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 7조 (스마트폰 앱 접근권한 안내)
+            </h3>
+            <p class="legal-paragraph">
+              서비스는 원활한 앱 이용을 위해 아래와 같은 기기 접근권한을
+              요청할 수 있습니다.
+            </p>
+            <p class="legal-paragraph">
+              <strong>선택적 접근권한 - 사진/미디어/파일(카메라):</strong>
+              프로필 사진 등록 및 변경 시 기기의 사진 라이브러리에 접근하기
+              위해 필요합니다.
+            </p>
+            <p class="legal-paragraph">
+              선택적 접근권한은 동의하지 않으셔도 기본 서비스(글 읽기, 쓰기
+              등) 이용이 가능하며, 해당 기능(프로필 사진 변경)을 사용할 때
+              동의를 받습니다. 권한은 스마트폰 [설정 &gt; 애플리케이션 &gt;
+              글림 &gt; 권한] 메뉴에서 언제든지 철회할 수 있습니다.
+            </p>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 8조 (개인정보의 안전성 확보 조치)
+            </h3>
+            <p class="legal-paragraph">
+              서비스는 이용자의 개인정보를 처리함에 있어 개인정보가 분실,
+              도난, 유출, 변조 또는 훼손되지 않도록 안전성 확보를 위해 다음과
+              같은 기술적/관리적 조치를 강구하고 있습니다.
+            </p>
+            <ul class="legal-list">
+              <li>사용자 인증 정보 및 주요 데이터의 암호화 저장</li>
+              <li>
+                최신 보안 기술(SSL/TLS)을 이용한 네트워크 상의 안전한 데이터
+                전송
+              </li>
+              <li>
+                해킹이나 컴퓨터 바이러스 등에 의한 데이터 유출 및 훼손을 막기
+                위한 방화벽 및 시스템 보안 구축
+              </li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 9조 (개인정보 보호책임자)
+            </h3>
+            <p class="legal-paragraph">
+              서비스는 개인정보 처리에 관한 업무를 총괄해서 책임지고,
+              개인정보 처리와 관련한 정보주체의 불만 처리 및 피해 구제를
+              위하여 아래와 같이 개인정보 보호책임자를 지정하고 있습니다.
+            </p>
+            <div class="legal-contact">
+              <div><strong>담당자 (부서):</strong> 글림(Glim) 운영팀</div>
+              <div>
+                <strong>이메일:</strong>
+                <a class="legal-link" href="mailto:weardockm@gmail.com"
+                  >weardockm@gmail.com</a
+                >
+              </div>
+            </div>
+            <p class="legal-paragraph">
+              기타 개인정보 침해에 대한 신고나 상담이 필요하신 경우에는 아래
+              기관에 문의하시기 바랍니다.
+            </p>
+            <ul class="legal-list">
+              <li>
+                개인정보침해신고센터
+                (<a
+                  class="legal-link"
+                  href="https://privacy.kisa.or.kr"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >privacy.kisa.or.kr</a
+                >
+                / 국번없이 118)
+              </li>
+              <li>
+                대검찰청 사이버수사과
+                (<a
+                  class="legal-link"
+                  href="https://www.spo.go.kr"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >www.spo.go.kr</a
+                >
+                / 국번없이 1301)
+              </li>
+              <li>
+                경찰청 사이버수사국
+                (<a
+                  class="legal-link"
+                  href="https://ecrm.cyber.go.kr"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >ecrm.cyber.go.kr</a
+                >
+                / 국번없이 182)
+              </li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">제 10조 (부칙)</h3>
+            <p class="legal-paragraph">
+              이 개인정보 처리방침은 2026년 7월 2일부터 적용됩니다. 법령 및
+              방침에 따른 변경 내용의 추가, 삭제 및 정정이 있는 경우에는
+              변경사항 시행 7일 전부터 앱 내 '공지사항'을 통하여 고지할
+              것입니다.
+            </p>
+            <div class="legal-effective-date">시행일: 2026년 7월 2일</div>
+          </section>
+        </article>
+      </main>
+    </div>
+
+    <div id="view-terms-of-service" class="app-view settings-view">
+      <header class="settings-page-topbar">
+        <button
+          type="button"
+          class="settings-page-back"
+          onclick="closeTermsOfServiceView()"
+          aria-label="설정으로 돌아가기"
+        >
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <h1 class="settings-page-title">이용약관</h1>
+        <span></span>
+      </header>
+
+      <main class="legal-page-content">
+        <article class="legal-article">
+          <h2 class="legal-document-title">글림(Glim) 서비스 이용약관</h2>
+          <div class="legal-document-subtitle">TERMS OF SERVICE</div>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">제 1 조 (목적)</h3>
+            <p class="legal-paragraph">
+              본 약관은 ‘글림(Glim)’(이하 “회사” 또는 “서비스”)이 제공하는
+              모바일 애플리케이션 및 관련 제반 서비스의 이용과 관련하여 회사와
+              회원과의 권리, 의무, 책임사항 및 기타 필요한 사항을 규정함을
+              목적으로 합니다.
+            </p>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">제 2 조 (용어의 정의)</h3>
+            <ul class="legal-list">
+              <li>
+                “서비스”란 구현되는 단말기(스마트폰, 태블릿 PC 등)와 상관없이
+                회원이 이용할 수 있는 글림(Glim) 앱 및 관련 제반 서비스를
+                의미합니다.
+              </li>
+              <li>
+                “회원”이란 서비스에 접속하여 본 약관에 따라 회사와 이용계약을
+                체결하고 회사가 제공하는 서비스를 이용하는 고객을 말합니다.
+              </li>
+              <li>
+                “게시물”이란 회원이 서비스를 이용함에 있어 서비스 상에 게시한
+                부호ㆍ문자ㆍ음성ㆍ음향ㆍ화상ㆍ동영상 등의 정보 형태의 글,
+                사진, 음악(BGM 설정), 감성 온도(Mood) 및 각종 파일과 링크
+                등을 의미합니다.
+              </li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">제 3 조 (약관의 게시와 개정)</h3>
+            <ul class="legal-list">
+              <li>
+                회사는 이 약관의 내용을 회원이 쉽게 알 수 있도록 서비스 내
+                설정 메뉴 또는 공지사항 화면에 게시합니다.
+              </li>
+              <li>
+                회사는 「약관의 규제에 관한 법률」, 「정보통신망 이용촉진 및
+                정보보호 등에 관한 법률」 등 관련 법령을 위배하지 않는
+                범위에서 이 약관을 개정할 수 있습니다.
+              </li>
+              <li>
+                회사가 약관을 개정할 경우에는 적용일자 및 개정사유를 명시하여
+                현행 약관과 함께 제1항의 방식에 따라 그 개정약관의 적용일자
+                7일 전부터 적용일자 전일까지 공지합니다. 단, 회원에게 불리한
+                약관의 개정의 경우에는 최소 30일 전에 공지합니다.
+              </li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 4 조 (이용계약 체결 및 계정 관리)
+            </h3>
+            <p class="legal-paragraph">
+              이용계약은 회원이 되고자 하는 자가 약관의 내용에 대하여 동의를
+              한 다음 소셜 로그인(카카오, 구글 등)을 통해 가입을 신청하고
+              회사가 이러한 신청에 대하여 승낙함으로써 체결됩니다.
+            </p>
+            <p class="legal-paragraph">
+              회원은 본인의 소셜 계정 정보를 안전하게 관리할 책임이 있으며,
+              이를 타인에게 대여, 양도하거나 이용하게 해서는 안 됩니다.
+              회원의 관리 소홀로 인해 발생하는 모든 책임은 회원 본인에게
+              있습니다.
+            </p>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">제 5 조 (회원의 의무)</h3>
+            <p class="legal-paragraph">
+              회원은 서비스를 이용할 때 다음 각 호의 행위를 하여서는 안
+              됩니다. 아래 규정을 위반할 경우, 회사는 사전 통보 없이 게시물을
+              삭제하거나 회원의 서비스 이용을 영구적으로 제한할 수 있습니다.
+            </p>
+            <ul class="legal-list">
+              <li>타인의 정보 도용 및 허위 정보 등록</li>
+              <li>
+                회사가 정한 정보 이외의 정보(컴퓨터 프로그램 등) 등의 송신
+                또는 게시
+              </li>
+              <li>회사 및 기타 제3자의 저작권 등 지적재산권에 대한 침해</li>
+              <li>
+                회사 및 기타 제3자의 명예를 손상시키거나 업무를 방해하는 행위
+              </li>
+              <li>
+                외설 또는 폭력적인 메시지, 화상, 음성, 욕설, 혐오 발언 등
+                기타 미풍양속에 반하는 정보를 서비스에 공개 또는 게시하는
+                행위 (무관용 원칙 적용)
+              </li>
+              <li>
+                타인을 괴롭히거나, 협박하거나, 특정 개인 및 단체를 비방할
+                목적의 게시물 작성 행위
+              </li>
+              <li>영리 목적의 광고, 스팸성 글을 게시하는 행위</li>
+              <li>기타 불법적이거나 부당한 행위</li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 6 조 (게시물의 관리 및 저작권)
+            </h3>
+            <p class="legal-paragraph">
+              회원이 서비스 내에 게시한 게시물의 저작권은 해당 게시물의
+              저작자에게 귀속됩니다.
+            </p>
+            <p class="legal-paragraph">
+              회원이 서비스 내에 게시하는 게시물은 검색결과 내지 서비스 및
+              관련 프로모션 등에 노출될 수 있으며, 해당 노출을 위해 필요한
+              범위 내에서는 일부 수정, 복제, 편집되어 게시될 수 있습니다.
+            </p>
+            <p class="legal-paragraph">
+              <strong>[사용자 제작 콘텐츠(UGC) 정책]</strong> 회사는 건전한
+              통신 문화를 위해 불쾌감을 주거나 권리를 침해하는 콘텐츠에 대해
+              무관용 정책(Zero-Tolerance Policy)을 유지합니다. 회사는 회원의
+              게시물이 제5조에 위반되거나 타인으로부터 신고가 접수된 경우,
+              관련 법령 및 앱 마켓(Apple, Google) 가이드라인에 따라 사전
+              통지 없이 즉시 블라인드 처리, 삭제 및 해당 작성자의 계정 영구
+              정지 조치를 취할 수 있습니다.
+            </p>
+            <p class="legal-paragraph">
+              회원은 서비스 내 '신고' 및 '차단' 기능을 통해 부적절한 게시물
+              및 사용자를 회사에 알리거나 스스로 접근을 제한할 수 있습니다.
+            </p>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 7 조 (서비스의 제공, 변경 및 중단)
+            </h3>
+            <ul class="legal-list">
+              <li>
+                회사는 연중무휴, 1일 24시간 서비스 제공을 원칙으로 합니다.
+              </li>
+              <li>
+                회사는 컴퓨터 등 정보통신설비의 보수점검, 교체 및 고장,
+                통신두절 또는 운영상 상당한 이유가 있는 경우 서비스의 제공을
+                일시적으로 중단할 수 있습니다.
+              </li>
+              <li>
+                회사는 무료로 제공되는 서비스의 일부 또는 전부를 회사의 정책
+                및 운영의 필요상 수정, 중단, 변경할 수 있으며, 이에 대하여
+                관련 법령에 특별한 규정이 없는 한 회원에게 별도의 보상을 하지
+                않습니다.
+              </li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 8 조 (계약 해지 및 이용 제한)
+            </h3>
+            <ul class="legal-list">
+              <li>
+                회원은 언제든지 서비스 내 [설정 &gt; 계정센터 &gt; 회원
+                탈퇴] 화면을 통하여 이용계약 해지(회원 탈퇴)를 신청할 수
+                있으며, 회사는 관련 법령이 정하는 바에 따라 이를 즉시
+                처리합니다.
+              </li>
+              <li>
+                회원이 계약을 해지할 경우, 관련 법령 및 개인정보 처리방침에
+                따라 회사가 회원정보를 보유하는 경우를 제외하고는 해지 즉시
+                회원의 모든 데이터(게시글, 좋아요, 북마크, 프로필 정보 등)는
+                소멸되며 복구할 수 없습니다.
+              </li>
+              <li>
+                회사는 회원이 본 약관의 의무를 위반하거나 서비스의 정상적인
+                운영을 방해한 경우, 경고, 일시정지, 영구 이용정지 등으로
+                서비스 이용을 단계적으로 제한할 수 있습니다.
+              </li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">제 9 조 (책임 제한)</h3>
+            <ul class="legal-list">
+              <li>
+                회사는 천재지변 또는 이에 준하는 불가항력으로 인하여 서비스를
+                제공할 수 없는 경우에는 서비스 제공에 관한 책임이 면제됩니다.
+              </li>
+              <li>
+                회사는 회원의 귀책사유로 인한 서비스 이용의 장애에 대하여는
+                책임을 지지 않습니다.
+              </li>
+              <li>
+                회사는 회원이 서비스와 관련하여 게재한 정보, 자료, 사실의
+                신뢰도, 정확성 등의 내용에 관하여는 책임을 지지 않으며, 회원
+                간 또는 회원과 제3자 상호간에 서비스를 매개로 하여 거래 등을
+                한 경우에는 책임이 면제됩니다.
+              </li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">
+              제 10 조 (준거법 및 재판관할)
+            </h3>
+            <ul class="legal-list">
+              <li>
+                회사와 회원 간 제기된 소송은 대한민국법을 준거법으로 합니다.
+              </li>
+              <li>
+                회사와 회원 간 발생한 분쟁에 관한 소송의 관할법원은
+                민사소송법에 따른 관할법원으로 합니다.
+              </li>
+            </ul>
+          </section>
+
+          <section class="legal-section">
+            <h3 class="legal-section-title">부칙</h3>
+            <p class="legal-paragraph">
+              이 약관은 2026년 7월 2일부터 적용됩니다.
+            </p>
+            <div class="legal-contact">
+              <div><strong>서비스 문의 및 불만 처리 담당:</strong></div>
+              <div>
+                글림 운영팀
+                (<a class="legal-link" href="mailto:weardockm@gmail.com"
+                  >weardockm@gmail.com</a
+                >)
+              </div>
+            </div>
+            <div class="legal-effective-date">시행일: 2026년 7월 2일</div>
+          </section>
+        </article>
       </main>
     </div>
 
@@ -4020,6 +5341,7 @@
         style="align-items: flex-start; padding-top: 60px"
       >
         <button
+          class="notice-detail-back"
           onclick="closeNoticeDetail()"
           style="
             background: none;
@@ -4334,6 +5656,26 @@
           </div>
         </div>
         <p class="app-alert-message" id="appAlertMessage"></p>
+        <div
+          class="app-alert-verification"
+          id="appAlertVerification"
+          hidden
+        >
+          <label
+            class="app-alert-verification-label"
+            id="appAlertVerificationLabel"
+            for="appAlertVerificationInput"
+          ></label>
+          <input
+            class="app-alert-verification-input"
+            id="appAlertVerificationInput"
+            type="text"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            enterkeyhint="done"
+          />
+        </div>
         <div class="app-alert-actions">
           <button
             type="button"

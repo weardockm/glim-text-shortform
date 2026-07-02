@@ -37,6 +37,7 @@ let avatarCropOriginalFile = null;
 const AVATAR_CROP_OUTPUT_SIZE = 512;
 const MAX_AVATAR_SOURCE_SIZE = 15 * 1024 * 1024;
 const DEFAULT_PROFILE_AVATAR_URL = "image/glimmer-profile-image.png";
+const PROFILE_AVATAR_STORAGE_PATH = "/storage/v1/object/public/avatars/";
 const POST_MIN_CHARACTERS = 5;
 const POST_MAX_CHARACTERS = 120;
 const POST_MAX_VISUAL_LINES = 12;
@@ -45,6 +46,24 @@ const POST_REFERENCE_LINE_HEIGHT = 17 * 1.65;
 const EXPLORE_SEARCH_HISTORY_KEY = "glim_explore_search_history";
 const EXPLORE_SEARCH_HISTORY_LIMIT = 8;
 const THEME_PREFERENCE_KEY = "glim_theme_preference";
+const NOTIFICATION_PREFERENCES_STORAGE_PREFIX =
+  "glim_notification_preferences";
+const DEFAULT_NOTIFICATION_PREFERENCES = Object.freeze({
+  likes: true,
+  comments: true,
+  follows: true,
+  announcements: true,
+});
+const NOTIFICATION_PREFERENCE_KEYS = new Set(
+  Object.keys(DEFAULT_NOTIFICATION_PREFERENCES),
+);
+const FIREBASE_WEB_SDK_VERSION = "12.15.0";
+const PUSH_FID_STORAGE_PREFIX = "glim_push_fid";
+let firebasePushModulesPromise = null;
+let pushMessaging = null;
+let pushServiceWorkerRegistration = null;
+let pushEventListenersReady = false;
+let pendingPushRegistration = null;
 const systemThemeMediaQuery = window.matchMedia(
   "(prefers-color-scheme: dark)",
 );
@@ -151,10 +170,12 @@ const MOOD_OPTIONS_BY_VALUE = new Map(
 );
 const FEED_BGM_VIEW_IDS = new Set(["view-home", "view-context-feed"]);
 const nativeAlert = window.alert.bind(window);
+const nativePrompt = window.prompt.bind(window);
 let isAppAlertReady = false;
 let appAlertPreviousFocus = null;
 let appAlertOnClose = null;
 let appAlertOnConfirm = null;
+let appAlertRequiredText = "";
 
 const observerOptions = {
   root: document.querySelector("#view-home"),
@@ -299,7 +320,10 @@ function setBottomNavView(viewId) {
     "view-bgm-picker",
     "view-settings",
     "view-theme-settings",
+    "view-notification-settings",
     "view-account-center",
+    "view-privacy-policy",
+    "view-terms-of-service",
     "view-notice-detail",
   ]);
   document
@@ -509,6 +533,9 @@ function setupAppAlert() {
 
   window.alert = showAppAlert;
   isAppAlertReady = true;
+  const verificationInput = document.getElementById(
+    "appAlertVerificationInput",
+  );
 
   alertElement.addEventListener("click", (event) => {
     const primaryTarget =
@@ -530,6 +557,58 @@ function setupAppAlert() {
       closeAppAlert(false);
     }
   });
+
+  verificationInput?.addEventListener(
+    "input",
+    updateAppAlertVerificationState,
+  );
+  verificationInput?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    updateAppAlertVerificationState();
+    const primaryButton = alertElement.querySelector(
+      "[data-app-alert-primary]",
+    );
+    if (!primaryButton?.disabled) closeAppAlert(true);
+  });
+}
+
+function updateAppAlertVerificationState() {
+  const alertElement = document.getElementById("appAlert");
+  const input = document.getElementById("appAlertVerificationInput");
+  const primaryButton = alertElement?.querySelector(
+    "[data-app-alert-primary]",
+  );
+  const matches =
+    !appAlertRequiredText ||
+    input?.value.trim() === appAlertRequiredText;
+
+  if (primaryButton) {
+    primaryButton.disabled = !matches;
+    primaryButton.setAttribute("aria-disabled", String(!matches));
+  }
+}
+
+function setAppAlertVerification(requiredText = "", label = "") {
+  const container = document.getElementById("appAlertVerification");
+  const labelElement = document.getElementById("appAlertVerificationLabel");
+  const input = document.getElementById("appAlertVerificationInput");
+  appAlertRequiredText = String(requiredText ?? "").trim();
+  const isRequired = Boolean(appAlertRequiredText);
+
+  if (container) container.hidden = !isRequired;
+  if (labelElement) {
+    labelElement.textContent =
+      label ||
+      (isRequired
+        ? `계속하려면 ‘${appAlertRequiredText}’를 입력해주세요.`
+        : "");
+  }
+  if (input) {
+    input.value = "";
+    input.placeholder = isRequired ? appAlertRequiredText : "";
+  }
+  updateAppAlertVerificationState();
 }
 
 function setAppAlertPresentation({
@@ -582,6 +661,7 @@ function showAppAlert(message, onClose) {
     showCancel: false,
     isDestructive: false,
   });
+  setAppAlertVerification();
   messageElement.textContent = String(message ?? "");
   alertElement.classList.add("open");
   alertElement.setAttribute("aria-hidden", "false");
@@ -599,6 +679,8 @@ function showAppConfirm(
     icon = "help",
     confirmText = "확인",
     isDestructive = false,
+    requiredText = "",
+    verificationLabel = "",
   } = {},
 ) {
   const alertElement = document.getElementById("appAlert");
@@ -608,7 +690,14 @@ function showAppConfirm(
   );
 
   if (!alertElement || !messageElement) {
-    if (nativeConfirm(String(message ?? ""))) onConfirm?.();
+    if (requiredText) {
+      const enteredText = nativePrompt(
+        `${String(message ?? "")}\n\n계속하려면 ‘${requiredText}’를 입력해주세요.`,
+      );
+      if (enteredText?.trim() === requiredText) onConfirm?.();
+    } else if (nativeConfirm(String(message ?? ""))) {
+      onConfirm?.();
+    }
     return;
   }
 
@@ -625,18 +714,38 @@ function showAppConfirm(
     showCancel: true,
     isDestructive,
   });
+  setAppAlertVerification(requiredText, verificationLabel);
   messageElement.textContent = String(message ?? "");
   alertElement.classList.add("open");
   alertElement.setAttribute("aria-hidden", "false");
 
   requestAnimationFrame(() => {
-    primaryButton?.focus({ preventScroll: true });
+    const verificationInput = document.getElementById(
+      "appAlertVerificationInput",
+    );
+    if (appAlertRequiredText) {
+      verificationInput?.focus({ preventScroll: true });
+    } else {
+      primaryButton?.focus({ preventScroll: true });
+    }
   });
 }
 
 function closeAppAlert(confirmed = false) {
   const alertElement = document.getElementById("appAlert");
   if (!alertElement) return;
+  const verificationInput = document.getElementById(
+    "appAlertVerificationInput",
+  );
+  if (
+    confirmed &&
+    appAlertRequiredText &&
+    verificationInput?.value.trim() !== appAlertRequiredText
+  ) {
+    verificationInput?.focus({ preventScroll: true });
+    return;
+  }
+
   const onClose = appAlertOnClose;
   const onConfirm = appAlertOnConfirm;
   const isConfirmDialog = typeof onConfirm === "function";
@@ -654,6 +763,7 @@ function closeAppAlert(confirmed = false) {
     appAlertPreviousFocus.focus({ preventScroll: true });
   }
   appAlertPreviousFocus = null;
+  setAppAlertVerification();
   if (isConfirmDialog) {
     if (confirmed) onConfirm();
   } else if (typeof onClose === "function") {
@@ -1018,6 +1128,9 @@ async function init() {
   await syncCurrentUserProfile();
   await loadBlockedUsersState();
   updateAuthUI();
+  initializePushNotifications().catch((error) => {
+    console.warn("푸시 알림 초기화 실패:", error);
+  });
   await fetchPosts();
 
   client.auth.onAuthStateChange(async (_event, session) => {
@@ -1030,6 +1143,9 @@ async function init() {
     await syncCurrentUserProfile();
     await loadBlockedUsersState();
     updateAuthUI();
+    initializePushNotifications().catch((error) => {
+      console.warn("푸시 알림 초기화 실패:", error);
+    });
   });
 
   [
@@ -1179,13 +1295,14 @@ function hidePullRefreshIndicator() {
 
 function resetRefreshViewPosition(view, animate = true) {
   if (!view) return;
+  view.style.willChange = "";
   view.style.transition = animate
-    ? "transform 0.24s cubic-bezier(0.25, 1, 0.5, 1)"
+    ? "transform 0.38s cubic-bezier(0.22, 1, 0.36, 1)"
     : "none";
   view.style.transform = "";
   setTimeout(() => {
     if (!view.style.transform) view.style.transition = "";
-  }, 250);
+  }, 400);
 }
 
 function resetAllRefreshViewPositions() {
@@ -1254,14 +1371,14 @@ async function refreshTab(tabName) {
     indicator.classList.add("complete");
     // 삭제됨: icon.innerText = "check";
     text.innerText = "새로고침 완료";
-    await wait(900);
+    await wait(650);
   } finally {
     clearTimeout(refreshSafetyTimer);
     indicator.classList.remove("visible", "refreshing", "complete");
     // 삭제됨: icon.innerText = "refresh";
     icon.style.transform = "";
     resetRefreshViewPosition(view);
-    await wait(750);
+    await wait(420);
     setRefreshHeaderHidden(false);
     isRefreshing = false;
   }
@@ -1280,6 +1397,32 @@ function setupPullToRefresh() {
     let touchStartY = 0;
     let pullDistance = 0;
     let isTracking = false;
+    let pullAnimationFrame = null;
+    let pendingPullOffset = 0;
+
+    const queuePullPosition = (distance) => {
+      const safeDistance = Math.max(0, distance);
+      pendingPullOffset = Math.min(
+        68,
+        74 * (1 - Math.exp(-safeDistance / 108)),
+      );
+      if (pullAnimationFrame !== null) return;
+
+      pullAnimationFrame = window.requestAnimationFrame(() => {
+        pullAnimationFrame = null;
+        view.style.transition = "none";
+        view.style.willChange = "transform";
+        view.style.transform = `translate3d(0, ${pendingPullOffset.toFixed(2)}px, 0)`;
+      });
+    };
+
+    const finishPullPosition = () => {
+      if (pullAnimationFrame !== null) {
+        window.cancelAnimationFrame(pullAnimationFrame);
+        pullAnimationFrame = null;
+      }
+      resetRefreshViewPosition(view);
+    };
 
     view.addEventListener(
       "touchstart",
@@ -1302,7 +1445,7 @@ function setupPullToRefresh() {
 
         if (deltaY <= 0 || Math.abs(deltaY) <= Math.abs(deltaX)) {
           pullDistance = 0;
-          resetRefreshViewPosition(view);
+          finishPullPosition();
           hidePullRefreshIndicator();
           return;
         }
@@ -1310,8 +1453,7 @@ function setupPullToRefresh() {
         event.preventDefault();
         pullDistance = deltaY;
         setRefreshHeaderHidden(true);
-        view.style.transition = "none";
-        view.style.transform = `translate3d(0, ${deltaY * 0.22}px, 0)`;
+        queuePullPosition(deltaY);
         if (pullDistance > 12) showPullRefreshIndicator(pullDistance);
       },
       { passive: false },
@@ -1322,7 +1464,7 @@ function setupPullToRefresh() {
       () => {
         if (!isTracking) return;
         isTracking = false;
-        resetRefreshViewPosition(view);
+        finishPullPosition();
         if (pullDistance >= 80) refreshTab(tabName);
         else hidePullRefreshIndicator();
         pullDistance = 0;
@@ -1335,7 +1477,7 @@ function setupPullToRefresh() {
       () => {
         isTracking = false;
         pullDistance = 0;
-        resetRefreshViewPosition(view);
+        finishPullPosition();
         hidePullRefreshIndicator();
       },
       { passive: true },
@@ -1366,8 +1508,9 @@ function getCurrentProfileData() {
       currentUser.email.split("@")[0],
     custom_id:
       currentUser.user_metadata?.custom_id || currentUser.email.split("@")[0],
-    avatar_url:
-      currentUser.user_metadata?.avatar_url || DEFAULT_PROFILE_AVATAR_URL,
+    avatar_url: normalizePersistedAvatarUrl(
+      currentUser.user_metadata?.avatar_url,
+    ),
     updated_at: new Date().toISOString(),
   };
 }
@@ -1384,14 +1527,17 @@ async function syncCurrentUserProfile({ preserveStoredAvatar = true } = {}) {
       .maybeSingle();
 
     if (!readError && storedProfile) {
-      profile.avatar_url =
-        storedProfile.avatar_url || DEFAULT_PROFILE_AVATAR_URL;
-      currentUser.user_metadata = {
-        ...currentUser.user_metadata,
-        avatar_url: profile.avatar_url,
-      };
+      profile.avatar_url = normalizePersistedAvatarUrl(
+        storedProfile.avatar_url,
+      );
     }
   }
+
+  profile.avatar_url = normalizePersistedAvatarUrl(profile.avatar_url);
+  currentUser.user_metadata = {
+    ...currentUser.user_metadata,
+    avatar_url: profile.avatar_url,
+  };
 
   const { error } = await client.from("profiles").upsert(profile);
   if (error) console.warn("프로필 동기화 실패:", error.message);
@@ -1475,6 +1621,12 @@ function renderAvatarElement(avatar, avatarUrl, iconSize = "3rem") {
   image.alt = "";
   image.style.cssText = "width:100%; height:100%; object-fit:cover;";
   image.addEventListener("error", () => {
+    if (image.dataset.defaultFallback !== "true") {
+      image.dataset.defaultFallback = "true";
+      image.src = DEFAULT_PROFILE_AVATAR_URL;
+      return;
+    }
+
     const icon = document.createElement("span");
     icon.className = "material-symbols-outlined";
     icon.style.cssText = `font-size:${iconSize}; color:#555;`;
@@ -1482,6 +1634,22 @@ function renderAvatarElement(avatar, avatarUrl, iconSize = "3rem") {
     avatar.replaceChildren(icon);
   });
   avatar.appendChild(image);
+}
+
+function normalizePersistedAvatarUrl(avatarUrl) {
+  const value = typeof avatarUrl === "string" ? avatarUrl.trim() : "";
+  if (!value) return DEFAULT_PROFILE_AVATAR_URL;
+
+  if (
+    value === DEFAULT_PROFILE_AVATAR_URL ||
+    /\/image\/glimmer-profile-image\.png(?:[?#].*)?$/.test(value)
+  ) {
+    return DEFAULT_PROFILE_AVATAR_URL;
+  }
+
+  return value.includes(PROFILE_AVATAR_STORAGE_PATH)
+    ? value
+    : DEFAULT_PROFILE_AVATAR_URL;
 }
 
 function setOwnProfileAvatar(avatarUrl) {
@@ -1500,9 +1668,8 @@ function setEditProfileAvatarPreview(avatarUrl) {
 }
 
 function getCurrentAvatarUrl() {
-  return (
-    currentUser?.user_metadata?.avatar_url ||
-    DEFAULT_PROFILE_AVATAR_URL
+  return normalizePersistedAvatarUrl(
+    currentUser?.user_metadata?.avatar_url,
   );
 }
 
@@ -2071,13 +2238,18 @@ async function toggleFollow() {
     const myNickname =
       currentUser.user_metadata?.random_nickname ||
       currentUser.email.split("@")[0];
-    await client.from("notifications").insert([
+    const { error: notificationError } = await client
+      .from("notifications")
+      .insert([
       {
         target_user: button.dataset.nickname,
         actor_nickname: myNickname,
         type: "follow",
       },
     ]);
+    if (!notificationError) {
+      void sendPushNotification(viewedProfileUserId, "follows");
+    }
   }
 }
 
@@ -2174,6 +2346,7 @@ function updateAuthUI() {
   const adminCenterMenu = document.getElementById("adminCenterMenu");
   adminCenterMenu.style.display =
     currentUser?.email === ADMIN_EMAIL ? "flex" : "none";
+  updateSettingsAccessVisibility();
 
   if (currentUser) {
     authContainer.style.display = "none";
@@ -2305,7 +2478,12 @@ async function handleSocialLogin(provider) {
     provider: provider,
     options: { redirectTo: `${window.location.origin}/` },
   });
-  if (error) alert(provider + " 로그인 실패");
+  if (error) {
+    const providerName =
+      { apple: "Apple", google: "Google", kakao: "카카오" }[provider] ||
+      provider;
+    showAppAlert(`${providerName} 로그인을 시작하지 못했습니다.`);
+  }
 }
 
 function getThemePreference() {
@@ -2399,14 +2577,589 @@ function setThemePreference(preference) {
   applyThemePreference(preference);
 }
 
+function normalizeNotificationPreferences(preferences) {
+  const source =
+    preferences && typeof preferences === "object" ? preferences : {};
+  return Object.fromEntries(
+    Object.entries(DEFAULT_NOTIFICATION_PREFERENCES).map(
+      ([key, defaultValue]) => [
+        key,
+        typeof source[key] === "boolean" ? source[key] : defaultValue,
+      ],
+    ),
+  );
+}
+
+function getNotificationPreferencesStorageKey() {
+  return currentUser
+    ? `${NOTIFICATION_PREFERENCES_STORAGE_PREFIX}_${currentUser.id}`
+    : "";
+}
+
+function readStoredNotificationPreferences() {
+  const storageKey = getNotificationPreferencesStorageKey();
+  if (!storageKey) return null;
+
+  try {
+    const value = JSON.parse(localStorage.getItem(storageKey) || "null");
+    return value && typeof value === "object"
+      ? normalizeNotificationPreferences(value)
+      : null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function storeNotificationPreferences(preferences) {
+  const storageKey = getNotificationPreferencesStorageKey();
+  if (!storageKey) return;
+
+  try {
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify(normalizeNotificationPreferences(preferences)),
+    );
+  } catch (_error) {}
+}
+
+function getNotificationPreferences() {
+  const metadataPreferences =
+    currentUser?.user_metadata?.notification_preferences;
+  return normalizeNotificationPreferences(
+    metadataPreferences || readStoredNotificationPreferences(),
+  );
+}
+
+function getPushConfig() {
+  return globalThis.GLIM_PUSH_CONFIG || {};
+}
+
+function isPushConfigured() {
+  const config = getPushConfig();
+  return Boolean(
+    config.vapidKey &&
+      config.firebase?.apiKey &&
+      config.firebase?.projectId &&
+      config.firebase?.messagingSenderId &&
+      config.firebase?.appId,
+  );
+}
+
+function isPushBrowserSupported() {
+  return Boolean(
+    window.isSecureContext &&
+      "Notification" in window &&
+      "serviceWorker" in navigator &&
+      "PushManager" in window,
+  );
+}
+
+function isIOSDevice() {
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function isRunningAsInstalledApp() {
+  return Boolean(
+    window.matchMedia("(display-mode: standalone)").matches ||
+      navigator.standalone === true,
+  );
+}
+
+function getPushFidStorageKey(userId = currentUser?.id) {
+  return userId ? `${PUSH_FID_STORAGE_PREFIX}_${userId}` : "";
+}
+
+function getStoredPushFid(userId = currentUser?.id) {
+  const storageKey = getPushFidStorageKey(userId);
+  if (!storageKey) return "";
+  try {
+    return localStorage.getItem(storageKey) || "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function storePushFid(fid, userId = currentUser?.id) {
+  const storageKey = getPushFidStorageKey(userId);
+  if (!storageKey || !fid) return;
+  try {
+    localStorage.setItem(storageKey, fid);
+  } catch (_error) {}
+}
+
+function removeStoredPushFid(userId = currentUser?.id) {
+  const storageKey = getPushFidStorageKey(userId);
+  if (!storageKey) return;
+  try {
+    localStorage.removeItem(storageKey);
+  } catch (_error) {}
+}
+
+async function loadFirebasePushModules() {
+  if (!firebasePushModulesPromise) {
+    firebasePushModulesPromise = Promise.all([
+      import(
+        `https://www.gstatic.com/firebasejs/${FIREBASE_WEB_SDK_VERSION}/firebase-app.js`
+      ),
+      import(
+        `https://www.gstatic.com/firebasejs/${FIREBASE_WEB_SDK_VERSION}/firebase-messaging.js`
+      ),
+    ]).then(([app, messaging]) => ({ app, messaging }));
+  }
+  return firebasePushModulesPromise;
+}
+
+async function savePushSubscription(fid, user = currentUser) {
+  if (!user?.id || !fid) throw new Error("푸시 구독 정보가 없습니다.");
+  const preferences = normalizeNotificationPreferences(
+    user.user_metadata?.notification_preferences ||
+      readStoredNotificationPreferences(),
+  );
+  const { error } = await client.from("push_subscriptions").upsert(
+    {
+      user_id: user.id,
+      firebase_installation_id: fid,
+      preferences,
+      enabled: true,
+      user_agent: navigator.userAgent.slice(0, 500),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "firebase_installation_id" },
+  );
+  if (error) throw error;
+  storePushFid(fid, user.id);
+}
+
+async function removePushSubscription(fid, userId = currentUser?.id) {
+  if (fid && userId) {
+    const { error } = await client
+      .from("push_subscriptions")
+      .delete()
+      .eq("user_id", userId)
+      .eq("firebase_installation_id", fid);
+    if (error) console.warn("푸시 구독 삭제 실패:", error.message);
+  }
+  removeStoredPushFid(userId);
+}
+
+function settlePendingPushRegistration(method, value) {
+  if (!pendingPushRegistration) return;
+  clearTimeout(pendingPushRegistration.timeoutId);
+  const callback = pendingPushRegistration[method];
+  pendingPushRegistration = null;
+  callback(value);
+}
+
+function waitForPushRegistration() {
+  if (pendingPushRegistration) {
+    settlePendingPushRegistration(
+      "reject",
+      new Error("새로운 푸시 등록을 시작합니다."),
+    );
+  }
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      if (!pendingPushRegistration) return;
+      pendingPushRegistration = null;
+      reject(new Error("푸시 기기 등록 시간이 초과되었습니다."));
+    }, 15000);
+    pendingPushRegistration = { resolve, reject, timeoutId };
+  });
+}
+
+function setupPushEventListeners(modules) {
+  if (pushEventListenersReady || !pushMessaging) return;
+  pushEventListenersReady = true;
+
+  modules.messaging.onRegistered(pushMessaging, async (fid) => {
+    const user = currentUser;
+    try {
+      if (!user) throw new Error("로그인이 필요합니다.");
+      await savePushSubscription(fid, user);
+      settlePendingPushRegistration("resolve", fid);
+      updatePushNotificationSettingsUI();
+    } catch (error) {
+      settlePendingPushRegistration("reject", error);
+      console.warn("푸시 기기 정보 저장 실패:", error);
+      updatePushNotificationSettingsUI();
+    }
+  });
+
+  modules.messaging.onUnregistered(pushMessaging, async (fid) => {
+    const userId = currentUser?.id;
+    await removePushSubscription(fid, userId);
+    updatePushNotificationSettingsUI();
+  });
+
+  modules.messaging.onMessage(pushMessaging, (payload) => {
+    const data = payload?.data || {};
+    showAppAlert(
+      data.body ||
+        payload?.notification?.body ||
+        "글림에 새로운 소식이 도착했습니다.",
+    );
+    if (document.getElementById("view-noti")?.classList.contains("active")) {
+      fetchNotifications();
+    }
+  });
+}
+
+async function getPushMessagingContext() {
+  if (!isPushConfigured()) {
+    throw new Error("Firebase 푸시 설정이 아직 입력되지 않았습니다.");
+  }
+  if (!isPushBrowserSupported()) {
+    throw new Error("이 브라우저에서는 푸시 알림을 사용할 수 없습니다.");
+  }
+
+  const modules = await loadFirebasePushModules();
+  if (!(await modules.messaging.isSupported())) {
+    throw new Error("이 브라우저에서는 푸시 알림을 사용할 수 없습니다.");
+  }
+
+  if (!pushServiceWorkerRegistration) {
+    pushServiceWorkerRegistration = await navigator.serviceWorker.register(
+      "./firebase-messaging-sw.js",
+      {
+        scope: "./",
+        updateViaCache: "none",
+      },
+    );
+  }
+  if (!pushMessaging) {
+    const existingApp = modules.app
+      .getApps()
+      .find((app) => app.name === "[DEFAULT]");
+    const firebaseApp =
+      existingApp || modules.app.initializeApp(getPushConfig().firebase);
+    pushMessaging = modules.messaging.getMessaging(firebaseApp);
+  }
+  setupPushEventListeners(modules);
+  return { modules, messaging: pushMessaging };
+}
+
+function updatePushNotificationSettingsUI() {
+  const toggle = document.getElementById("pushNotificationToggle");
+  const status = document.getElementById("pushNotificationStatus");
+  const help = document.getElementById("pushNotificationHelp");
+  if (!toggle || !status || !help) return;
+
+  help.dataset.state = "";
+  toggle.checked = false;
+  toggle.disabled = true;
+
+  if (!currentUser) {
+    status.innerText = "로그인 후 사용할 수 있습니다.";
+    return;
+  }
+  if (!isPushConfigured()) {
+    status.innerText = "Firebase 연결이 필요합니다.";
+    help.innerText = "설정 파일에 Firebase 정보와 Web Push 키를 입력해주세요.";
+    help.dataset.state = "warning";
+    return;
+  }
+  if (isIOSDevice() && !isRunningAsInstalledApp()) {
+    status.innerText = "홈 화면에 추가한 앱에서 사용 가능";
+    help.innerText =
+      "Safari 공유 버튼에서 ‘홈 화면에 추가’한 뒤 글림 앱을 열어주세요.";
+    help.dataset.state = "warning";
+    return;
+  }
+  if (!isPushBrowserSupported()) {
+    status.innerText = "이 브라우저에서는 지원하지 않습니다.";
+    help.innerText = "HTTPS 주소 또는 설치된 글림 앱에서 다시 확인해주세요.";
+    help.dataset.state = "warning";
+    return;
+  }
+  if (Notification.permission === "denied") {
+    status.innerText = "브라우저에서 알림이 차단됨";
+    help.innerText = "브라우저나 휴대폰 설정에서 글림 알림을 허용해주세요.";
+    help.dataset.state = "warning";
+    return;
+  }
+
+  const isEnabled =
+    Notification.permission === "granted" && Boolean(getStoredPushFid());
+  toggle.checked = isEnabled;
+  toggle.disabled = false;
+  status.innerText = isEnabled
+    ? "켜짐 · 앱을 닫아도 알림을 받아요."
+    : Notification.permission === "default"
+      ? "꺼짐 · 스위치를 눌러 허용"
+      : "꺼짐";
+  help.innerText = isEnabled
+    ? "이 기기에만 적용됩니다."
+    : "앱을 닫아도 새 소식을 받을 수 있습니다.";
+  help.dataset.state = isEnabled ? "ready" : "";
+}
+
+async function togglePushNotifications(isEnabled) {
+  const toggle = document.getElementById("pushNotificationToggle");
+  if (!currentUser || !toggle) return;
+  toggle.disabled = true;
+
+  try {
+    if (!isEnabled) {
+      await disablePushNotifications();
+      showAppAlert("이 기기의 푸시 알림을 껐습니다.");
+      return;
+    }
+
+    if (!isPushConfigured()) {
+      throw new Error("Firebase 푸시 설정이 아직 입력되지 않았습니다.");
+    }
+    if (isIOSDevice() && !isRunningAsInstalledApp()) {
+      throw new Error(
+        "아이폰에서는 Safari의 ‘홈 화면에 추가’로 설치한 글림 앱에서 켤 수 있습니다.",
+      );
+    }
+    if (!isPushBrowserSupported()) {
+      throw new Error("이 브라우저에서는 푸시 알림을 사용할 수 없습니다.");
+    }
+
+    let permission = Notification.permission;
+    if (permission === "default") {
+      permission = await Notification.requestPermission();
+    }
+    if (permission !== "granted") {
+      throw new Error(
+        "알림이 허용되지 않았습니다. 브라우저 설정에서 글림 알림을 허용해주세요.",
+      );
+    }
+
+    const { modules, messaging } = await getPushMessagingContext();
+    const registrationPromise = waitForPushRegistration();
+    void registrationPromise.catch(() => {});
+    try {
+      await modules.messaging.register(messaging, {
+        vapidKey: getPushConfig().vapidKey,
+        serviceWorkerRegistration: pushServiceWorkerRegistration,
+      });
+    } catch (error) {
+      settlePendingPushRegistration("reject", error);
+      await registrationPromise.catch(() => {});
+      throw error;
+    }
+    await registrationPromise;
+    showAppAlert("이 기기의 푸시 알림을 켰습니다.");
+  } catch (error) {
+    console.warn("푸시 알림 설정 실패:", error);
+    showAppAlert(
+      error instanceof Error
+        ? error.message
+        : "푸시 알림을 설정하지 못했습니다.",
+    );
+  } finally {
+    updatePushNotificationSettingsUI();
+  }
+}
+
+async function disablePushNotifications({ silent = false } = {}) {
+  const fid = getStoredPushFid();
+  const userId = currentUser?.id;
+  await removePushSubscription(fid, userId);
+
+  if (pushMessaging && isPushConfigured()) {
+    try {
+      const modules = await loadFirebasePushModules();
+      await modules.messaging.unregister(pushMessaging);
+    } catch (error) {
+      if (!silent) console.warn("FCM 기기 등록 해제 실패:", error);
+    }
+  }
+  updatePushNotificationSettingsUI();
+}
+
+async function initializePushNotifications() {
+  updatePushNotificationSettingsUI();
+  if (
+    !currentUser ||
+    !isPushConfigured() ||
+    !isPushBrowserSupported() ||
+    Notification.permission !== "granted" ||
+    !getStoredPushFid() ||
+    (isIOSDevice() && !isRunningAsInstalledApp())
+  ) {
+    return;
+  }
+
+  const { modules, messaging } = await getPushMessagingContext();
+  await modules.messaging.register(messaging, {
+    vapidKey: getPushConfig().vapidKey,
+    serviceWorkerRegistration: pushServiceWorkerRegistration,
+  });
+}
+
+async function syncPushNotificationPreferences(preferences) {
+  if (!currentUser || !getStoredPushFid()) return;
+  const { error } = await client
+    .from("push_subscriptions")
+    .update({
+      preferences: normalizeNotificationPreferences(preferences),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", currentUser.id)
+    .eq("firebase_installation_id", getStoredPushFid());
+  if (error) {
+    console.warn("푸시 알림 카테고리 동기화 실패:", error.message);
+  }
+}
+
+async function sendPushNotification(targetUserId, category, postId = "") {
+  if (
+    !currentUser ||
+    !isPushConfigured() ||
+    !targetUserId ||
+    targetUserId === currentUser.id ||
+    !NOTIFICATION_PREFERENCE_KEYS.has(category)
+  ) {
+    return;
+  }
+  const { error } = await client.functions.invoke("send-push", {
+    body: { targetUserId, category, postId },
+  });
+  if (error) console.warn("푸시 알림 발송 요청 실패:", error.message);
+}
+
+function renderNotificationSettingsUI() {
+  const preferences = getNotificationPreferences();
+  document
+    .querySelectorAll("[data-notification-preference]")
+    .forEach((input) => {
+      const key = input.dataset.notificationPreference;
+      input.checked = Boolean(preferences[key]);
+    });
+
+  const summary = document.getElementById("notificationSettingsSummary");
+  const enabledCount = Object.values(preferences).filter(Boolean).length;
+  if (summary) {
+    summary.innerText =
+      enabledCount === NOTIFICATION_PREFERENCE_KEYS.size
+        ? "모든 알림 받기"
+        : enabledCount === 0
+          ? "모든 알림 끔"
+          : `${enabledCount}개 카테고리 받기`;
+  }
+
+  if (currentUser) storeNotificationPreferences(preferences);
+  updatePushNotificationSettingsUI();
+}
+
+function setNotificationPreferenceControlsDisabled(isDisabled) {
+  document
+    .querySelectorAll("[data-notification-preference]")
+    .forEach((input) => {
+      input.disabled = Boolean(isDisabled);
+    });
+}
+
+async function setNotificationPreference(category, isEnabled) {
+  if (!currentUser || !NOTIFICATION_PREFERENCE_KEYS.has(category)) return;
+  const previousPreferences = getNotificationPreferences();
+  const nextPreferences = {
+    ...previousPreferences,
+    [category]: Boolean(isEnabled),
+  };
+
+  currentUser.user_metadata = {
+    ...currentUser.user_metadata,
+    notification_preferences: nextPreferences,
+  };
+  storeNotificationPreferences(nextPreferences);
+  renderNotificationSettingsUI();
+  setNotificationPreferenceControlsDisabled(true);
+
+  const { data, error } = await client.auth.updateUser({
+    data: { notification_preferences: nextPreferences },
+  });
+  if (error) {
+    currentUser.user_metadata = {
+      ...currentUser.user_metadata,
+      notification_preferences: previousPreferences,
+    };
+    storeNotificationPreferences(previousPreferences);
+    renderNotificationSettingsUI();
+    setNotificationPreferenceControlsDisabled(false);
+    showAppAlert("알림 설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
+
+  currentUser = data.user || currentUser;
+  await syncPushNotificationPreferences(nextPreferences);
+  setNotificationPreferenceControlsDisabled(false);
+  if (document.getElementById("view-noti")?.classList.contains("active")) {
+    await fetchNotifications();
+  }
+}
+
+function getNotificationPreferenceCategory(notificationType) {
+  const categories = {
+    like: "likes",
+    comment: "comments",
+    follow: "follows",
+    announcement: "announcements",
+    notice: "announcements",
+    event: "announcements",
+    admin: "announcements",
+  };
+  return categories[notificationType] || "announcements";
+}
+
+function isNotificationTypeEnabled(notificationType, preferences) {
+  return Boolean(
+    preferences[getNotificationPreferenceCategory(notificationType)],
+  );
+}
+
+function updateSettingsAccessVisibility() {
+  const isLoggedIn = Boolean(currentUser);
+  const accountSection = document.getElementById("settingsAccountSection");
+  const notificationRow = document.getElementById(
+    "settingsNotificationRow",
+  );
+
+  if (accountSection) accountSection.hidden = !isLoggedIn;
+  if (notificationRow) notificationRow.hidden = !isLoggedIn;
+  renderNotificationSettingsUI();
+}
+
 function openSettingsView() {
-  if (!currentUser) return;
+  updateSettingsAccessVisibility();
   updateThemeSettingsUI();
   activateAppView("view-settings");
 }
 
 function closeSettingsView() {
   switchTab("profile");
+}
+
+function openNotificationSettingsView() {
+  if (!currentUser) return;
+  renderNotificationSettingsUI();
+  activateAppView("view-notification-settings");
+}
+
+function closeNotificationSettingsView() {
+  activateAppView("view-settings");
+}
+
+function openPrivacyPolicyView() {
+  activateAppView("view-privacy-policy");
+}
+
+function closePrivacyPolicyView() {
+  activateAppView("view-settings");
+}
+
+function openTermsOfServiceView() {
+  activateAppView("view-terms-of-service");
+}
+
+function closeTermsOfServiceView() {
+  activateAppView("view-settings");
 }
 
 function openThemeSettingsView() {
@@ -2452,6 +3205,7 @@ function closeAccountCenterView() {
 }
 
 async function handleSignOut() {
+  await disablePushNotifications({ silent: true });
   await client.auth.signOut();
   blockedUserIds.clear();
   blockedUserNicknames.clear();
@@ -2641,13 +3395,16 @@ function requestAccountDeletion() {
   if (!currentUser) return;
 
   showAppConfirm(
-    "작성한 글, 댓글, 프로필과 계정 정보가 모두 삭제됩니다.\n삭제 후에는 복구할 수 없습니다.",
+    "작성한 글과 댓글, 프로필 등\n모든 계정 정보가 삭제됩니다.\n\n삭제 후에는 복구할 수 없습니다.",
     performAccountDeletion,
     {
       title: "회원 탈퇴",
       icon: "person_remove",
       confirmText: "계정 삭제",
       isDestructive: true,
+      requiredText: "회원탈퇴",
+      verificationLabel:
+        "계정을 삭제하려면 아래에 ‘회원탈퇴’를 입력해주세요.",
     },
   );
 }
@@ -3073,6 +3830,21 @@ function setupSwipeBackNavigation() {
     document.getElementById("view-theme-settings"),
     () => "view-settings",
     closeThemeSettingsView,
+  );
+  addInteractiveSwipeBack(
+    document.getElementById("view-notification-settings"),
+    () => "view-settings",
+    closeNotificationSettingsView,
+  );
+  addInteractiveSwipeBack(
+    document.getElementById("view-privacy-policy"),
+    () => "view-settings",
+    closePrivacyPolicyView,
+  );
+  addInteractiveSwipeBack(
+    document.getElementById("view-terms-of-service"),
+    () => "view-settings",
+    closeTermsOfServiceView,
   );
   addInteractiveSwipeBack(
     document.getElementById("view-notice-detail"),
@@ -3838,7 +4610,7 @@ async function incrementMetric(postId, column, element) {
       icon.style.color = "#ff3b30";
       const { data: postData } = await client
         .from("posts")
-        .select(`author, ${column}`)
+        .select(`author, user_id, ${column}`)
         .eq("id", postId)
         .single();
       await client
@@ -3848,7 +4620,9 @@ async function incrementMetric(postId, column, element) {
 
       const myNickname = currentUser.user_metadata?.random_nickname;
       if (postData.author !== myNickname) {
-        await client.from("notifications").insert([
+        const { error: notificationError } = await client
+          .from("notifications")
+          .insert([
           {
             target_user: postData.author,
             actor_nickname: myNickname,
@@ -3856,6 +4630,9 @@ async function incrementMetric(postId, column, element) {
             post_id: postId,
           },
         ]);
+        if (!notificationError) {
+          void sendPushNotification(postData.user_id, "likes", postId);
+        }
       }
     }
   }
@@ -4071,7 +4848,7 @@ async function submitComment() {
 
     const { data: postData } = await client
       .from("posts")
-      .select("author, dislikes_count")
+      .select("author, user_id, dislikes_count")
       .eq("id", currentPostIdForComment)
       .single();
     await client
@@ -4080,7 +4857,9 @@ async function submitComment() {
       .eq("id", currentPostIdForComment);
 
     if (postData.author !== myNickname) {
-      await client.from("notifications").insert([
+      const { error: notificationError } = await client
+        .from("notifications")
+        .insert([
         {
           target_user: postData.author,
           actor_nickname: myNickname,
@@ -4088,6 +4867,13 @@ async function submitComment() {
           post_id: currentPostIdForComment,
         },
       ]);
+      if (!notificationError) {
+        void sendPushNotification(
+          postData.user_id,
+          "comments",
+          currentPostIdForComment,
+        );
+      }
     }
 
     fetchPosts();
@@ -4108,6 +4894,18 @@ function renderNotificationState(icon, title, description = "") {
   `;
 }
 
+function getAnnouncementNotificationTitle(content) {
+  const value = String(content ?? "").trim();
+  if (!value) return "글림의 새로운 소식";
+
+  const withoutPrefix = value.replace(/^\[공지\]\s*/, "");
+  const titleCandidate = withoutPrefix.includes("|||")
+    ? withoutPrefix.split("|||")[0]
+    : withoutPrefix.split(/\r?\n/).find((line) => line.trim());
+  const title = String(titleCandidate || "").trim();
+  return title ? title.slice(0, 70) : "글림의 새로운 소식";
+}
+
 async function fetchNotifications() {
   const notiList = document.getElementById("notiList");
   if (!notiList) return;
@@ -4126,12 +4924,23 @@ async function fetchNotifications() {
     "알림을 불러오는 중...",
   );
   const myNickname = currentUser.user_metadata?.random_nickname;
-
-  const { data, error } = await client
-    .from("notifications")
-    .select("*")
-    .eq("target_user", myNickname)
-    .order("created_at", { ascending: false });
+  const preferences = getNotificationPreferences();
+  const [notificationResult, announcementResult] = await Promise.all([
+    client
+      .from("notifications")
+      .select("*")
+      .eq("target_user", myNickname)
+      .order("created_at", { ascending: false }),
+    preferences.announcements
+      ? client
+          .from("posts")
+          .select("id, content, created_at")
+          .eq("author", "🚨글림 운영자")
+          .order("created_at", { ascending: false })
+          .limit(10)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const { data, error } = notificationResult;
 
   if (error)
     return (notiList.innerHTML = renderNotificationState(
@@ -4139,10 +4948,44 @@ async function fetchNotifications() {
       "오류가 발생했습니다.",
       "잠시 후 다시 확인해주세요.",
     ));
-  const visibleNotifications = (data || []).filter(
-    (notification) =>
-      !blockedUserNicknames.has(notification.actor_nickname || ""),
+  if (announcementResult.error) {
+    console.warn(
+      "운영자 알림을 불러오지 못했습니다:",
+      announcementResult.error.message,
+    );
+  }
+
+  const announcementNotifications = (announcementResult.data || []).map(
+    (post) => ({
+      id: `announcement-${post.id}`,
+      type: "announcement",
+      actor_nickname: "글림 운영팀",
+      announcement_title: getAnnouncementNotificationTitle(post.content),
+      created_at: post.created_at,
+    }),
   );
+  const unblockedNotifications = [
+    ...(data || []),
+    ...announcementNotifications,
+  ]
+    .filter(
+      (notification) =>
+        notification.type === "announcement" ||
+        !blockedUserNicknames.has(notification.actor_nickname || ""),
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+  const visibleNotifications = unblockedNotifications.filter((notification) =>
+    isNotificationTypeEnabled(notification.type, preferences),
+  );
+  if (!visibleNotifications.length && unblockedNotifications.length)
+    return (notiList.innerHTML = renderNotificationState(
+      "notifications_off",
+      "선택한 알림이 없습니다.",
+      "알림 설정에서 받고 싶은 소식을 켜보세요.",
+    ));
   if (!visibleNotifications.length)
     return (notiList.innerHTML = renderNotificationState(
       "notifications_off",
@@ -4160,21 +5003,30 @@ async function fetchNotifications() {
       if (n.type === "like") {
         icon = "favorite";
         iconClass = "like";
-        text = `<strong>${actor}</strong>님이 회원님의 글을 좋아합니다.`;
+        text = `<strong>${actor}</strong>님의 마음이 회원님의 글에 머물렀습니다.`;
       } else if (n.type === "comment") {
         icon = "chat_bubble";
         iconClass = "comment";
-        text = `<strong>${actor}</strong>님이 회원님의 글에 댓글을 남겼습니다.`;
+        text = `<strong>${actor}</strong>님이 회원님의 글에 생각을 남겼습니다.`;
       } else if (n.type === "follow") {
         icon = "person_add";
         iconClass = "follow";
-        text = `<strong>${actor}</strong>님이 회원님을 팔로우하기 시작했습니다.`;
+        text = `<strong>${actor}</strong>님이 회원님의 글 흐름을 구독하기 시작했습니다.`;
+      } else if (n.type === "announcement") {
+        icon = "campaign";
+        iconClass = "announcement";
+        text = `<strong>글림</strong> · ${escapeHtml(n.announcement_title)}`;
       } else {
         text = "새로운 알림이 도착했습니다.";
       }
+      const isAnnouncement = n.type === "announcement";
+      const itemClass = `noti-item${isAnnouncement ? " is-actionable" : ""}`;
+      const itemAttributes = isAnnouncement
+        ? `role="button" tabindex="0" onclick="openNoticeSheet()" onkeydown="if(event.key === 'Enter' || event.key === ' '){event.preventDefault();openNoticeSheet();}"`
+        : `role="listitem"`;
 
       return `
-      <div class="noti-item" role="listitem">
+      <div class="${itemClass}" ${itemAttributes}>
         <span class="material-symbols-outlined noti-icon ${iconClass}">${escapeHtml(icon)}</span>
         <div class="noti-content">
           <div class="noti-text">${text}</div>
@@ -4787,10 +5639,10 @@ async function openNoticeSheet() {
         .replace(/\n/g, "<br>");
 
       return `
-      <div onclick="viewNoticeDetail('${safeTitle}', '${dateStr}', '${safeText}')"
+      <div class="notice-list-item" onclick="viewNoticeDetail('${safeTitle}', '${dateStr}', '${safeText}')"
            style="background: #111; border-radius: 12px; padding: 20px; margin-bottom: 10px; border: 1px solid #222; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s;">
-        <div style="color: #eee; font-size: 1.05rem; font-family: 'Noto Serif KR', serif; font-weight: 300;">${title}</div>
-        <span class="material-symbols-outlined" style="color: #555;">chevron_right</span>
+        <div class="notice-list-item-title" style="color: #eee; font-size: 1.05rem; font-family: 'Noto Serif KR', serif; font-weight: 300;">${title}</div>
+        <span class="material-symbols-outlined notice-list-item-icon" style="color: #555;">chevron_right</span>
       </div>
     `;
     })
@@ -4808,9 +5660,9 @@ function viewNoticeDetail(title, date, content) {
 
   const container = document.getElementById("noticeDetailContainer");
   container.innerHTML = `
-    <div style="color: #fff; font-weight: 700; font-size: 1.6rem; margin-bottom: 15px; font-family: 'Noto Serif KR', serif;">${title}</div>
-    <div style="color: #666; font-size: 0.9rem; margin-bottom: 40px; font-family: -apple-system, sans-serif; border-bottom: 1px solid #222; padding-bottom: 15px;">${date}</div>
-    <div style="color: #eaeaea; font-size: 1.15rem; line-height: 1.8; font-family: 'Noto Serif KR', serif; font-weight: 300; word-break: keep-all;">${content}</div>
+    <div class="notice-detail-title" style="color: #fff; font-weight: 700; font-size: 1.6rem; margin-bottom: 15px; font-family: 'Noto Serif KR', serif;">${title}</div>
+    <div class="notice-detail-date" style="color: #666; font-size: 0.9rem; margin-bottom: 40px; font-family: -apple-system, sans-serif; border-bottom: 1px solid #222; padding-bottom: 15px;">${date}</div>
+    <div class="notice-detail-content" style="color: #eaeaea; font-size: 1.15rem; line-height: 1.8; font-family: 'Noto Serif KR', serif; font-weight: 300; word-break: keep-all;">${content}</div>
   `;
 }
 
