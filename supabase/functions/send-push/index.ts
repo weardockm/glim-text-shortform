@@ -2,8 +2,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Max-Age": "86400",
 };
 
 const FIREBASE_MESSAGING_SCOPE =
@@ -212,6 +214,12 @@ Deno.serve(async (request) => {
     if (!ALLOWED_CATEGORIES.has(category)) {
       return jsonResponse({ error: "Invalid category" }, 400);
     }
+    console.log("push-request", {
+      category,
+      broadcast: body.broadcast === true,
+      hasTarget: Boolean(body.targetUserId),
+      hasPost: Boolean(body.postId),
+    });
 
     const admin = createClient(supabaseUrl, serviceRoleKey);
     const isAdmin = user.email?.toLowerCase() === "weardockm@gmail.com";
@@ -234,7 +242,10 @@ Deno.serve(async (request) => {
     const { data: subscriptions, error: subscriptionError } =
       await subscriptionQuery;
     if (subscriptionError) throw subscriptionError;
-    if (!subscriptions?.length) return jsonResponse({ sent: 0 });
+    if (!subscriptions?.length) {
+      console.log("push-skipped", { category, reason: "no-subscription" });
+      return jsonResponse({ sent: 0 });
+    }
 
     const account = JSON.parse(
       Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON") || "",
@@ -306,6 +317,12 @@ Deno.serve(async (request) => {
 
     const sent = results.filter((result) => result.ok).length;
     const failed = results.length - sent;
+    console.log("push-result", {
+      category,
+      subscriptions: subscriptions.length,
+      sent,
+      failed,
+    });
     if (!sent && failed) {
       await admin
         .from("push_delivery_log")

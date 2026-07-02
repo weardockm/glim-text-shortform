@@ -3030,6 +3030,8 @@ async function sendPushNotification(targetUserId, category, postId = "") {
 
     const response = await fetch(`${SUPABASE_URL}/functions/v1/send-push`, {
       method: "POST",
+      mode: "cors",
+      keepalive: true,
       headers: {
         apikey: SUPABASE_ANON_KEY,
         Authorization: `Bearer ${session.access_token}`,
