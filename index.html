@@ -59,7 +59,7 @@
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="push-config.js"></script>
-    <script src="index.js?v=54" defer></script>
+    <script src="index.js?v=55" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -74,10 +74,11 @@
         display: none;
       }
       :root {
+        --top-safe-space: env(safe-area-inset-top, 0px);
         --bottom-safe-space: clamp(
           8px,
           env(safe-area-inset-bottom, 0px),
-          24px
+          14px
         );
         --bottom-nav-height: calc(60px + var(--bottom-safe-space));
       }
@@ -1595,7 +1596,7 @@
       .profile-topbar {
         position: sticky;
         top: 0;
-        padding: 20px;
+        padding: calc(10px + var(--top-safe-space)) 20px 14px;
         display: flex;
         justify-content: space-between;
         align-items: center;

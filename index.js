@@ -2241,15 +2241,16 @@ async function toggleFollow() {
     const { error: notificationError } = await client
       .from("notifications")
       .insert([
-      {
-        target_user: button.dataset.nickname,
-        actor_nickname: myNickname,
-        type: "follow",
-      },
-    ]);
-    if (!notificationError) {
-      void sendPushNotification(viewedProfileUserId, "follows");
+        {
+          target_user: button.dataset.nickname,
+          actor_nickname: myNickname,
+          type: "follow",
+        },
+      ]);
+    if (notificationError) {
+      console.warn("앱 내부 팔로우 알림 저장 실패:", notificationError.message);
     }
+    void sendPushNotification(viewedProfileUserId, "follows");
   }
 }
 
@@ -3011,7 +3012,6 @@ async function syncPushNotificationPreferences(preferences) {
 async function sendPushNotification(targetUserId, category, postId = "") {
   if (
     !currentUser ||
-    !isPushConfigured() ||
     !targetUserId ||
     targetUserId === currentUser.id ||
     !NOTIFICATION_PREFERENCE_KEYS.has(category)
@@ -4623,16 +4623,17 @@ async function incrementMetric(postId, column, element) {
         const { error: notificationError } = await client
           .from("notifications")
           .insert([
-          {
-            target_user: postData.author,
-            actor_nickname: myNickname,
-            type: "like",
-            post_id: postId,
-          },
-        ]);
-        if (!notificationError) {
-          void sendPushNotification(postData.user_id, "likes", postId);
+            {
+              target_user: postData.author,
+              actor_nickname: myNickname,
+              type: "like",
+              post_id: postId,
+            },
+          ]);
+        if (notificationError) {
+          console.warn("앱 내부 공감 알림 저장 실패:", notificationError.message);
         }
+        void sendPushNotification(postData.user_id, "likes", postId);
       }
     }
   }
@@ -4860,20 +4861,21 @@ async function submitComment() {
       const { error: notificationError } = await client
         .from("notifications")
         .insert([
-        {
-          target_user: postData.author,
-          actor_nickname: myNickname,
-          type: "comment",
-          post_id: currentPostIdForComment,
-        },
-      ]);
-      if (!notificationError) {
-        void sendPushNotification(
-          postData.user_id,
-          "comments",
-          currentPostIdForComment,
-        );
+          {
+            target_user: postData.author,
+            actor_nickname: myNickname,
+            type: "comment",
+            post_id: currentPostIdForComment,
+          },
+        ]);
+      if (notificationError) {
+        console.warn("앱 내부 댓글 알림 저장 실패:", notificationError.message);
       }
+      void sendPushNotification(
+        postData.user_id,
+        "comments",
+        currentPostIdForComment,
+      );
     }
 
     fetchPosts();
