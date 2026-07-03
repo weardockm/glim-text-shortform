@@ -12,7 +12,7 @@
       rel="stylesheet"
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="admin.js?v=5" defer></script>
+    <script src="admin.js?v=8" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -118,12 +118,99 @@
         font-weight: bold;
         margin-bottom: 10px;
       }
+      .report-review-card {
+        padding: 18px;
+        border: 1px solid #2d2d2d;
+        border-radius: 12px;
+        background: #101010;
+      }
+      .report-review-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .report-target-badge {
+        padding: 5px 9px;
+        border-radius: 999px;
+        background: rgba(255, 149, 0, 0.13);
+        color: #ffad33;
+        font-size: 0.74rem;
+        font-weight: 700;
+      }
+      .report-review-date {
+        color: #696969;
+        font-size: 0.74rem;
+        font-family: -apple-system, sans-serif;
+      }
+      .report-review-reason {
+        margin-bottom: 9px;
+        color: #ff7068;
+        font-size: 0.94rem;
+        font-weight: 700;
+      }
+      .report-review-content {
+        padding: 13px;
+        border-radius: 8px;
+        background: #090909;
+        color: #f0f0f0;
+        font-size: 1rem;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .report-review-author,
+      .report-review-details {
+        margin-top: 9px;
+        color: #888;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        font-family: -apple-system, sans-serif;
+        overflow-wrap: anywhere;
+      }
+      .report-review-details {
+        padding: 10px;
+        border-left: 2px solid #555;
+        background: rgba(255, 255, 255, 0.025);
+        color: #aaa;
+      }
+      .report-review-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 15px;
+      }
+      .moderation-action-btn {
+        min-height: 36px;
+        padding: 8px 11px;
+        border: 1px solid #353535;
+        border-radius: 8px;
+        background: #1b1b1b;
+        color: #ddd;
+        cursor: pointer;
+        font-size: 0.8rem;
+        font-weight: 700;
+      }
+      .moderation-action-btn.secondary {
+        color: #aaa;
+      }
+      .moderation-action-btn.warning {
+        border-color: rgba(255, 149, 0, 0.35);
+        color: #ffad33;
+      }
+      .moderation-action-btn.danger {
+        border-color: rgba(255, 59, 48, 0.36);
+        color: #ff6b62;
+      }
       .my-post-content {
         font-size: 1.05rem;
         color: #fff;
         line-height: 1.5;
         font-family: "Noto Serif KR", serif;
         margin-bottom: 10px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
       .delete-post-btn {
         background: #ff3b30;
@@ -188,7 +275,7 @@
       </div>
 
       <h2 style="color: #fff; font-size: 1.2rem; margin-bottom: 15px">
-        🚨 신고 접수된 사유들
+        🚨 신고 검토 대기
       </h2>
       <div id="adminReportList">
         <div class="coming-soon">보안 인가를 확인하는 중입니다...</div>

@@ -60,7 +60,7 @@
     />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="push-config.js?v=2"></script>
-    <script src="index.js?v=61" defer></script>
+    <script src="index.js?v=65" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -394,6 +394,7 @@
         text-align: center;
         word-break: break-word;
         overflow-wrap: anywhere;
+        white-space: pre-wrap;
         width: 100%;
         max-width: min(450px, calc(100% - 56px));
         font-weight: 300;
@@ -1203,6 +1204,7 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
         word-break: keep-all;
+        white-space: pre-wrap;
         font-weight: 300;
         text-align: left;
         width: 100%;
@@ -2575,6 +2577,8 @@
         color: #eee;
         line-height: 1.4;
         margin-bottom: 10px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
       .comment-actions {
         display: flex;
@@ -2626,6 +2630,87 @@
         padding: 0 18px;
         font-weight: 600;
         cursor: pointer;
+      }
+      .report-sheet {
+        height: min(76%, 650px);
+      }
+      .report-sheet-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 2px calc(14px + env(safe-area-inset-bottom));
+      }
+      .report-sheet-copy {
+        margin: 0 0 15px;
+        color: #898989;
+        font-size: 0.85rem;
+        line-height: 1.5;
+        font-family: -apple-system, sans-serif;
+      }
+      .report-reason-list {
+        display: grid;
+        gap: 8px;
+      }
+      .report-reason-option {
+        min-height: 46px;
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 11px 13px;
+        border: 1px solid #2b2b2b;
+        border-radius: 10px;
+        background: #101010;
+        color: #e4e4e4;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-family: -apple-system, sans-serif;
+      }
+      .report-reason-option input {
+        width: 17px;
+        height: 17px;
+        margin: 0;
+        accent-color: #e9554f;
+      }
+      .report-details-label {
+        display: block;
+        margin: 16px 0 7px;
+        color: #aaa;
+        font-size: 0.82rem;
+        font-family: -apple-system, sans-serif;
+      }
+      .report-details {
+        width: 100%;
+        min-height: 84px;
+        resize: none;
+        padding: 12px;
+        border: 1px solid #303030;
+        border-radius: 10px;
+        outline: none;
+        background: #0b0b0b;
+        color: #f1f1f1;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        font-family: -apple-system, sans-serif;
+      }
+      .report-details:focus {
+        border-color: #7c4d49;
+        box-shadow: 0 0 0 3px rgba(233, 85, 79, 0.08);
+      }
+      .report-submit-btn {
+        width: 100%;
+        min-height: 46px;
+        margin-top: 14px;
+        border: 0;
+        border-radius: 10px;
+        background: #e9554f;
+        color: #fff;
+        cursor: pointer;
+        font-size: 0.94rem;
+        font-weight: 700;
+        font-family: -apple-system, sans-serif;
+      }
+      .report-submit-btn:disabled {
+        opacity: 0.45;
+        cursor: wait;
       }
       .profile-menu-row {
         display: flex;
@@ -3610,6 +3695,20 @@
         background: #fbf8f5;
         color: #312c29;
       }
+      html[data-theme="light"] .report-reason-option {
+        border-color: #ded5ce;
+        background: #fffdfa;
+        color: #3c3531;
+      }
+      html[data-theme="light"] .report-sheet-copy,
+      html[data-theme="light"] .report-details-label {
+        color: #7d726b;
+      }
+      html[data-theme="light"] .report-details {
+        border-color: #ddd4cd;
+        background: #fffdfa;
+        color: #2f2a27;
+      }
       html[data-theme="light"] .sheet-handle {
         background: #c9bfb7;
       }
@@ -4397,8 +4496,15 @@
           <div class="more-menu">
             <button
               type="button"
+              class="more-menu-item"
+              onclick="event.stopPropagation(); reportUser(viewedProfileUserId)"
+            >
+              사용자 신고
+            </button>
+            <button
+              type="button"
               class="more-menu-item block-user"
-              onclick="blockUser(viewedProfileUserId)"
+              onclick="event.stopPropagation(); blockUser(viewedProfileUserId)"
             >
               사용자 차단
             </button>
@@ -5751,6 +5857,75 @@
         />
         <button class="comment-submit-btn" onclick="submitComment()">
           등록
+        </button>
+      </div>
+    </div>
+
+    <div
+      class="sheet-backdrop"
+      id="reportSheetBackdrop"
+      onclick="closeReportSheet()"
+    ></div>
+
+    <div class="bottom-sheet report-sheet" id="reportSheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div class="sheet-title" id="reportTargetLabel">신고하기</div>
+        <button class="close-btn" type="button" onclick="closeReportSheet()">
+          ✕
+        </button>
+      </div>
+      <div class="report-sheet-body">
+        <p class="report-sheet-copy">
+          가장 가까운 신고 사유를 선택해주세요. 접수된 내용은 운영자가
+          확인합니다.
+        </p>
+        <div class="report-reason-list">
+          <label class="report-reason-option">
+            <input type="radio" name="reportReason" value="spam" />
+            <span>스팸 또는 광고</span>
+          </label>
+          <label class="report-reason-option">
+            <input type="radio" name="reportReason" value="harassment" />
+            <span>괴롭힘 또는 모욕</span>
+          </label>
+          <label class="report-reason-option">
+            <input type="radio" name="reportReason" value="hate" />
+            <span>혐오 표현</span>
+          </label>
+          <label class="report-reason-option">
+            <input type="radio" name="reportReason" value="sexual" />
+            <span>성적인 콘텐츠</span>
+          </label>
+          <label class="report-reason-option">
+            <input type="radio" name="reportReason" value="violence" />
+            <span>폭력적이거나 위험한 내용</span>
+          </label>
+          <label class="report-reason-option">
+            <input type="radio" name="reportReason" value="personal_info" />
+            <span>개인정보 노출</span>
+          </label>
+          <label class="report-reason-option">
+            <input type="radio" name="reportReason" value="other" />
+            <span>기타</span>
+          </label>
+        </div>
+        <label class="report-details-label" for="reportDetails">
+          추가 설명 (선택)
+        </label>
+        <textarea
+          id="reportDetails"
+          class="report-details"
+          maxlength="500"
+          placeholder="운영자가 확인할 내용을 적어주세요."
+        ></textarea>
+        <button
+          type="button"
+          class="report-submit-btn"
+          id="reportSubmitButton"
+          onclick="submitReport()"
+        >
+          신고 접수
         </button>
       </div>
     </div>

@@ -13,7 +13,12 @@ let previewingBgmUrl = "";
 let currentUser = null;
 const blockedUserIds = new Set();
 const blockedUserNicknames = new Set();
+const likedPostIds = new Set();
+const bookmarkedPostIds = new Set();
+const likedCommentIds = new Set();
+const ENGAGEMENT_MIGRATION_STORAGE_PREFIX = "glim_engagement_migrated";
 let currentPostIdForComment = null;
+let pendingReportTarget = null;
 let viewedProfileUserId = null;
 let viewedProfileIsFollowing = false;
 let userProfileReturnViewId = "view-home";
@@ -44,6 +49,15 @@ const POST_MAX_CHARACTERS = 120;
 const POST_MAX_VISUAL_LINES = 12;
 const POST_CENTERED_VISUAL_LINES = 8;
 const POST_REFERENCE_LINE_HEIGHT = 17 * 1.65;
+const REPORT_REASON_LABELS = Object.freeze({
+  spam: "스팸 또는 광고",
+  harassment: "괴롭힘 또는 모욕",
+  hate: "혐오 표현",
+  sexual: "성적인 콘텐츠",
+  violence: "폭력적이거나 위험한 내용",
+  personal_info: "개인정보 노출",
+  other: "기타",
+});
 const EXPLORE_SEARCH_HISTORY_KEY = "glim_explore_search_history";
 const EXPLORE_SEARCH_HISTORY_LIMIT = 8;
 const THEME_PREFERENCE_KEY = "glim_theme_preference";
@@ -805,7 +819,8 @@ function renderMoodPicker() {
       <button
         type="button"
         class="mood-option-btn${isSelected ? " is-selected" : ""}"
-        onclick="selectPostMood('${escapeHtml(mood.value)}')"
+        data-mood-value="${escapeHtml(mood.value)}"
+        onclick="selectPostMood(this.dataset.moodValue)"
       >
         <span class="material-symbols-outlined mood-option-icon">${escapeHtml(mood.icon)}</span>
         <span class="mood-option-text">
@@ -836,26 +851,34 @@ function selectPostMood(moodValue) {
   closeMoodPicker();
 }
 
-function renderPostBgmControl(post) {
-  if (!post.bgm_url) return "";
+function createPostBgmControl(post) {
+  if (!post.bgm_url) return null;
   const { title, artist } = getBgmTrackInfo(post);
   const bgmLabel = `${title} - ${artist}`;
   const shouldScroll = bgmLabel.length > 26;
 
-  return `
-      <button
-        class="post-bgm-info${isBgmEnabled ? " is-enabled" : ""}"
-        type="button"
-        data-bgm-url="${escapeHtml(post.bgm_url)}"
-        onclick="toggleBgmFromPost(this)"
-      >
-        <span class="material-symbols-outlined bgm-toggle-icon icon-bgm">${isBgmEnabled ? "pause" : "play_arrow"}</span>
-        <span class="bgm-track">
-          <span class="bgm-line${shouldScroll ? " is-marquee" : ""}">
-            <span class="bgm-line-text" data-text="${escapeHtml(bgmLabel)}">${escapeHtml(bgmLabel)}</span>
-          </span>
-        </span>
-      </button>`;
+  const button = document.createElement("button");
+  button.className = `post-bgm-info${isBgmEnabled ? " is-enabled" : ""}`;
+  button.type = "button";
+  button.dataset.bgmUrl = String(post.bgm_url);
+  button.addEventListener("click", () => toggleBgmFromPost(button));
+
+  const icon = document.createElement("span");
+  icon.className = "material-symbols-outlined bgm-toggle-icon icon-bgm";
+  icon.textContent = isBgmEnabled ? "pause" : "play_arrow";
+
+  const track = document.createElement("span");
+  track.className = "bgm-track";
+  const line = document.createElement("span");
+  line.className = `bgm-line${shouldScroll ? " is-marquee" : ""}`;
+  const label = document.createElement("span");
+  label.className = "bgm-line-text";
+  label.dataset.text = bgmLabel;
+  label.textContent = bgmLabel;
+  line.appendChild(label);
+  track.appendChild(line);
+  button.append(icon, track);
+  return button;
 }
 
 function updateBgmControls() {
@@ -1154,6 +1177,7 @@ async function init() {
 
   await syncCurrentUserProfile();
   await loadBlockedUsersState();
+  await loadEngagementState();
   updateAuthUI();
   initializePushNotifications().catch((error) => {
     console.warn("푸시 알림 초기화 실패:", error);
@@ -1171,6 +1195,7 @@ async function init() {
     }
     await syncCurrentUserProfile();
     await loadBlockedUsersState();
+    await loadEngagementState();
     updateAuthUI();
     initializePushNotifications().catch((error) => {
       console.warn("푸시 알림 초기화 실패:", error);
@@ -1185,6 +1210,7 @@ async function init() {
     "followListSheet",
     "blockedUsersSheet",
     "moodSheet",
+    "reportSheet",
   ].forEach((sheetId) => {
     const sheet = document.getElementById(sheetId);
     let touchStartY = 0;
@@ -1206,13 +1232,13 @@ async function init() {
       (e) => {
         resetSheetTouch();
         if (
-          e.target.closest(".profile-menu-row") ||
+          e.target.closest(".profile-menu-row, .report-reason-option") ||
           e.target.closest("input, textarea, button")
         )
           return;
 
         scrollContainer = e.target.closest(
-          ".comment-list, #noticeList, #followList, .sheet-scroll",
+          ".comment-list, #noticeList, #followList, .sheet-scroll, .report-sheet-body",
         );
         touchStartY = e.touches[0].clientY;
         touchCurrentY = touchStartY;
@@ -1571,6 +1597,112 @@ async function syncCurrentUserProfile({ preserveStoredAvatar = true } = {}) {
 
   const { error } = await client.from("profiles").upsert(profile);
   if (error) console.warn("프로필 동기화 실패:", error.message);
+}
+
+function getLegacyEngagementIds(prefix) {
+  const ids = [];
+  const keyPrefix = `${prefix}_${currentUser?.id || ""}_`;
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (!key?.startsWith(keyPrefix)) continue;
+    const id = key.slice(keyPrefix.length);
+    if (uuidPattern.test(id)) ids.push({ id, key });
+  }
+  return ids;
+}
+
+async function migrateLegacyEngagementState() {
+  if (!currentUser) return;
+  const migrationKey = `${ENGAGEMENT_MIGRATION_STORAGE_PREFIX}_${currentUser.id}`;
+  if (localStorage.getItem(migrationKey) === "true") return;
+
+  const migrations = [
+    ...getLegacyEngagementIds("liked").map(({ id, key }) => ({
+      functionName: "import_legacy_post_like",
+      parameterName: "target_post_id",
+      id,
+      key,
+    })),
+    ...getLegacyEngagementIds("bookmarked").map(({ id, key }) => ({
+      functionName: "import_legacy_bookmark",
+      parameterName: "target_post_id",
+      id,
+      key,
+    })),
+    ...getLegacyEngagementIds("comment_liked").map(({ id, key }) => ({
+      functionName: "import_legacy_comment_like",
+      parameterName: "target_comment_id",
+      id,
+      key,
+    })),
+  ];
+
+  for (let index = 0; index < migrations.length; index += 10) {
+    const batch = migrations.slice(index, index + 10);
+    const results = await Promise.all(
+      batch.map((migration) =>
+        client.rpc(migration.functionName, {
+          [migration.parameterName]: migration.id,
+        }),
+      ),
+    );
+    const failedResult = results.find((result) => result.error);
+    if (failedResult) {
+      console.warn(
+        "기존 좋아요·북마크 이전 실패:",
+        failedResult.error.message,
+      );
+      return;
+    }
+    batch.forEach((migration) => localStorage.removeItem(migration.key));
+  }
+
+  localStorage.setItem(migrationKey, "true");
+}
+
+async function loadEngagementState() {
+  likedPostIds.clear();
+  bookmarkedPostIds.clear();
+  likedCommentIds.clear();
+  if (!currentUser) return;
+
+  await migrateLegacyEngagementState();
+  const [postLikesResult, bookmarksResult, commentLikesResult] =
+    await Promise.all([
+      client.from("post_likes").select("post_id"),
+      client.from("bookmarks").select("post_id"),
+      client.from("comment_likes").select("comment_id"),
+    ]);
+
+  if (postLikesResult.error) {
+    console.warn("게시글 좋아요 상태를 불러오지 못했습니다:", postLikesResult.error);
+  } else {
+    (postLikesResult.data || []).forEach(({ post_id: postId }) =>
+      likedPostIds.add(postId),
+    );
+  }
+
+  if (bookmarksResult.error) {
+    console.warn("북마크 상태를 불러오지 못했습니다:", bookmarksResult.error);
+  } else {
+    (bookmarksResult.data || []).forEach(({ post_id: postId }) =>
+      bookmarkedPostIds.add(postId),
+    );
+  }
+
+  if (commentLikesResult.error) {
+    console.warn(
+      "댓글 좋아요 상태를 불러오지 못했습니다:",
+      commentLikesResult.error,
+    );
+  } else {
+    (commentLikesResult.data || []).forEach(({ comment_id: commentId }) =>
+      likedCommentIds.add(commentId),
+    );
+  }
 }
 
 async function loadBlockedUsersState() {
@@ -2111,6 +2243,18 @@ function updateViewedProfileFollowButton() {
   button.innerText = viewedProfileIsFollowing ? "팔로잉" : "팔로우";
 }
 
+function createPostGridItem(post, index, contextKey) {
+  const item = document.createElement("div");
+  item.className = "grid-item";
+  item.addEventListener("click", () => openContextPostFeed(contextKey, index));
+
+  const text = document.createElement("div");
+  text.className = "grid-text";
+  text.textContent = String(post?.content ?? "");
+  item.appendChild(text);
+  return item;
+}
+
 async function loadViewedProfileStats() {
   if (!viewedProfileUserId) return;
   contextPostCollections.set("viewed-profile", []);
@@ -2144,15 +2288,11 @@ async function loadViewedProfileStats() {
   }
 
   contextPostCollections.set("viewed-profile", postsResult.data);
-  grid.innerHTML = postsResult.data
-    .map(
-      (post, index) => `
-        <div class="grid-item" onclick="openContextPostFeed('viewed-profile', ${index})">
-          <div class="grid-text">${post.content}</div>
-        </div>
-      `,
-    )
-    .join("");
+  grid.replaceChildren(
+    ...postsResult.data.map((post, index) =>
+      createPostGridItem(post, index, "viewed-profile"),
+    ),
+  );
 }
 
 async function openUserProfile(userId) {
@@ -2271,11 +2411,13 @@ async function toggleFollow() {
     const { error: notificationError } = await client
       .from("notifications")
       .insert([
-        {
-          target_user: button.dataset.nickname,
-          actor_nickname: myNickname,
-          type: "follow",
-        },
+         {
+           target_user: button.dataset.nickname,
+           target_user_id: viewedProfileUserId,
+           actor_nickname: myNickname,
+           actor_user_id: currentUser.id,
+           type: "follow",
+         },
       ]);
     if (notificationError) {
       console.warn("앱 내부 팔로우 알림 저장 실패:", notificationError.message);
@@ -2429,14 +2571,23 @@ async function saveProfile() {
   const newId = document.getElementById("editIdInput").value.trim();
   const saveButton = document.getElementById("editProfileSaveButton");
 
-  if (!newNick || newNick.length < 2) {
-    alert("닉네임은 최소 2자 이상 입력해주세요.");
+  if (!newNick || newNick.length < 2 || newNick.length > 40) {
+    alert("닉네임은 2자 이상 40자 이하로 입력해주세요.");
+    return;
+  }
+  if (newNick === "🚨글림 운영자") {
+    alert("운영자 전용 닉네임은 사용할 수 없습니다.");
     return;
   }
   const validIdRegex = /^[a-zA-Z0-9_.]+$/;
-  if (!newId || newId.length < 3 || !validIdRegex.test(newId)) {
+  if (
+    !newId ||
+    newId.length < 3 ||
+    newId.length > 40 ||
+    !validIdRegex.test(newId)
+  ) {
     alert(
-      "아이디는 최소 3자 이상이며, 영문/숫자/밑줄(_)/마침표(.)만 사용할 수 있습니다.",
+      "아이디는 3자 이상 40자 이하이며, 영문/숫자/밑줄(_)/마침표(.)만 사용할 수 있습니다.",
     );
     return;
   }
@@ -2479,14 +2630,12 @@ async function saveProfile() {
     await syncCurrentUserProfile({ preserveStoredAvatar: false });
 
     if (oldNick !== newNick) {
-      await client
-        .from("posts")
-        .update({ author: newNick })
-        .eq("user_id", currentUser.id);
-      await client
-        .from("comments")
-        .update({ user_email: newNick })
-        .eq("user_email", oldNick);
+      const { error: displayNameError } = await client.rpc(
+        "sync_authored_display_name",
+      );
+      if (displayNameError) {
+        console.warn("작성자 이름 동기화 실패:", displayNameError.message);
+      }
     }
 
     updateAuthUI();
@@ -3037,7 +3186,6 @@ async function togglePushNotifications(isEnabled) {
     }
     await registrationPromise;
     markPushOnboardingSeen();
-    showAppAlert("이 기기의 푸시 알림을 켰습니다.");
   } catch (error) {
     console.warn("푸시 알림 설정 실패:", error);
     showAppAlert(
@@ -3332,6 +3480,9 @@ async function handleSignOut() {
   await client.auth.signOut();
   blockedUserIds.clear();
   blockedUserNicknames.clear();
+  likedPostIds.clear();
+  bookmarkedPostIds.clear();
+  likedCommentIds.clear();
   alert("로그아웃 되었습니다.");
   switchTab("home");
 }
@@ -3570,6 +3721,9 @@ async function performAccountDeletion() {
   currentUser = null;
   blockedUserIds.clear();
   blockedUserNicknames.clear();
+  likedPostIds.clear();
+  bookmarkedPostIds.clear();
+  likedCommentIds.clear();
   updateAuthUI();
   switchTab("home");
   showAppAlert("회원 탈퇴가 완료되었습니다.");
@@ -3617,27 +3771,18 @@ async function loadProfileGrid(tabType) {
     .from("posts")
     .select("*")
     .order("created_at", { ascending: false });
-  const userKey = currentUser ? currentUser.id : "";
   let targetIds = [];
 
   if (tabType === "my") {
     query = query.eq("user_id", currentUser.id);
   } else if (tabType === "bookmark") {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key.startsWith(`bookmarked_${userKey}_`))
-        targetIds.push(key.replace(`bookmarked_${userKey}_`, ""));
-    }
+    targetIds = Array.from(bookmarkedPostIds);
     if (targetIds.length === 0)
       return (grid.innerHTML =
         '<div style="grid-column: 1 / -1; text-align: center; color: #555; padding: 50px 0;">저장된 글이 없습니다.</div>');
     query = query.in("id", targetIds);
   } else if (tabType === "like") {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key.startsWith(`liked_${userKey}_`))
-        targetIds.push(key.replace(`liked_${userKey}_`, ""));
-    }
+    targetIds = Array.from(likedPostIds);
     if (targetIds.length === 0)
       return (grid.innerHTML =
         '<div style="grid-column: 1 / -1; text-align: center; color: #555; padding: 50px 0;">좋아요한 글이 없습니다.</div>');
@@ -3652,76 +3797,124 @@ async function loadProfileGrid(tabType) {
     return (grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #555; padding: 50px 0;">기록이 없습니다.</div>`);
 
   contextPostCollections.set(contextKey, visiblePosts);
-  grid.innerHTML = visiblePosts
-    .map(
-      (post, index) => `
-    <div class="grid-item" onclick="openContextPostFeed('${contextKey}', ${index})">
-      <div class="grid-text">${post.content}</div>
-    </div>
-  `,
-    )
-    .join("");
+  grid.replaceChildren(
+    ...visiblePosts.map((post, index) =>
+      createPostGridItem(post, index, contextKey),
+    ),
+  );
 }
 
 function createContextFeedPost(post) {
   const postElement = document.createElement("div");
   postElement.className = "post";
   const isOwnPost = Boolean(currentUser && post.user_id === currentUser.id);
-  const moreMenuAction = isOwnPost
-    ? `<button class="more-menu-item" onclick="deletePost('${post.id}')">삭제</button>`
-    : `<button class="more-menu-item" onclick="reportPost('${post.id}')">신고하기</button>`;
 
   // ✅ 타이머와 알고리즘 계산을 위해 데이터 심어두기
-  postElement.dataset.postId = post.id;
+  postElement.dataset.postId = post.id || "";
   postElement.dataset.userId = post.user_id || "";
   postElement.dataset.mood = post.mood || "";
   postElement.dataset.bgmUrl = post.bgm_url || "";
 
-  const userKey = currentUser ? currentUser.id : "guest";
-  const hasLiked = localStorage.getItem(`liked_${userKey}_${post.id}`)
-    ? "font-variation-settings: 'FILL' 1; color: #ff3b30;"
-    : "";
-  const hasBookmarked = localStorage.getItem(`bookmarked_${userKey}_${post.id}`)
-    ? "font-variation-settings: 'FILL' 1; color: #FFCC00;"
-    : "";
-  const bookmarkText = localStorage.getItem(`bookmarked_${userKey}_${post.id}`)
-    ? "담김"
-    : "저장";
+  const hasLiked = likedPostIds.has(post.id);
+  const hasBookmarked = bookmarkedPostIds.has(post.id);
 
   postElement.innerHTML = `
-    <div class="text-content">${post.content.replace(/\n/g, "<br>")}</div>
+    <div class="text-content"></div>
     <div class="author-info">
-      <div
-        class="author-name${post.user_id ? " author-link" : ""}"
-        ${post.user_id ? `onclick="openUserProfile('${post.user_id}')"` : ""}
-      >${post.author || "익명"}</div>
-      <div class="post-time">${timeForToday(post.created_at)}</div>
-      ${renderPostBgmControl(post)}
+      <div class="author-name"></div>
+      <div class="post-time"></div>
     </div>
     <div class="side-actions">
-      <div class="action-btn" onclick="incrementMetric('${post.id}', 'likes_count', this)">
-        <span class="material-symbols-outlined icon-like" style="${hasLiked}">favorite</span>
-        <span class="action-count">${post.likes_count || 0}</span>
+      <div class="action-btn" data-post-action="like">
+        <span class="material-symbols-outlined icon-like">favorite</span>
+        <span class="action-count"></span>
       </div>
-      <div class="action-btn" onclick="openSheet('commentSheet', '${post.id}')">
+      <div class="action-btn" data-post-action="comment">
         <span class="material-symbols-outlined">chat_bubble</span>
-        <span class="action-count">${post.dislikes_count || 0}</span>
+        <span class="action-count"></span>
       </div>
-      <div class="action-btn" onclick="toggleBookmark('${post.id}', this)">
-        <span class="material-symbols-outlined icon-bookmark" style="${hasBookmarked}">bookmark</span>
-        <span class="action-count">${bookmarkText}</span>
+      <div class="action-btn" data-post-action="bookmark">
+        <span class="material-symbols-outlined icon-bookmark">bookmark</span>
+        <span class="action-count"></span>
       </div>
       <div class="action-btn" data-share-post>
         <span class="material-symbols-outlined">share</span>
         <span class="action-count">공유</span>
       </div>
-      <div class="action-btn more-menu-wrapper" onclick="toggleMoreMenu(this, event)">
+      <div class="action-btn more-menu-wrapper" data-post-action="more">
         <span class="material-symbols-outlined">more_vert</span>
         <div class="more-menu">
-          ${moreMenuAction}
+          <button class="more-menu-item" type="button"></button>
         </div>
       </div>
     </div>`;
+
+  const textElement = postElement.querySelector(".text-content");
+  const authorElement = postElement.querySelector(".author-name");
+  const timeElement = postElement.querySelector(".post-time");
+  const likeButton = postElement.querySelector('[data-post-action="like"]');
+  const commentButton = postElement.querySelector(
+    '[data-post-action="comment"]',
+  );
+  const bookmarkButton = postElement.querySelector(
+    '[data-post-action="bookmark"]',
+  );
+  const moreButton = postElement.querySelector('[data-post-action="more"]');
+  const moreMenuItem = postElement.querySelector(".more-menu-item");
+
+  textElement.textContent = String(post.content ?? "");
+  authorElement.textContent = String(post.author || "익명");
+  timeElement.textContent = timeForToday(post.created_at);
+
+  if (post.user_id) {
+    authorElement.classList.add("author-link");
+    authorElement.addEventListener("click", () => openUserProfile(post.user_id));
+  }
+
+  const bgmControl = createPostBgmControl(post);
+  if (bgmControl) timeElement.after(bgmControl);
+
+  const likeIcon = likeButton.querySelector(".icon-like");
+  if (hasLiked) {
+    likeIcon.style.fontVariationSettings = "'FILL' 1";
+    likeIcon.style.color = "#ff3b30";
+  }
+  likeButton.querySelector(".action-count").textContent = String(
+    post.likes_count || 0,
+  );
+  likeButton.addEventListener("click", () =>
+    incrementMetric(post.id, "likes_count", likeButton),
+  );
+
+  commentButton.querySelector(".action-count").textContent = String(
+    post.dislikes_count || 0,
+  );
+  commentButton.addEventListener("click", () =>
+    openSheet("commentSheet", post.id),
+  );
+
+  const bookmarkIcon = bookmarkButton.querySelector(".icon-bookmark");
+  if (hasBookmarked) {
+    bookmarkIcon.style.fontVariationSettings = "'FILL' 1";
+    bookmarkIcon.style.color = "#FFCC00";
+  }
+  bookmarkButton.querySelector(".action-count").textContent = hasBookmarked
+    ? "담김"
+    : "저장";
+  bookmarkButton.addEventListener("click", () =>
+    toggleBookmark(post.id, bookmarkButton),
+  );
+
+  moreButton.addEventListener("click", (event) =>
+    toggleMoreMenu(moreButton, event),
+  );
+  moreMenuItem.textContent = isOwnPost ? "삭제" : "신고하기";
+  moreMenuItem.addEventListener("click", (event) => {
+    event.stopPropagation();
+    moreButton.querySelector(".more-menu")?.classList.remove("show");
+    if (isOwnPost) deletePost(post.id);
+    else reportPost(post.id);
+  });
 
   postElement
     .querySelector("[data-share-post]")
@@ -4702,84 +4895,105 @@ async function searchPosts(forcedQuery = null) {
 }
 
 async function incrementMetric(postId, column, element) {
-  if (column === "likes_count") {
-    if (!currentUser) return alert("좋아요를 누르려면 로그인이 필요합니다.");
-    const userKey = currentUser.id;
-    const storageKey = `liked_${userKey}_${postId}`;
-    const countSpan = element.querySelector(".action-count");
-    const icon = element.querySelector(".icon-like");
+  if (column !== "likes_count") return;
+  if (!currentUser) return alert("좋아요를 누르려면 로그인이 필요합니다.");
+  if (element.dataset.pending === "true") return;
 
-    if (localStorage.getItem(storageKey)) {
-      localStorage.removeItem(storageKey);
-      let currentCount = parseInt(countSpan.innerText) - 1;
-      countSpan.innerText = currentCount < 0 ? 0 : currentCount;
-      icon.style.fontVariationSettings = "'FILL' 0";
-      icon.style.color = "#ccc";
-      const { data } = await client
-        .from("posts")
-        .select(column)
-        .eq("id", postId)
-        .single();
-      let nextCount = (data[column] || 0) - 1;
-      await client
-        .from("posts")
-        .update({ [column]: nextCount < 0 ? 0 : nextCount })
-        .eq("id", postId);
-    } else {
-      localStorage.setItem(storageKey, "true");
-      updateMoodScore(element.closest(".post").dataset.mood, 5);
-      countSpan.innerText = parseInt(countSpan.innerText) + 1;
-      icon.style.fontVariationSettings = "'FILL' 1";
-      icon.style.color = "#ff3b30";
-      const { data: postData } = await client
-        .from("posts")
-        .select(`author, user_id, ${column}`)
-        .eq("id", postId)
-        .single();
-      await client
-        .from("posts")
-        .update({ [column]: (postData[column] || 0) + 1 })
-        .eq("id", postId);
+  const countSpan = element.querySelector(".action-count");
+  const icon = element.querySelector(".icon-like");
+  const wasLiked = likedPostIds.has(postId);
+  element.dataset.pending = "true";
 
-      const myNickname = currentUser.user_metadata?.random_nickname;
-      if (postData.author !== myNickname) {
-        const { error: notificationError } = await client
-          .from("notifications")
-          .insert([
-            {
-              target_user: postData.author,
-              actor_nickname: myNickname,
-              type: "like",
-              post_id: postId,
-            },
-          ]);
-        if (notificationError) {
-          console.warn("앱 내부 공감 알림 저장 실패:", notificationError.message);
-        }
-        void sendPushNotification(postData.user_id, "likes", postId);
-      }
-    }
+  const { data, error } = await client.rpc("toggle_post_like", {
+    target_post_id: postId,
+  });
+  delete element.dataset.pending;
+
+  if (error) {
+    showAppAlert(
+      getContentSubmissionErrorMessage(
+        error,
+        "좋아요를 처리하지 못했습니다. 잠시 후 다시 시도해주세요.",
+      ),
+    );
+    return;
   }
+
+  const result = Array.isArray(data) ? data[0] : data;
+  const isLiked = Boolean(result?.liked);
+  if (isLiked) likedPostIds.add(postId);
+  else likedPostIds.delete(postId);
+
+  countSpan.innerText = String(Math.max(0, Number(result?.total_count) || 0));
+  icon.style.fontVariationSettings = isLiked ? "'FILL' 1" : "'FILL' 0";
+  icon.style.color = isLiked ? "#ff3b30" : "#ccc";
+  localStorage.removeItem(`liked_${currentUser.id}_${postId}`);
+
+  if (!isLiked || wasLiked) return;
+  updateMoodScore(element.closest(".post")?.dataset.mood, 5);
+
+  const { data: postData, error: postError } = await client
+    .from("posts")
+    .select("author, user_id")
+    .eq("id", postId)
+    .maybeSingle();
+  if (postError || !postData?.user_id || postData.user_id === currentUser.id)
+    return;
+
+  const myNickname =
+    currentUser.user_metadata?.random_nickname ||
+    currentUser.email?.split("@")[0] ||
+    "";
+  const { error: notificationError } = await client
+    .from("notifications")
+    .insert([
+      {
+        target_user: postData.author,
+        target_user_id: postData.user_id,
+        actor_nickname: myNickname,
+        actor_user_id: currentUser.id,
+        type: "like",
+        post_id: postId,
+      },
+    ]);
+  if (notificationError) {
+    console.warn("앱 내부 공감 알림 저장 실패:", notificationError.message);
+  }
+  void sendPushNotification(postData.user_id, "likes", postId);
 }
 
-function toggleBookmark(postId, element) {
+async function toggleBookmark(postId, element) {
   if (!currentUser) return alert("북마크를 이용하려면 로그인이 필요합니다.");
-  const userKey = currentUser.id;
-  const storageKey = `bookmarked_${userKey}_${postId}`;
+  if (element.dataset.pending === "true") return;
   const icon = element.querySelector(".icon-bookmark");
   const countSpan = element.querySelector(".action-count");
+  const wasBookmarked = bookmarkedPostIds.has(postId);
+  element.dataset.pending = "true";
 
-  if (localStorage.getItem(storageKey)) {
-    localStorage.removeItem(storageKey);
-    icon.style.fontVariationSettings = "'FILL' 0";
-    icon.style.color = "#ccc";
-    countSpan.innerText = "저장";
-  } else {
-    localStorage.setItem(storageKey, "true");
-    updateMoodScore(element.closest(".post").dataset.mood, 8);
-    icon.style.fontVariationSettings = "'FILL' 1";
-    icon.style.color = "#FFCC00";
-    countSpan.innerText = "담김";
+  const { data: isBookmarked, error } = await client.rpc(
+    "toggle_post_bookmark",
+    { target_post_id: postId },
+  );
+  delete element.dataset.pending;
+  if (error) {
+    showAppAlert(
+      getContentSubmissionErrorMessage(
+        error,
+        "북마크를 처리하지 못했습니다. 잠시 후 다시 시도해주세요.",
+      ),
+    );
+    return;
+  }
+
+  if (isBookmarked) bookmarkedPostIds.add(postId);
+  else bookmarkedPostIds.delete(postId);
+  icon.style.fontVariationSettings = isBookmarked ? "'FILL' 1" : "'FILL' 0";
+  icon.style.color = isBookmarked ? "#FFCC00" : "#ccc";
+  countSpan.innerText = isBookmarked ? "담김" : "저장";
+  localStorage.removeItem(`bookmarked_${currentUser.id}_${postId}`);
+
+  if (isBookmarked && !wasBookmarked) {
+    updateMoodScore(element.closest(".post")?.dataset.mood, 8);
   }
 }
 
@@ -4802,6 +5016,55 @@ function closeSheet(id) {
   sheet.style.transform = "";
   backdrop?.classList.remove("open");
   if (id === "editProfileSheet") resetEditProfileAvatarState();
+  if (id === "reportSheet") pendingReportTarget = null;
+}
+
+function createCommentElement(comment) {
+  let authorNickname = String(comment.user_email || "익명");
+  if (authorNickname.includes("@")) {
+    authorNickname = authorNickname.split("@")[0];
+  }
+
+  const item = document.createElement("div");
+  item.className = "comment-item";
+  item.innerHTML = `
+    <div class="comment-author"></div>
+    <div class="comment-text"></div>
+    <div class="comment-actions">
+      <div class="comment-action-btn" data-comment-action="like">
+        <span class="material-symbols-outlined icon-like">favorite</span>
+        <span class="action-count"></span>
+      </div>
+      <div class="comment-action-btn" data-comment-action="report">
+        <span class="material-symbols-outlined" style="font-size:1rem;">report</span>
+        <span>신고</span>
+      </div>
+    </div>`;
+
+  item.querySelector(".comment-author").textContent = authorNickname;
+  item.querySelector(".comment-text").textContent = String(
+    comment.content ?? "",
+  );
+
+  const hasLiked = likedCommentIds.has(comment.id);
+  const likeButton = item.querySelector('[data-comment-action="like"]');
+  const likeIcon = likeButton.querySelector(".icon-like");
+  likeIcon.style.fontVariationSettings = hasLiked ? "'FILL' 1" : "'FILL' 0";
+  likeIcon.style.color = hasLiked ? "#ff3b30" : "#666";
+  likeButton.querySelector(".action-count").textContent = String(
+    comment.likes_count || 0,
+  );
+  likeButton.addEventListener("click", () =>
+    toggleCommentLike(comment.id, likeButton),
+  );
+
+  const reportButton = item.querySelector('[data-comment-action="report"]');
+  if (currentUser?.id === comment.user_id) {
+    reportButton.remove();
+  } else {
+    reportButton.addEventListener("click", () => reportComment(comment.id));
+  }
+  return item;
 }
 
 async function fetchComments(postId) {
@@ -4820,117 +5083,150 @@ async function fetchComments(postId) {
     return (list.innerHTML =
       '<div style="text-align:center; color:#555; margin-top:20px;">첫 번째로 댓글을 남겨 보세요.</div>');
 
-  list.innerHTML = visibleComments
-    .map((c) => {
-      // ✅ 옛날 데이터에 이메일이 들어있을 경우를 대비하여 @ 뒷부분 제거
-      let authorNickname = c.user_email || "익명";
-      if (authorNickname.includes("@")) {
-        authorNickname = authorNickname.split("@")[0];
-      }
-
-      const userKey = currentUser ? currentUser.id : "guest";
-      const hasLiked = localStorage.getItem(`comment_liked_${userKey}_${c.id}`)
-        ? "font-variation-settings: 'FILL' 1; color: #ff3b30;"
-        : "font-variation-settings: 'FILL' 0; color: #666;";
-
-      return `
-      <div class="comment-item">
-        <div class="comment-author">${authorNickname}</div>
-        <div class="comment-text">${c.content}</div>
-        <div class="comment-actions">
-          <div class="comment-action-btn" onclick="toggleCommentLike('${c.id}', this)">
-            <span class="material-symbols-outlined icon-like" style="${hasLiked}">favorite</span>
-            <span class="action-count">${c.likes_count || 0}</span>
-          </div>
-          <div class="comment-action-btn" onclick="reportComment('${c.id}')">
-            <span class="material-symbols-outlined" style="font-size:1rem;">report</span>
-            <span>신고</span>
-          </div>
-        </div>
-      </div>
-    `;
-    })
-    .join("");
+  list.replaceChildren(...visibleComments.map(createCommentElement));
   list.scrollTop = list.scrollHeight;
 }
 
 async function toggleCommentLike(commentId, element) {
   if (!currentUser) return alert("좋아요를 누르려면 로그인이 필요합니다.");
-
-  const userKey = currentUser.id;
-  const storageKey = `comment_liked_${userKey}_${commentId}`;
+  if (element.dataset.pending === "true") return;
   const countSpan = element.querySelector(".action-count");
   const icon = element.querySelector(".icon-like");
+  element.dataset.pending = "true";
 
-  if (localStorage.getItem(storageKey)) {
-    localStorage.removeItem(storageKey);
-    let currentCount = parseInt(countSpan.innerText) - 1;
-    countSpan.innerText = currentCount < 0 ? 0 : currentCount;
-    icon.style.fontVariationSettings = "'FILL' 0";
-    icon.style.color = "#666";
-
-    const { data } = await client
-      .from("comments")
-      .select("likes_count")
-      .eq("id", commentId)
-      .single();
-    let nextCount = (data.likes_count || 0) - 1;
-    await client
-      .from("comments")
-      .update({ likes_count: nextCount < 0 ? 0 : nextCount })
-      .eq("id", commentId);
-  } else {
-    localStorage.setItem(storageKey, "true");
-    countSpan.innerText = parseInt(countSpan.innerText) + 1;
-    icon.style.fontVariationSettings = "'FILL' 1";
-    icon.style.color = "#ff3b30";
-
-    const { data } = await client
-      .from("comments")
-      .select("likes_count")
-      .eq("id", commentId)
-      .single();
-    await client
-      .from("comments")
-      .update({ likes_count: (data.likes_count || 0) + 1 })
-      .eq("id", commentId);
+  const { data, error } = await client.rpc("toggle_comment_like", {
+    target_comment_id: commentId,
+  });
+  delete element.dataset.pending;
+  if (error) {
+    showAppAlert(
+      getContentSubmissionErrorMessage(
+        error,
+        "댓글 좋아요를 처리하지 못했습니다. 잠시 후 다시 시도해주세요.",
+      ),
+    );
+    return;
   }
+
+  const result = Array.isArray(data) ? data[0] : data;
+  const isLiked = Boolean(result?.liked);
+  if (isLiked) likedCommentIds.add(commentId);
+  else likedCommentIds.delete(commentId);
+  countSpan.innerText = String(Math.max(0, Number(result?.total_count) || 0));
+  icon.style.fontVariationSettings = isLiked ? "'FILL' 1" : "'FILL' 0";
+  icon.style.color = isLiked ? "#ff3b30" : "#666";
+  localStorage.removeItem(`comment_liked_${currentUser.id}_${commentId}`);
+}
+
+function getReportTargetLabel(targetType) {
+  return {
+    post: "게시글",
+    comment: "댓글",
+    user: "사용자",
+  }[targetType] || "콘텐츠";
+}
+
+function openReportSheet(targetType, targetId) {
+  if (!currentUser) {
+    showAppAlert("신고하려면 로그인이 필요합니다.", () => {
+      switchTab("profile");
+    });
+    return;
+  }
+  if (!targetId || !["post", "comment", "user"].includes(targetType)) return;
+  if (targetType === "user" && targetId === currentUser.id) {
+    showAppAlert("본인은 신고할 수 없습니다.");
+    return;
+  }
+
+  pendingReportTarget = { type: targetType, id: targetId };
+  document
+    .querySelectorAll('input[name="reportReason"]')
+    .forEach((input) => {
+      input.checked = false;
+    });
+  document.getElementById("reportDetails").value = "";
+  document.getElementById("reportTargetLabel").textContent =
+    `${getReportTargetLabel(targetType)} 신고`;
+  document
+    .querySelectorAll(".more-menu")
+    .forEach((menu) => menu.classList.remove("show"));
+  openSheet("reportSheet");
+}
+
+function closeReportSheet() {
+  closeSheet("reportSheet");
+  pendingReportTarget = null;
+}
+
+function getReportErrorMessage(error) {
+  const message = String(error?.message || "").toLowerCase();
+  if (error?.code === "23505" || message.includes("already submitted")) {
+    return "이미 접수되어 검토 중인 신고입니다.";
+  }
+  if (message.includes("rate limit")) {
+    return "신고 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.";
+  }
+  if (message.includes("yourself")) {
+    return "본인이 작성한 콘텐츠는 신고할 수 없습니다.";
+  }
+  if (message.includes("not found")) {
+    return "삭제되었거나 더 이상 신고할 수 없는 대상입니다.";
+  }
+  return "신고를 접수하지 못했습니다. 잠시 후 다시 시도해주세요.";
+}
+
+function getContentSubmissionErrorMessage(error, fallbackMessage) {
+  const message = String(error?.message || "").toLowerCase();
+  if (message.includes("account is banned")) {
+    return "운영 정책 위반으로 글과 댓글 작성이 제한된 계정입니다.";
+  }
+  if (message.includes("account is suspended")) {
+    return "현재 계정의 글과 댓글 작성이 일시적으로 제한되어 있습니다.";
+  }
+  return fallbackMessage;
+}
+
+async function submitReport() {
+  if (!currentUser || !pendingReportTarget) return;
+  const selectedReason = document.querySelector(
+    'input[name="reportReason"]:checked',
+  );
+  if (!selectedReason || !REPORT_REASON_LABELS[selectedReason.value]) {
+    showAppAlert("신고 사유를 선택해주세요.");
+    return;
+  }
+
+  const submitButton = document.getElementById("reportSubmitButton");
+  const details = document.getElementById("reportDetails").value.trim();
+  const reportTarget = { ...pendingReportTarget };
+  submitButton.disabled = true;
+  submitButton.textContent = "접수 중...";
+
+  const { error } = await client.rpc("submit_content_report", {
+    report_target_type: reportTarget.type,
+    report_target_id: reportTarget.id,
+    report_reason: selectedReason.value,
+    report_details: details,
+  });
+
+  submitButton.disabled = false;
+  submitButton.textContent = "신고 접수";
+  if (error) {
+    showAppAlert(getReportErrorMessage(error));
+    return;
+  }
+
+  closeReportSheet();
+  showAppAlert("신고가 접수되었습니다. 관리자 검토 후 조치됩니다.");
 }
 
 function reportComment(commentId) {
-  showAppConfirm(
-    "이 댓글을 신고하시겠습니까?",
-    () => submitCommentReport(commentId),
-    {
-      title: "댓글 신고",
-      icon: "report",
-      confirmText: "신고하기",
-      isDestructive: true,
-    },
-  );
+  openReportSheet("comment", commentId);
 }
 
-async function submitCommentReport(commentId) {
-  const { data, error: readError } = await client
-    .from("comments")
-    .select("reports_count")
-    .eq("id", commentId)
-    .single();
-  if (readError || !data) {
-    showAppAlert("신고를 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
-    return;
-  }
-
-  const { error: updateError } = await client
-    .from("comments")
-    .update({ reports_count: (data.reports_count || 0) + 1 })
-    .eq("id", commentId);
-  if (updateError) {
-    showAppAlert("신고를 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
-    return;
-  }
-
-  showAppAlert("신고가 접수되었습니다. 관리자 검토 후 조치됩니다.");
+function reportUser(userId) {
+  openReportSheet("user", userId);
 }
 
 async function submitComment() {
@@ -4948,7 +5244,7 @@ async function submitComment() {
     currentUser.user_metadata?.random_nickname ||
     currentUser.email.split("@")[0];
 
-  let { error } = await client.from("comments").insert([
+  const { error } = await client.from("comments").insert([
     {
       post_id: currentPostIdForComment,
       user_id: currentUser.id,
@@ -4956,15 +5252,6 @@ async function submitComment() {
       content: content,
     },
   ]);
-  if (error?.code === "PGRST204") {
-    ({ error } = await client.from("comments").insert([
-      {
-        post_id: currentPostIdForComment,
-        user_email: myNickname,
-        content: content,
-      },
-    ]));
-  }
 
   if (!error) {
     document.getElementById("commentInput").value = "";
@@ -4972,18 +5259,16 @@ async function submitComment() {
 
     const { data: postData } = await client
       .from("posts")
-      .select("author, user_id, dislikes_count")
+      .select("author, user_id")
       .eq("id", currentPostIdForComment)
       .single();
-    await client
-      .from("posts")
-      .update({ dislikes_count: (postData.dislikes_count || 0) + 1 })
-      .eq("id", currentPostIdForComment);
 
-    if (postData.author !== myNickname) {
+    if (postData.user_id && postData.user_id !== currentUser.id) {
       const notificationPayload = {
         target_user: postData.author,
+        target_user_id: postData.user_id,
         actor_nickname: myNickname,
+        actor_user_id: currentUser.id,
         type: "comment",
         post_id: currentPostIdForComment,
         preview_text: content.slice(0, 100),
@@ -5008,6 +5293,13 @@ async function submitComment() {
     }
 
     fetchPosts();
+  } else {
+    showAppAlert(
+      getContentSubmissionErrorMessage(
+        error,
+        "댓글을 등록하지 못했습니다. 잠시 후 다시 시도해주세요.",
+      ),
+    );
   }
 }
 
@@ -5133,13 +5425,12 @@ async function fetchNotifications() {
     "hourglass_empty",
     "알림을 불러오는 중...",
   );
-  const myNickname = currentUser.user_metadata?.random_nickname;
   const preferences = getNotificationPreferences();
   const [notificationResult, announcementResult] = await Promise.all([
     client
       .from("notifications")
       .select("*")
-      .eq("target_user", myNickname)
+      .eq("target_user_id", currentUser.id)
       .order("created_at", { ascending: false }),
     preferences.announcements
       ? client
@@ -5300,7 +5591,12 @@ async function submitPost() {
   ]);
 
   if (error) {
-    alert("글 등록 중 오류가 발생했습니다.");
+    showAppAlert(
+      getContentSubmissionErrorMessage(
+        error,
+        "글 등록 중 오류가 발생했습니다.",
+      ),
+    );
     return;
   }
 
@@ -5698,39 +5994,7 @@ document.addEventListener("click", () => {
 });
 
 function reportPost(postId) {
-  showAppConfirm("이 글을 신고하시겠습니까?", () => submitPostReport(postId), {
-    title: "게시글 신고",
-    icon: "report",
-    confirmText: "신고하기",
-    isDestructive: true,
-  });
-}
-
-async function submitPostReport(postId) {
-  const { data, error: readError } = await client
-    .from("posts")
-    .select("reports_count, user_id")
-    .eq("id", postId)
-    .single();
-  if (readError || !data) {
-    showAppAlert("신고를 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
-    return;
-  }
-  if (currentUser && data.user_id === currentUser.id) {
-    showAppAlert("본인이 작성한 글은 신고할 수 없습니다.");
-    return;
-  }
-
-  const { error: updateError } = await client
-    .from("posts")
-    .update({ reports_count: (data.reports_count || 0) + 1 })
-    .eq("id", postId);
-  if (updateError) {
-    showAppAlert("신고를 접수하지 못했습니다. 잠시 후 다시 시도해주세요.");
-    return;
-  }
-
-  showAppAlert("신고가 접수되었습니다. 관리자 검토 후 조치됩니다.");
+  openReportSheet("post", postId);
 }
 
 function deletePost(postId) {
@@ -5766,6 +6030,8 @@ async function submitPostDelete(postId) {
     return;
   }
 
+  likedPostIds.delete(postId);
+  bookmarkedPostIds.delete(postId);
   localStorage.removeItem(`liked_${currentUser.id}_${postId}`);
   localStorage.removeItem(`bookmarked_${currentUser.id}_${postId}`);
   contextPostCollections.forEach((posts, contextKey) => {
@@ -5833,37 +6099,42 @@ async function openNoticeSheet() {
     return (list.innerHTML =
       '<div style="text-align:center; color:#555; margin-top:20px;">등록된 공지사항이 없습니다.</div>');
 
-  list.innerHTML = data
-    .map((notice) => {
-      let title = "공지사항";
-      let text = notice.content;
+  const noticeItems = data.map((notice) => {
+    let title = "공지사항";
+    let text = String(notice.content ?? "");
 
-      if (notice.content.startsWith("[공지]")) {
-        const parts = notice.content.replace("[공지]", "").split("|||");
-        if (parts.length === 2) {
-          title = parts[0];
-          text = parts[1];
-        } else {
-          text = notice.content.replace("[공지]\n\n", "");
-        }
+    if (text.startsWith("[공지]")) {
+      const parts = text.replace("[공지]", "").split("|||");
+      if (parts.length === 2) {
+        [title, text] = parts;
+      } else {
+        text = text.replace("[공지]\n\n", "");
       }
+    }
 
-      const dateStr = new Date(notice.created_at).toLocaleDateString();
-      const safeTitle = title.replace(/'/g, "\\'").replace(/"/g, "&quot;");
-      const safeText = text
-        .replace(/'/g, "\\'")
-        .replace(/"/g, "&quot;")
-        .replace(/\n/g, "<br>");
+    const dateStr = new Date(notice.created_at).toLocaleDateString();
+    const item = document.createElement("div");
+    item.className = "notice-list-item";
+    item.style.cssText =
+      "background:#111; border-radius:12px; padding:20px; margin-bottom:10px; border:1px solid #222; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:background 0.2s;";
+    item.addEventListener("click", () =>
+      viewNoticeDetail(title, dateStr, text),
+    );
 
-      return `
-      <div class="notice-list-item" onclick="viewNoticeDetail('${safeTitle}', '${dateStr}', '${safeText}')"
-           style="background: #111; border-radius: 12px; padding: 20px; margin-bottom: 10px; border: 1px solid #222; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: background 0.2s;">
-        <div class="notice-list-item-title" style="color: #eee; font-size: 1.05rem; font-family: 'Noto Serif KR', serif; font-weight: 300;">${title}</div>
-        <span class="material-symbols-outlined notice-list-item-icon" style="color: #555;">chevron_right</span>
-      </div>
-    `;
-    })
-    .join("");
+    const titleElement = document.createElement("div");
+    titleElement.className = "notice-list-item-title";
+    titleElement.style.cssText =
+      "color:#eee; font-size:1.05rem; font-family:'Noto Serif KR', serif; font-weight:300;";
+    titleElement.textContent = title;
+
+    const icon = document.createElement("span");
+    icon.className = "material-symbols-outlined notice-list-item-icon";
+    icon.style.color = "#555";
+    icon.textContent = "chevron_right";
+    item.append(titleElement, icon);
+    return item;
+  });
+  list.replaceChildren(...noticeItems);
 }
 
 function closeNoticeDetail() {
@@ -5876,11 +6147,24 @@ function viewNoticeDetail(title, date, content) {
   activateAppView("view-notice-detail");
 
   const container = document.getElementById("noticeDetailContainer");
-  container.innerHTML = `
-    <div class="notice-detail-title" style="color: #fff; font-weight: 700; font-size: 1.6rem; margin-bottom: 15px; font-family: 'Noto Serif KR', serif;">${title}</div>
-    <div class="notice-detail-date" style="color: #666; font-size: 0.9rem; margin-bottom: 40px; font-family: -apple-system, sans-serif; border-bottom: 1px solid #222; padding-bottom: 15px;">${date}</div>
-    <div class="notice-detail-content" style="color: #eaeaea; font-size: 1.15rem; line-height: 1.8; font-family: 'Noto Serif KR', serif; font-weight: 300; word-break: keep-all;">${content}</div>
-  `;
+  const titleElement = document.createElement("div");
+  titleElement.className = "notice-detail-title";
+  titleElement.style.cssText =
+    "color:#fff; font-weight:700; font-size:1.6rem; margin-bottom:15px; font-family:'Noto Serif KR', serif;";
+  titleElement.textContent = String(title ?? "");
+
+  const dateElement = document.createElement("div");
+  dateElement.className = "notice-detail-date";
+  dateElement.style.cssText =
+    "color:#666; font-size:0.9rem; margin-bottom:40px; font-family:-apple-system, sans-serif; border-bottom:1px solid #222; padding-bottom:15px;";
+  dateElement.textContent = String(date ?? "");
+
+  const contentElement = document.createElement("div");
+  contentElement.className = "notice-detail-content";
+  contentElement.style.cssText =
+    "color:#eaeaea; font-size:1.15rem; line-height:1.8; font-family:'Noto Serif KR', serif; font-weight:300; word-break:keep-all; white-space:pre-wrap;";
+  contentElement.textContent = String(content ?? "");
+  container.replaceChildren(titleElement, dateElement, contentElement);
 }
 
 window.setTimeout(() => hideAppSplash({ force: true }), 7000);
