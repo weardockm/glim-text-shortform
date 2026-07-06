@@ -1,4 +1,4 @@
-importScripts("./push-config.js?v=2");
+importScripts("./push-config.js?v=3");
 
 const pushConfig = self.GLIM_PUSH_CONFIG;
 const firebaseConfig = pushConfig?.firebase || {};
@@ -36,12 +36,24 @@ if (isFirebaseConfigured) {
   });
 }
 
+function getSafeNotificationUrl(value) {
+  try {
+    const candidate = new URL(String(value || "./"), self.location.origin);
+    if (candidate.origin !== self.location.origin) return self.location.origin;
+    if (!["http:", "https:"].includes(candidate.protocol)) {
+      return self.location.origin;
+    }
+    candidate.username = "";
+    candidate.password = "";
+    return candidate.href;
+  } catch (_error) {
+    return self.location.origin;
+  }
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl = new URL(
-    event.notification?.data?.url || "./",
-    self.location.origin,
-  ).href;
+  const targetUrl = getSafeNotificationUrl(event.notification?.data?.url);
 
   event.waitUntil(
     self.clients

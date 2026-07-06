@@ -1,0 +1,57 @@
+{
+  "name": "glim-text-shortform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "글림 텍스트 숏폼 PWA의 검증 및 출시 도구",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node scripts/check-syntax.mjs && node scripts/validate-render.mjs",
+    "test": "npm run test:unit && npm run test:characterization && npm run test:security:web",
+    "test:unit": "node --test test/unit/quality-foundation.test.js",
+    "test:characterization": "node --test test/characterization/app-contracts.test.mjs test/security/dom-rendering.test.mjs test/security/dom-sink-inventory.test.mjs test/security/dom-sink-proof.test.mjs",
+    "test:security:web": "node --test test/security/web-hardening.test.mjs",
+    "test:edge:delete-account": "deno test --node-modules-dir=auto supabase/functions/delete-account/index.test.ts",
+    "test:e2e:install": "node scripts/playwright-cli.mjs install chromium",
+    "test:e2e:install:ci": "node scripts/playwright-cli.mjs install --with-deps chromium",
+    "test:e2e:smoke": "node scripts/run-smoke.mjs",
+    "test:browser-xss": "node test/security/browser-xss.qa.mjs",
+    "qa:web-hardening": "node test/security/web-hardening.qa.mjs",
+    "qa:visual-diff": "node scripts/task7-visual-diff.mjs",
+    "qa:task7:cleanup": "node scripts/task7-cleanup.mjs",
+    "serve:test": "node scripts/static-server.mjs --host 127.0.0.1 --port 4173",
+    "test:fixture:server-tree": "node scripts/static-server.mjs --host 127.0.0.1 --port 4199",
+    "security:ast": "ast-grep scan --config sgconfig.yml index.js admin.js firebase-messaging-sw.js push-config.js",
+    "security:secrets": "node scripts/secret-scan.mjs",
+    "security:fixtures": "node scripts/verify-negative-fixtures.mjs",
+    "security:static": "npm run security:secrets && npm run security:ast && npm audit --offline --audit-level=high",
+    "sbom": "node scripts/sbom.mjs",
+    "evidence": "node scripts/evidence.mjs",
+    "verify:foundation": "node scripts/verify-foundation.mjs",
+    "qa:cleanup": "node scripts/cleanup-qa.mjs",
+    "package:web": "node scripts/package-web.mjs",
+    "cap:sync": "npm run package:web && npx cap sync"
+  },
+  "devDependencies": {
+    "@ast-grep/cli": "0.44.0",
+    "@cyclonedx/cyclonedx-npm": "5.0.0",
+    "@playwright/test": "1.61.1",
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/ios": "^8.0.0"
+  },
+  "dependencies": {
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/browser": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/haptics": "^8.0.0",
+    "@capacitor/keyboard": "^8.0.0",
+    "@capacitor/network": "^8.0.0",
+    "@capacitor/push-notifications": "^8.0.0",
+    "@capacitor/share": "^8.0.0",
+    "@capacitor/splash-screen": "^8.0.0",
+    "@capacitor/status-bar": "^8.0.0"
+  }
+}

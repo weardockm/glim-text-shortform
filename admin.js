@@ -1,6 +1,36 @@
 const SUPABASE_URL = "https://qdnpeliqtxdglqewbvgg.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_mwYlhge63nnNjL9lAFhxRw_fxRtRGvO";
 const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+function reportAdminDiagnostic(context, detail = null) {
+  const diagnostic = { context };
+  if (detail && typeof detail === "object") {
+    if (typeof detail.name === "string") diagnostic.name = detail.name;
+    if (typeof detail.code === "string") diagnostic.code = detail.code;
+    if (Number.isInteger(detail.status)) diagnostic.status = detail.status;
+  }
+  console.warn("[glim-admin]", diagnostic);
+}
+
+function goToHome() {
+  window.location.assign(new URL("index.html", window.location.href).href);
+}
+
+function setupAdminEventHandlers() {
+  document.addEventListener("click", (event) => {
+    const actionElement = event.target.closest?.("[data-admin-click]");
+    if (!actionElement) return;
+    const action = actionElement.dataset.adminClick;
+    if (action === "go-home") {
+      goToHome();
+    } else if (action === "submit-notice") {
+      submitNotice();
+    } else {
+      reportAdminDiagnostic("unknown-action", {
+        code: action ? "unknown" : "missing",
+      });
+    }
+  });
+}
 const REPORT_REASON_LABELS = Object.freeze({
   spam: "스팸 또는 광고",
   harassment: "괴롭힘 또는 모욕",
@@ -15,6 +45,32 @@ const REPORT_TARGET_LABELS = Object.freeze({
   comment: "댓글",
   user: "사용자",
 });
+const APPEAL_STATUS_LABELS = Object.freeze({
+  none: "이의제기 없음",
+  requested: "이의제기 요청됨",
+  accepted: "이의제기 수용",
+  rejected: "이의제기 기각",
+});
+
+function formatAdminDate(value) {
+  if (!value) return "없음";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "없음" : date.toLocaleString();
+}
+
+function isOverdue(value) {
+  if (!value) return false;
+  const dueAt = new Date(value).getTime();
+  return Number.isFinite(dueAt) && dueAt < Date.now();
+}
+
+function createReportMetaRow(label, value) {
+  const row = document.createElement("div");
+  const labelElement = document.createElement("strong");
+  labelElement.textContent = label;
+  row.append(labelElement, document.createTextNode(` ${value}`));
+  return row;
+}
 
 async function initAdmin() {
   const {
@@ -26,8 +82,9 @@ async function initAdmin() {
     : { data: false, error: null };
 
   if (!currentUser || roleError || !isModerator) {
+    if (roleError) reportAdminDiagnostic("moderator-role-check", roleError);
     alert("접근 권한이 없습니다. (관리자 전용 구역)");
-    window.location.href = "index.html";
+    goToHome();
     return;
   }
 
@@ -44,7 +101,8 @@ async function fetchAdminReports() {
     .order("created_at", { ascending: true });
 
   if (error) {
-    container.textContent = "데이터 로드 실패: " + error.message;
+    reportAdminDiagnostic("reports-load", error);
+    container.textContent = "신고 목록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.";
     return;
   }
   if (data.length === 0) {
@@ -89,12 +147,40 @@ async function fetchAdminReports() {
       item.appendChild(details);
     }
 
+    const meta = document.createElement("div");
+    meta.className = "report-review-meta";
+    if (isOverdue(report.review_due_at)) meta.classList.add("is-overdue");
+    const moderationState = createReportMetaRow(
+      "검토 SLA",
+      formatAdminDate(report.review_due_at),
+    );
+    const appealState = createReportMetaRow(
+      "이의제기",
+      APPEAL_STATUS_LABELS[report.appeal_status] || "상태 미확인",
+    );
+    const quarantineState = createReportMetaRow(
+      "격리/보존",
+      `상태 ${report.status || "pending"} · 보존 ${formatAdminDate(
+        report.retention_until,
+      )}`,
+    );
+    meta.append(moderationState, appealState, quarantineState);
+    item.appendChild(meta);
+
     const actions = document.createElement("div");
     actions.className = "report-review-actions";
     actions.appendChild(
       createModerationButton("기각", "dismiss", report.id, "secondary"),
     );
     if (report.target_type !== "user") {
+      actions.appendChild(
+        createModerationButton(
+          "격리",
+          "quarantine_content",
+          report.id,
+          "warning",
+        ),
+      );
       actions.appendChild(
         createModerationButton(
           "콘텐츠 삭제",
@@ -303,7 +389,7 @@ function setupAdminSwipeBack() {
       if (swipeDistance > window.innerWidth * 0.5) {
         document.body.style.transform = "translate3d(100vw, 0, 0)";
         setTimeout(() => {
-          window.location.href = "index.html";
+          goToHome();
         }, 230);
       } else {
         document.body.style.transform = "translate3d(0, 0, 0)";
@@ -332,4 +418,5 @@ function setupAdminSwipeBack() {
 }
 
 setupAdminSwipeBack();
+setupAdminEventHandlers();
 initAdmin();

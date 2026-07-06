@@ -11,8 +11,12 @@
       href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;700&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="admin.js?v=8" defer></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0"
+      integrity="sha384-DjOvX/sJLsmbMrw4wTvf6l3kiGBjdxyOO6X2MTFwOOXGkjN/mE08BoDzrpaaIjil"
+      crossorigin="anonymous"
+    ></script>
+    <script src="admin.js?v=9" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -175,6 +179,29 @@
         background: rgba(255, 255, 255, 0.025);
         color: #aaa;
       }
+      .report-review-meta {
+        display: grid;
+        gap: 6px;
+        margin-top: 12px;
+        padding: 10px;
+        border: 1px solid #242424;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.02);
+        color: #8f8f8f;
+        font-family: -apple-system, sans-serif;
+        font-size: 0.76rem;
+        line-height: 1.45;
+      }
+      .report-review-meta strong {
+        color: #cfcfcf;
+      }
+      .report-review-meta.is-overdue {
+        border-color: rgba(255, 59, 48, 0.38);
+        background: rgba(255, 59, 48, 0.055);
+      }
+      .report-review-meta.is-overdue strong {
+        color: #ff8d86;
+      }
       .report-review-actions {
         display: flex;
         flex-wrap: wrap;
@@ -250,7 +277,7 @@
     <div class="page-container">
       <div class="admin-badge">ADMIN MODE</div>
       <div class="page-title">신고 관리 및 공지센터</div>
-      <button class="back-btn" onclick="location.href = 'index.html'">
+      <button class="back-btn" data-admin-click="go-home">
         ← 일반 서비스로 돌아가기
       </button>
 
@@ -269,7 +296,7 @@
           class="notice-textarea"
           placeholder="공지사항 내용 (줄바꿈이 그대로 반영됩니다)"
         ></textarea>
-        <button class="submit-notice-btn" onclick="submitNotice()">
+        <button class="submit-notice-btn" data-admin-click="submit-notice">
           공지 등록하기
         </button>
       </div>

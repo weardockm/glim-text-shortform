@@ -1,12 +1,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+const baseCorsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
   "Access-Control-Max-Age": "86400",
 };
+const ALLOWED_CORS_ORIGINS = new Set([
+  "https://glimfactory.com",
+  "https://www.glimfactory.com",
+]);
 
 const FIREBASE_MESSAGING_SCOPE =
   "https://www.googleapis.com/auth/firebase.messaging";
@@ -32,16 +35,254 @@ type ServiceAccount = {
   token_uri?: string;
 };
 
-function jsonResponse(body: unknown, status = 200) {
+type PushDatabase = {
+  readonly public: {
+    readonly Tables: {
+      readonly comments: {
+        readonly Row: {
+          readonly content: string;
+          readonly created_at: string;
+          readonly post_id: string;
+          readonly user_id: string;
+        };
+        readonly Insert: never;
+        readonly Update: never;
+        readonly Relationships: [];
+      };
+      readonly follows: {
+        readonly Row: {
+          readonly follower_id: string;
+          readonly following_id: string;
+        };
+        readonly Insert: never;
+        readonly Update: never;
+        readonly Relationships: [];
+      };
+      readonly posts: {
+        readonly Row: {
+          readonly id: string;
+          readonly user_id: string;
+        };
+        readonly Insert: never;
+        readonly Update: never;
+        readonly Relationships: [];
+      };
+      readonly push_delivery_log: {
+        readonly Row: {
+          readonly actor_user_id: string;
+          readonly category: string;
+          readonly created_at: string;
+          readonly dedupe_key: string;
+          readonly target_user_id: string | null;
+        };
+        readonly Insert: {
+          readonly actor_user_id: string;
+          readonly category: string;
+          readonly created_at?: string;
+          readonly dedupe_key: string;
+          readonly target_user_id?: string | null;
+        };
+        readonly Update: never;
+        readonly Relationships: [];
+      };
+      readonly push_subscriptions: {
+        readonly Row: {
+          readonly enabled: boolean;
+          readonly firebase_installation_id: string;
+          readonly id: string;
+          readonly preferences: Record<string, boolean>;
+          readonly user_id: string;
+        };
+        readonly Insert: never;
+        readonly Update: never;
+        readonly Relationships: [];
+      };
+      readonly user_roles: {
+        readonly Row: {
+          readonly role: string;
+          readonly user_id: string;
+        };
+        readonly Insert: never;
+        readonly Update: never;
+        readonly Relationships: [];
+      };
+    };
+    readonly Views: Record<string, never>;
+    readonly Functions: Record<string, never>;
+    readonly Enums: Record<string, never>;
+    readonly CompositeTypes: Record<string, never>;
+  };
+};
+
+type DbError = {
+  readonly code?: string;
+  readonly message?: string;
+};
+
+type QueryResult<Row> = {
+  readonly data?: Row | null;
+  readonly error?: DbError | null;
+  readonly count?: number | null;
+};
+
+type QueryOptions = {
+  readonly count?: "exact";
+  readonly head?: boolean;
+};
+
+type OrderOptions = {
+  readonly ascending?: boolean;
+};
+
+type AdminTableQuery = {
+  readonly select: (columns: string, options?: QueryOptions) => AdminQuery;
+  readonly insert: (
+    value: Record<string, unknown>,
+  ) => PromiseLike<{ readonly error: DbError | null }>;
+  readonly delete: () => AdminQuery;
+};
+
+type AdminQuery =
+  & PromiseLike<QueryResult<ReadonlyArray<Record<string, unknown>>>>
+  & {
+    readonly eq: (column: string, value: unknown) => AdminQuery;
+    readonly in: (column: string, values: readonly unknown[]) => AdminQuery;
+    readonly gt: (column: string, value: unknown) => AdminQuery;
+    readonly contains: (
+      column: string,
+      value: Record<string, boolean>,
+    ) => AdminQuery;
+    readonly order: (column: string, options?: OrderOptions) => AdminQuery;
+    readonly limit: (count: number) => AdminQuery;
+    readonly maybeSingle: () => PromiseLike<
+      QueryResult<Record<string, unknown>>
+    >;
+  };
+
+type AdminClient = {
+  readonly from: (table: string) => unknown;
+};
+
+type AuthenticatedUser = {
+  readonly id: string;
+  readonly user_metadata?: Record<string, unknown> | null;
+};
+
+type UserClient = {
+  readonly auth: {
+    readonly getUser: () => Promise<{
+      readonly data: { readonly user: AuthenticatedUser | null };
+      readonly error: unknown | null;
+    }>;
+  };
+};
+
+export type SendPushDependencies = {
+  readonly createAdminClient: (
+    supabaseUrl: string,
+    serviceRoleKey: string,
+  ) => AdminClient;
+  readonly createUserClient: (
+    supabaseUrl: string,
+    anonKey: string,
+    authorization: string,
+  ) => UserClient;
+  readonly envGet: (name: string) => string | undefined;
+  readonly createAccessToken: (account: ServiceAccount) => Promise<string>;
+  readonly fetchImpl: typeof fetch;
+};
+
+const defaultSendPushDependencies = {
+  createAdminClient: (supabaseUrl, serviceRoleKey) =>
+    createClient(supabaseUrl, serviceRoleKey),
+  createUserClient: (supabaseUrl, anonKey, authorization) =>
+    createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authorization } },
+    }),
+  createAccessToken: createServiceAccountAccessToken,
+  envGet: (name) => Deno.env.get(name),
+  fetchImpl: fetch,
+} satisfies SendPushDependencies;
+
+function isApprovedLocalOrigin(origin: string) {
+  try {
+    const url = new URL(origin);
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1")
+    );
+  } catch (error) {
+    if (error instanceof TypeError) return false;
+    throw error;
+  }
+}
+
+function getCorsHeaders(request: Request) {
+  const origin = request.headers.get("Origin");
+  if (
+    origin &&
+    (ALLOWED_CORS_ORIGINS.has(origin) || isApprovedLocalOrigin(origin))
+  ) {
+    return {
+      ...baseCorsHeaders,
+      "Access-Control-Allow-Origin": origin,
+      Vary: "Origin",
+    };
+  }
+
+  return { ...baseCorsHeaders, Vary: "Origin" };
+}
+
+function isCorsRequestAllowed(request: Request) {
+  const origin = request.headers.get("Origin");
+  return (
+    !origin ||
+    ALLOWED_CORS_ORIGINS.has(origin) ||
+    isApprovedLocalOrigin(origin)
+  );
+}
+
+function jsonResponse(
+  body: unknown,
+  status = 200,
+  corsHeaders: Record<string, string> = baseCorsHeaders,
+) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
 
+function requireEnv(
+  envGet: SendPushDependencies["envGet"],
+  name: string,
+) {
+  const value = envGet(name);
+  if (!value) throw new Error(`${name} is not configured`);
+  return value;
+}
+
+function isMethodRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getAdminTable(admin: AdminClient, table: string) {
+  const query = admin.from(table);
+  if (
+    isMethodRecord(query) &&
+    typeof query.select === "function" &&
+    typeof query.insert === "function" &&
+    typeof query.delete === "function"
+  ) {
+    return query as AdminTableQuery;
+  }
+  throw new Error(`Supabase table query is unavailable: ${table}`);
+}
+
 function encodeBase64Url(value: string | Uint8Array) {
-  const bytes =
-    typeof value === "string" ? new TextEncoder().encode(value) : value;
+  const bytes = typeof value === "string"
+    ? new TextEncoder().encode(value)
+    : value;
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary)
@@ -91,9 +332,11 @@ async function createServiceAccountAccessToken(account: ServiceAccount) {
     privateKey,
     new TextEncoder().encode(unsignedToken),
   );
-  const assertion = `${unsignedToken}.${encodeBase64Url(
-    new Uint8Array(signature),
-  )}`;
+  const assertion = `${unsignedToken}.${
+    encodeBase64Url(
+      new Uint8Array(signature),
+    )
+  }`;
 
   const response = await fetch(tokenUri, {
     method: "POST",
@@ -138,20 +381,21 @@ function getPushCopy(
   }
   return {
     title: "글림의 새로운 소식",
-    body: noticeTitle ? `새 공지 · ${noticeTitle}` : "새로운 공지가 도착했어요.",
+    body: noticeTitle
+      ? `새 공지 · ${noticeTitle}`
+      : "새로운 공지가 도착했어요.",
   };
 }
 
 async function validateEvent(
-  admin: ReturnType<typeof createClient>,
+  admin: AdminClient,
   actorUserId: string,
   body: PushRequest,
 ) {
   if (!body.targetUserId || body.targetUserId === actorUserId) return false;
 
   if (body.category === "follows") {
-    const { data } = await admin
-      .from("follows")
+    const { data } = await getAdminTable(admin, "follows")
       .select("following_id")
       .eq("follower_id", actorUserId)
       .eq("following_id", body.targetUserId)
@@ -163,8 +407,7 @@ async function validateEvent(
     (body.category === "likes" || body.category === "comments") &&
     body.postId
   ) {
-    const { data } = await admin
-      .from("posts")
+    const { data } = await getAdminTable(admin, "posts")
       .select("id")
       .eq("id", body.postId)
       .eq("user_id", body.targetUserId)
@@ -173,6 +416,34 @@ async function validateEvent(
   }
 
   return false;
+}
+
+async function isModerator(
+  admin: AdminClient,
+  userId: string,
+) {
+  const { data, error } = await getAdminTable(admin, "user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .in("role", ["admin", "moderator"])
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function isPushRateLimited(
+  admin: AdminClient,
+  actorUserId: string,
+  category: string,
+) {
+  const since = new Date(Date.now() - 60_000).toISOString();
+  const { count, error } = await getAdminTable(admin, "push_delivery_log")
+    .select("dedupe_key", { count: "exact", head: true })
+    .eq("actor_user_id", actorUserId)
+    .eq("category", category)
+    .gt("created_at", since);
+  if (error) throw error;
+  return (count || 0) >= 30;
 }
 
 function getDedupeKey(
@@ -190,32 +461,55 @@ function getDedupeKey(
   return `${body.category}:${actorUserId}:${body.postId || body.targetUserId}`;
 }
 
-Deno.serve(async (request) => {
+export async function handleSendPushRequest(
+  request: Request,
+  dependencies: SendPushDependencies = defaultSendPushDependencies,
+) {
+  const corsHeaders = getCorsHeaders(request);
+  if (!isCorsRequestAllowed(request)) {
+    return jsonResponse({ error: "Origin not allowed" }, 403, corsHeaders);
+  }
+
   if (request.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
   if (request.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed" }, 405);
+    return jsonResponse({ error: "Method not allowed" }, 405, corsHeaders);
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = requireEnv(dependencies.envGet, "SUPABASE_URL");
+    const anonKey = requireEnv(dependencies.envGet, "SUPABASE_ANON_KEY");
+    const serviceRoleKey = requireEnv(
+      dependencies.envGet,
+      "SUPABASE_SERVICE_ROLE_KEY",
+    );
     const authorization = request.headers.get("Authorization") || "";
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authorization } },
-    });
+    const userClient = dependencies.createUserClient(
+      supabaseUrl,
+      anonKey,
+      authorization,
+    );
     const {
       data: { user },
       error: userError,
     } = await userClient.auth.getUser();
-    if (userError || !user) return jsonResponse({ error: "Unauthorized" }, 401);
+    if (userError || !user) {
+      return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
+    }
 
-    const body = (await request.json()) as PushRequest;
+    let body: PushRequest;
+    try {
+      body = (await request.json()) as PushRequest;
+    } catch (error) {
+      if (error instanceof SyntaxError || error instanceof TypeError) {
+        return jsonResponse({ error: "Invalid JSON" }, 400, corsHeaders);
+      }
+      throw error;
+    }
     const category = String(body.category || "");
     if (!ALLOWED_CATEGORIES.has(category)) {
-      return jsonResponse({ error: "Invalid category" }, 400);
+      return jsonResponse({ error: "Invalid category" }, 400, corsHeaders);
     }
     console.log("push-request", {
       category,
@@ -224,47 +518,62 @@ Deno.serve(async (request) => {
       hasPost: Boolean(body.postId),
     });
 
-    const admin = createClient(supabaseUrl, serviceRoleKey);
-    const isAdmin = user.email?.toLowerCase() === "weardockm@gmail.com";
+    const admin = dependencies.createAdminClient(supabaseUrl, serviceRoleKey);
     const isBroadcast = category === "announcements" && body.broadcast === true;
-    if (isBroadcast && !isAdmin) {
-      return jsonResponse({ error: "Admin only" }, 403);
+    if (isBroadcast && !(await isModerator(admin, user.id))) {
+      return jsonResponse({ error: "Admin only" }, 403, corsHeaders);
     }
     if (!isBroadcast && !(await validateEvent(admin, user.id, body))) {
-      return jsonResponse({ error: "Invalid notification event" }, 403);
+      return jsonResponse(
+        { error: "Invalid notification event" },
+        403,
+        corsHeaders,
+      );
+    }
+    if (await isPushRateLimited(admin, user.id, category)) {
+      return jsonResponse(
+        { error: "Rate limit exceeded" },
+        429,
+        corsHeaders,
+      );
     }
 
-    let subscriptionQuery = admin
-      .from("push_subscriptions")
+    let subscriptionQuery = getAdminTable(admin, "push_subscriptions")
       .select("id, firebase_installation_id")
       .eq("enabled", true)
       .contains("preferences", { [category]: true });
     if (!isBroadcast) {
-      subscriptionQuery = subscriptionQuery.eq("user_id", body.targetUserId);
+      const targetUserId = body.targetUserId;
+      if (!targetUserId) {
+        return jsonResponse(
+          { error: "Invalid notification event" },
+          403,
+          corsHeaders,
+        );
+      }
+      subscriptionQuery = subscriptionQuery.eq("user_id", targetUserId);
     }
     const { data: subscriptions, error: subscriptionError } =
       await subscriptionQuery;
     if (subscriptionError) throw subscriptionError;
     if (!subscriptions?.length) {
       console.log("push-skipped", { category, reason: "no-subscription" });
-      return jsonResponse({ sent: 0 });
+      return jsonResponse({ sent: 0 }, 200, corsHeaders);
     }
 
     const account = JSON.parse(
-      Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON") || "",
+      dependencies.envGet("FIREBASE_SERVICE_ACCOUNT_JSON") || "",
     ) as ServiceAccount;
     if (!account.client_email || !account.private_key || !account.project_id) {
       throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not configured");
     }
 
-    const actorNickname =
-      user.user_metadata?.random_nickname ||
+    const actorNickname = user.user_metadata?.random_nickname ||
       user.user_metadata?.name ||
       "누군가";
     let commentPreview = "";
     if (category === "comments" && body.postId) {
-      const { data: latestComment } = await admin
-        .from("comments")
+      const { data: latestComment } = await getAdminTable(admin, "comments")
         .select("content")
         .eq("post_id", body.postId)
         .eq("user_id", user.id)
@@ -282,26 +591,31 @@ Deno.serve(async (request) => {
       String(body.title || "").slice(0, 70),
       commentPreview,
     );
-    const accessToken = await createServiceAccountAccessToken(account);
+    const accessToken = await dependencies.createAccessToken(account);
     const dedupeKey = getDedupeKey(user.id, body);
-    const { error: dedupeError } = await admin.from("push_delivery_log").insert({
+    const { error: dedupeError } = await getAdminTable(
+      admin,
+      "push_delivery_log",
+    ).insert({
       dedupe_key: dedupeKey,
       actor_user_id: user.id,
       target_user_id: isBroadcast ? null : body.targetUserId,
       category,
     });
     if (dedupeError?.code === "23505") {
-      return jsonResponse({ sent: 0, deduplicated: true });
+      return jsonResponse({ sent: 0, deduplicated: true }, 200, corsHeaders);
     }
     if (dedupeError) throw dedupeError;
 
-    const endpoint = `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(
-      account.project_id,
-    )}/messages:send`;
+    const endpoint = `https://fcm.googleapis.com/v1/projects/${
+      encodeURIComponent(
+        account.project_id,
+      )
+    }/messages:send`;
 
     const results = await Promise.all(
       subscriptions.map(async (subscription) => {
-        const response = await fetch(endpoint, {
+        const response = await dependencies.fetchImpl(endpoint, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -316,21 +630,24 @@ Deno.serve(async (request) => {
                 category,
                 postId: String(body.postId || ""),
                 url: body.postId
-                  ? `./?notificationPost=${encodeURIComponent(
+                  ? `./?notificationPost=${
+                    encodeURIComponent(
                       String(body.postId),
-                    )}&notificationType=${encodeURIComponent(category)}`
+                    )
+                  }&notificationType=${encodeURIComponent(category)}`
                   : "./?tab=noti",
               },
               webpush: {
-                headers: { Urgency: category === "announcements" ? "normal" : "high" },
+                headers: {
+                  Urgency: category === "announcements" ? "normal" : "high",
+                },
               },
             },
           }),
         });
         const result = await response.json().catch(() => ({}));
         if (response.status === 404) {
-          await admin
-            .from("push_subscriptions")
+          await getAdminTable(admin, "push_subscriptions")
             .delete()
             .eq("id", subscription.id);
         }
@@ -347,19 +664,23 @@ Deno.serve(async (request) => {
       failed,
     });
     if (!sent && failed) {
-      await admin
-        .from("push_delivery_log")
+      await getAdminTable(admin, "push_delivery_log")
         .delete()
         .eq("dedupe_key", dedupeKey);
       console.error("FCM delivery failed", results);
-      return jsonResponse({ sent, failed }, 502);
+      return jsonResponse({ sent, failed }, 502, corsHeaders);
     }
-    return jsonResponse({ sent, failed });
+    return jsonResponse({ sent, failed }, 200, corsHeaders);
   } catch (error) {
     console.error(error);
     return jsonResponse(
       { error: error instanceof Error ? error.message : "Unknown error" },
       500,
+      corsHeaders,
     );
   }
-});
+}
+
+if (import.meta.main) {
+  Deno.serve((request) => handleSendPushRequest(request));
+}

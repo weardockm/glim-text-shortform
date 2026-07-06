@@ -18,35 +18,7 @@
     <link rel="apple-touch-icon" href="image/app-logo.png" />
     <link rel="manifest" href="manifest.json" />
     <link rel="preload" as="image" href="image/app-logo.png" />
-    <script>
-      (() => {
-        const key = "glim_theme_preference";
-        let preference = "system";
-        try {
-          const stored = localStorage.getItem(key);
-          if (["dark", "light", "system"].includes(stored)) {
-            preference = stored;
-          }
-        } catch (_error) {}
-        const isSystemDark = window.matchMedia(
-          "(prefers-color-scheme: dark)",
-        ).matches;
-        const resolved =
-          preference === "system"
-            ? isSystemDark
-              ? "dark"
-              : "light"
-            : preference;
-        document.documentElement.dataset.theme = resolved;
-        document.documentElement.dataset.themePreference = preference;
-        document
-          .getElementById("themeColorMeta")
-          ?.setAttribute(
-            "content",
-            resolved === "dark" ? "#050505" : "#f6f2ee",
-          );
-      })();
-    </script>
+    <script src="theme-bootstrap.js?v=1"></script>
     <title>글림 - 텍스트 숏폼</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -56,11 +28,17 @@
     />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0..1,0"
+      href="assets/fonts/glim-fonts.css?v=1"
+      integrity="sha384-mXGmvLaSNdZu0LmbgwLRkmw9aLSYlygevt09Esgv6C96QR6CBiIKQEA4hxx1ml9F"
+      crossorigin="anonymous"
     />
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="push-config.js?v=2"></script>
-    <script src="index.js?v=65" defer></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0"
+      integrity="sha384-DjOvX/sJLsmbMrw4wTvf6l3kiGBjdxyOO6X2MTFwOOXGkjN/mE08BoDzrpaaIjil"
+      crossorigin="anonymous"
+    ></script>
+    <script src="push-config.js?v=3"></script>
+    <script src="index.js?v=71" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -78,6 +56,7 @@
         --top-safe-space: env(safe-area-inset-top, 0px);
         --bottom-safe-space: 10px;
         --bottom-nav-height: calc(60px + var(--bottom-safe-space));
+        --glim-text-empty: #888;
       }
       body,
       html {
@@ -257,6 +236,38 @@
         object-fit: contain;
         transition: transform 0.1s linear;
       }
+      .connectivity-status {
+        position: fixed;
+        top: calc(var(--top-safe-space) + 12px);
+        left: 50%;
+        z-index: 500;
+        max-width: calc(100% - 32px);
+        padding: 8px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 18px;
+        background: rgba(18, 18, 18, 0.94);
+        color: #ddd;
+        font: 500 0.76rem/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        text-align: center;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: translate(-50%, -12px);
+        transition:
+          opacity 0.2s ease,
+          transform 0.2s ease,
+          visibility 0s linear 0.2s;
+      }
+      .connectivity-status.is-visible {
+        opacity: 1;
+        visibility: visible;
+        transform: translate(-50%, 0);
+        transition:
+          opacity 0.2s ease,
+          transform 0.2s ease,
+          visibility 0s;
+      }
 
       /* 빙글빙글 도는 애니메이션 대신 둥둥 떠다니는 애니메이션으로 교체 */
       .refresh-indicator.refreshing .refresh-indicator-icon {
@@ -387,6 +398,47 @@
         align-items: center;
         position: relative;
         padding: 2rem;
+      }
+      .feed-state {
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 32px;
+        color: #777;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        text-align: center;
+      }
+      .feed-state-title {
+        color: #ddd;
+        font-size: 0.95rem;
+        font-weight: 600;
+      }
+      .feed-state.is-empty .feed-state-title {
+        color: var(--glim-text-empty);
+        font-weight: 400;
+      }
+      .feed-state-description {
+        max-width: 320px;
+        font-size: 0.8rem;
+        line-height: 1.55;
+      }
+      .feed-state-retry {
+        margin-top: 4px;
+        padding: 9px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 18px;
+        background: #151515;
+        color: #eee;
+        font: inherit;
+        cursor: pointer;
+      }
+      .feed-state-retry:focus-visible {
+        outline: 2px solid #ddd;
+        outline-offset: 3px;
       }
       .text-content {
         font-size: 1.125rem;
@@ -993,6 +1045,10 @@
         overscroll-behavior-x: contain;
         -webkit-overflow-scrolling: touch;
       }
+      #exploreMoodRail {
+        padding-top: 14px;
+        padding-bottom: 2px;
+      }
       .explore-card-rail::after {
         content: "";
         flex: 0 0 4px;
@@ -1241,6 +1297,8 @@
         font-family: "Noto Serif KR", serif;
         resize: none;
         line-height: 1.6;
+        word-break: keep-all;
+        overflow-wrap: normal;
       }
       .post-textarea:focus {
         outline: none;
@@ -3055,6 +3113,9 @@
         line-height: 1.75;
         word-break: keep-all;
       }
+      .cjk-keep {
+        white-space: nowrap;
+      }
       .legal-document-title {
         margin: 0;
         color: #f2efeb;
@@ -3112,6 +3173,40 @@
         color: #d7b29e;
         text-decoration: none;
         overflow-wrap: anywhere;
+      }
+      .account-delete-card {
+        display: grid;
+        gap: 18px;
+      }
+      .account-delete-form {
+        display: grid;
+        gap: 12px;
+        margin-top: 18px;
+      }
+      .account-delete-label {
+        color: #dcd6d0;
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+      .account-delete-submit {
+        min-height: 46px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        background: #eee5d7;
+        color: #17110d;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 0.9rem;
+        font-weight: 800;
+      }
+      .account-delete-submit:disabled {
+        cursor: not-allowed;
+        opacity: 0.58;
+      }
+      .account-delete-status {
+        min-height: 1.5em;
+        color: #aaa39e;
+        font-size: 0.82rem;
+        line-height: 1.6;
       }
       .legal-effective-date {
         margin-top: 18px;
@@ -3385,6 +3480,7 @@
       }
       html[data-theme="light"] {
         color-scheme: light;
+        --glim-text-empty: #555;
       }
       html[data-theme="light"],
       html[data-theme="light"] body {
@@ -3808,6 +3904,17 @@
       html[data-theme="light"] .legal-link {
         color: #96573a;
       }
+      html[data-theme="light"] .account-delete-label {
+        color: #49413c;
+      }
+      html[data-theme="light"] .account-delete-submit {
+        border-color: #d8cec5;
+        background: #3a2f28;
+        color: #fffaf5;
+      }
+      html[data-theme="light"] .account-delete-status {
+        color: #766c65;
+      }
       html[data-theme="light"] .settings-row + .settings-row {
         border-color: rgba(75, 55, 44, 0.08);
       }
@@ -3982,6 +4089,13 @@
         </div>
       </div>
     </div>
+    <div
+      class="connectivity-status"
+      id="connectivityStatus"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
     <div class="header"><div class="logo">글림</div></div>
     <div class="refresh-indicator" id="refreshIndicator" aria-live="polite">
       <img
@@ -4012,7 +4126,7 @@
 
     <div id="view-context-feed" class="app-view">
       <div class="context-feed-controls">
-        <button class="context-feed-back-btn" onclick="closeContextPostFeed()">
+        <button class="context-feed-back-btn" data-glim-click="closeContextPostFeed()">
           <span class="material-symbols-outlined">arrow_back</span>
         </button>
         <span class="context-feed-title" id="contextFeedTitle">게시물</span>
@@ -4029,20 +4143,20 @@
               class="search-bar"
               id="searchInput"
               placeholder="검색"
-              onfocus="openExploreSearch()"
-              oninput="handleExploreSearchInput()"
-              onkeyup="if (event.key === 'Enter') searchPosts();"
+              data-glim-focus="openExploreSearch()"
+              data-glim-input="handleExploreSearchInput()"
+              data-glim-enter="searchPosts()"
             />
             <span
               class="material-symbols-outlined search-icon"
-              onclick="searchPosts()"
+              data-glim-click="searchPosts()"
               >search</span
             >
           </div>
           <button
             type="button"
             class="search-cancel-btn"
-            onclick="closeExploreSearch()"
+            data-glim-click="closeExploreSearch()"
           >
             취소
           </button>
@@ -4131,7 +4245,7 @@
             <button
               type="button"
               class="explore-search-clear"
-              onclick="clearExploreSearchHistory()"
+              data-glim-click="clearExploreSearchHistory()"
             >
               전체 삭제
             </button>
@@ -4187,7 +4301,7 @@
             maxlength="120"
             placeholder="새벽에 어울리는 조용한 글을 적어주세요."
             aria-describedby="charCount"
-            oninput="handlePostContentInput(event)"
+            data-glim-input="handlePostContentInput(event)"
           ></textarea>
           <div class="char-count" id="charCount">0 / 120 · 0 / 12줄</div>
         </div>
@@ -4198,7 +4312,7 @@
             type="button"
             class="write-bgm-select-btn write-mood-select-btn"
             id="moodSelectButton"
-            onclick="openMoodPicker()"
+            data-glim-click="openMoodPicker()"
           >
             <span class="write-bgm-selected" id="selectedMoodLabel"
               >느낌을 선택해주세요</span
@@ -4215,7 +4329,7 @@
           <button
             type="button"
             class="write-bgm-select-btn"
-            onclick="openBgmPicker()"
+            data-glim-click="openBgmPicker()"
           >
             <span class="write-bgm-selected" id="selectedBgmLabel"
               >음악 없이 고요하게</span
@@ -4225,7 +4339,7 @@
             >
           </button>
         </div>
-        <button class="submit-btn" onclick="submitPost()">우주로 띄우기</button>
+        <button class="submit-btn" data-glim-click="submitPost()">우주로 띄우기</button>
       </div>
     </div>
 
@@ -4234,7 +4348,7 @@
         <button
           type="button"
           class="bgm-picker-back-btn"
-          onclick="closeBgmPicker()"
+          data-glim-click="closeBgmPicker()"
           aria-label="닫기"
         >
           <span class="material-symbols-outlined">arrow_back</span>
@@ -4266,7 +4380,7 @@
         <button
           type="button"
           class="logged-out-settings-btn"
-          onclick="openSettingsView()"
+          data-glim-click="openSettingsView()"
           aria-label="설정 열기"
         >
           <span class="material-symbols-outlined">menu</span>
@@ -4310,7 +4424,7 @@
             </div>
             <button
               class="social-btn kakao-btn"
-              onclick="handleSocialLogin('kakao')"
+              data-glim-click="handleSocialLogin('kakao')"
             >
               <svg class="social-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path
@@ -4322,7 +4436,7 @@
             </button>
             <button
               class="social-btn google-btn"
-              onclick="handleSocialLogin('google')"
+              data-glim-click="handleSocialLogin('google')"
             >
               <svg class="social-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path
@@ -4347,7 +4461,7 @@
             <button
               type="button"
               class="social-btn apple-btn"
-              onclick="handleSocialLogin('apple')"
+              data-glim-click="handleSocialLogin('apple')"
             >
               <svg
                 class="social-icon apple-icon"
@@ -4368,7 +4482,7 @@
               <button
                 type="button"
                 class="login-consent-link"
-                onclick="openTermsOfServiceView()"
+                data-glim-click="openTermsOfServiceView()"
               >
                 서비스 이용약관
               </button>
@@ -4376,7 +4490,7 @@
               <button
                 type="button"
                 class="login-consent-link"
-                onclick="openPrivacyPolicyView()"
+                data-glim-click="openPrivacyPolicyView()"
               >
                 개인정보 처리방침
               </button>
@@ -4392,7 +4506,7 @@
           <span
             class="material-symbols-outlined profile-settings-btn"
             style="font-size: 1.8rem; cursor: pointer"
-            onclick="openSettingsView()"
+            data-glim-click="openSettingsView()"
             >menu</span
           >
         </header>
@@ -4415,33 +4529,33 @@
             </div>
             <div
               class="stat-item stat-link"
-              onclick="openMyFollowList('followers')"
+              data-glim-click="openMyFollowList('followers')"
             >
               <span class="stat-num" id="statFollowers">0</span
               ><span class="stat-label">팔로워</span>
             </div>
             <div
               class="stat-item stat-link"
-              onclick="openMyFollowList('following')"
+              data-glim-click="openMyFollowList('following')"
             >
               <span class="stat-num" id="statFollowing">0</span
               ><span class="stat-label">팔로잉</span>
             </div>
           </div>
-          <button class="profile-edit-btn" onclick="openEditProfile()">
+          <button class="profile-edit-btn" data-glim-click="openEditProfile()">
             프로필 편집
           </button>
         </div>
 
         <div class="profile-tabs-container">
           <div class="profile-tabs-indicator" id="tabIndicator"></div>
-          <div class="p-tab active" id="tab-my" onclick="scrollToProfileTab(0)">
+          <div class="p-tab active" id="tab-my" data-glim-click="scrollToProfileTab(0)">
             <span class="material-symbols-outlined">grid_on</span>
           </div>
-          <div class="p-tab" id="tab-bookmark" onclick="scrollToProfileTab(1)">
+          <div class="p-tab" id="tab-bookmark" data-glim-click="scrollToProfileTab(1)">
             <span class="material-symbols-outlined">bookmark</span>
           </div>
-          <div class="p-tab" id="tab-like" onclick="scrollToProfileTab(2)">
+          <div class="p-tab" id="tab-like" data-glim-click="scrollToProfileTab(2)">
             <span class="material-symbols-outlined">favorite</span>
           </div>
         </div>
@@ -4449,7 +4563,7 @@
         <div
           class="profile-grid-scroll-container"
           id="profileGridScroll"
-          onscroll="updateTabIndicator()"
+          data-glim-scroll="updateTabIndicator()"
         >
           <div class="swipe-grid-section">
             <div
@@ -4478,13 +4592,13 @@
 
     <div id="view-user-profile" class="app-view">
       <header class="profile-topbar" style="border-bottom: 1px solid #222">
-        <button class="user-profile-back-btn" onclick="closeUserProfile()">
+        <button class="user-profile-back-btn" data-glim-click="closeUserProfile()">
           <span class="material-symbols-outlined">arrow_back</span>
         </button>
         <h1 class="profile-title">프로필</h1>
         <div
           class="user-profile-more-wrapper"
-          onclick="toggleMoreMenu(this, event)"
+          data-glim-click="toggleMoreMenu(this, event)"
         >
           <button
             type="button"
@@ -4497,14 +4611,14 @@
             <button
               type="button"
               class="more-menu-item"
-              onclick="event.stopPropagation(); reportUser(viewedProfileUserId)"
+              data-glim-click="event.stopPropagation(); reportUser(viewedProfileUserId)"
             >
               사용자 신고
             </button>
             <button
               type="button"
               class="more-menu-item block-user"
-              onclick="event.stopPropagation(); blockUser(viewedProfileUserId)"
+              data-glim-click="event.stopPropagation(); blockUser(viewedProfileUserId)"
             >
               사용자 차단
             </button>
@@ -4530,14 +4644,14 @@
           </div>
           <div
             class="stat-item stat-link"
-            onclick="openViewedFollowList('followers')"
+            data-glim-click="openViewedFollowList('followers')"
           >
             <span class="stat-num" id="viewedProfileFollowers">0</span
             ><span class="stat-label">팔로워</span>
           </div>
           <div
             class="stat-item stat-link"
-            onclick="openViewedFollowList('following')"
+            data-glim-click="openViewedFollowList('following')"
           >
             <span class="stat-num" id="viewedProfileFollowing">0</span
             ><span class="stat-label">팔로잉</span>
@@ -4547,7 +4661,7 @@
         <button
           class="viewed-profile-follow-btn"
           id="viewedProfileFollowButton"
-          onclick="toggleFollow()"
+          data-glim-click="toggleFollow()"
         >
           팔로우
         </button>
@@ -4562,7 +4676,7 @@
         <button
           type="button"
           class="settings-page-back"
-          onclick="closeSettingsView()"
+          data-glim-click="closeSettingsView()"
           aria-label="프로필로 돌아가기"
         >
           <span class="material-symbols-outlined">arrow_back</span>
@@ -4578,7 +4692,7 @@
             <button
               type="button"
               class="settings-row"
-              onclick="openAccountCenterView()"
+              data-glim-click="openAccountCenterView()"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >manage_accounts</span
@@ -4602,7 +4716,7 @@
             <button
               type="button"
               class="settings-row"
-              onclick="openThemeSettingsView()"
+              data-glim-click="openThemeSettingsView()"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >dark_mode</span
@@ -4623,7 +4737,7 @@
               type="button"
               class="settings-row"
               id="settingsNotificationRow"
-              onclick="openNotificationSettingsView()"
+              data-glim-click="openNotificationSettingsView()"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >notifications</span
@@ -4649,7 +4763,7 @@
             <button
               type="button"
               class="settings-row"
-              onclick="openNoticeSheet()"
+              data-glim-click="openNoticeSheet()"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >campaign</span
@@ -4664,13 +4778,16 @@
             <button
               type="button"
               class="settings-row"
-              onclick="showAppAlert('고객센터를 준비 중입니다.')"
+              data-glim-click="openSupportView()"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >help</span
               >
               <span class="settings-row-copy">
                 <span class="settings-row-title">FAQ / 고객센터</span>
+                <span class="settings-row-description"
+                  >문의, 신고 이의제기, 계정 지원</span
+                >
               </span>
               <span class="material-symbols-outlined settings-row-chevron"
                 >chevron_right</span
@@ -4681,7 +4798,7 @@
               class="settings-row"
               id="adminCenterMenu"
               style="display: none"
-              onclick="location.href = 'admin.html'"
+              data-glim-click="location.href = 'admin.html'"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >admin_panel_settings</span
@@ -4702,7 +4819,7 @@
             <button
               type="button"
               class="settings-row"
-              onclick="openPrivacyPolicyView()"
+              data-glim-click="openPrivacyPolicyView()"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >policy</span
@@ -4717,13 +4834,28 @@
             <button
               type="button"
               class="settings-row"
-              onclick="openTermsOfServiceView()"
+              data-glim-click="openTermsOfServiceView()"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >gavel</span
               >
               <span class="settings-row-copy">
                 <span class="settings-row-title">이용약관</span>
+              </span>
+              <span class="material-symbols-outlined settings-row-chevron"
+                >chevron_right</span
+              >
+            </button>
+            <button
+              type="button"
+              class="settings-row"
+              data-glim-click="openCommunityStandardsView()"
+            >
+              <span class="material-symbols-outlined settings-row-icon"
+                >verified_user</span
+              >
+              <span class="settings-row-copy">
+                <span class="settings-row-title">커뮤니티 기준</span>
               </span>
               <span class="material-symbols-outlined settings-row-chevron"
                 >chevron_right</span
@@ -4739,7 +4871,7 @@
         <button
           type="button"
           class="settings-page-back"
-          onclick="closeNotificationSettingsView()"
+          data-glim-click="closeNotificationSettingsView()"
           aria-label="설정으로 돌아가기"
         >
           <span class="material-symbols-outlined">arrow_back</span>
@@ -4776,7 +4908,7 @@
                   id="pushNotificationToggle"
                   type="checkbox"
                   class="notification-toggle-input"
-                  onchange="togglePushNotifications(this.checked)"
+                  data-glim-change="togglePushNotifications(this.checked)"
                 />
                 <span class="notification-toggle-track"></span>
               </span>
@@ -4808,7 +4940,7 @@
                   type="checkbox"
                   class="notification-toggle-input"
                   data-notification-preference="likes"
-                  onchange="setNotificationPreference('likes', this.checked)"
+                  data-glim-change="setNotificationPreference('likes', this.checked)"
                 />
                 <span class="notification-toggle-track"></span>
               </span>
@@ -4830,7 +4962,7 @@
                   type="checkbox"
                   class="notification-toggle-input"
                   data-notification-preference="comments"
-                  onchange="setNotificationPreference('comments', this.checked)"
+                  data-glim-change="setNotificationPreference('comments', this.checked)"
                 />
                 <span class="notification-toggle-track"></span>
               </span>
@@ -4852,7 +4984,7 @@
                   type="checkbox"
                   class="notification-toggle-input"
                   data-notification-preference="follows"
-                  onchange="setNotificationPreference('follows', this.checked)"
+                  data-glim-change="setNotificationPreference('follows', this.checked)"
                 />
                 <span class="notification-toggle-track"></span>
               </span>
@@ -4876,7 +5008,7 @@
                   type="checkbox"
                   class="notification-toggle-input"
                   data-notification-preference="announcements"
-                  onchange="setNotificationPreference('announcements', this.checked)"
+                  data-glim-change="setNotificationPreference('announcements', this.checked)"
                 />
                 <span class="notification-toggle-track"></span>
               </span>
@@ -4894,7 +5026,7 @@
         <button
           type="button"
           class="settings-page-back"
-          onclick="closePrivacyPolicyView()"
+          data-glim-click="closePrivacyPolicyView()"
           aria-label="설정으로 돌아가기"
         >
           <span class="material-symbols-outlined">arrow_back</span>
@@ -4918,7 +5050,8 @@
 
           <section class="legal-section">
             <h3 class="legal-section-title">
-              제 1조 (수집하는 개인정보의 항목 및 수집 방법)
+              제 1조 (수집하는 개인정보의 항목 및
+              <span class="cjk-keep">수집 방법</span>)
             </h3>
             <p class="legal-paragraph">
               서비스는 회원가입, 원활한 고객상담, 각종 맞춤형 서비스의 제공을
@@ -5212,7 +5345,7 @@
         <button
           type="button"
           class="settings-page-back"
-          onclick="closeTermsOfServiceView()"
+          data-glim-click="closeTermsOfServiceView()"
           aria-label="설정으로 돌아가기"
         >
           <span class="material-symbols-outlined">arrow_back</span>
@@ -5241,7 +5374,8 @@
             <ul class="legal-list">
               <li>
                 “서비스”란 구현되는 단말기(스마트폰, 태블릿 PC 등)와 상관없이
-                회원이 이용할 수 있는 글림(Glim) 앱 및 관련 제반 서비스를
+                회원이 <span class="cjk-keep">이용할 수 있는</span> 글림(Glim)
+                앱 및 관련 제반 서비스를
                 의미합니다.
               </li>
               <li>
@@ -5456,12 +5590,122 @@
       </main>
     </div>
 
+    <div id="view-support" class="app-view settings-view">
+      <header class="settings-page-topbar">
+        <button
+          type="button"
+          class="settings-page-back"
+          data-glim-click="closeSupportView()"
+          aria-label="설정으로 돌아가기"
+        >
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <h1 class="settings-page-title">FAQ / 고객센터</h1>
+        <span></span>
+      </header>
+
+      <main class="settings-page-content legal-document">
+        <article class="legal-card">
+          <div class="legal-document-subtitle">SUPPORT</div>
+          <h2 class="legal-document-title">문의와 이의제기</h2>
+          <p class="legal-paragraph">
+            신고 결과, 계정 제한, 콘텐츠 격리·삭제에 대한 문의는 글림
+            운영팀이 접수 후 검토합니다. 신고 화면에서 접수된 내용은 운영자
+            검토 대기열에 남고, 필요한 경우 추가 확인을 요청할 수 있습니다.
+          </p>
+          <section class="legal-section">
+            <h3 class="legal-section-title">처리 기준</h3>
+            <ul class="legal-list">
+              <li>신고된 콘텐츠는 24시간 내 첫 검토를 목표로 확인합니다.</li>
+              <li>
+                명백한 스팸, 혐오, 성적·폭력적 내용, 개인정보 노출은 삭제 또는
+                계정 제한으로 이어질 수 있습니다.
+              </li>
+              <li>
+                결과에 동의하기 어렵다면 아래 메일로 이의제기 사유와 계정
+                정보를 보내주세요.
+              </li>
+            </ul>
+          </section>
+          <section class="legal-section">
+            <h3 class="legal-section-title">연락처</h3>
+            <div class="legal-contact">
+              <div><strong>글림 운영팀</strong></div>
+              <div>
+                <a
+                  class="legal-link"
+                  id="supportContactLink"
+                  href="mailto:weardockm@gmail.com?subject=%EA%B8%80%EB%A6%BC%20%EA%B3%A0%EA%B0%9D%EC%84%BC%ED%84%B0%20%EB%AC%B8%EC%9D%98"
+                  >weardockm@gmail.com</a
+                >
+              </div>
+              <div>
+                인스타그램:
+                <a
+                  class="legal-link"
+                  href="https://www.instagram.com/glim.short/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  >@glim.short</a
+                >
+              </div>
+            </div>
+          </section>
+        </article>
+      </main>
+    </div>
+
+    <div id="view-community-standards" class="app-view settings-view">
+      <header class="settings-page-topbar">
+        <button
+          type="button"
+          class="settings-page-back"
+          data-glim-click="closeCommunityStandardsView()"
+          aria-label="설정으로 돌아가기"
+        >
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <h1 class="settings-page-title">커뮤니티 기준</h1>
+        <span></span>
+      </header>
+
+      <main class="settings-page-content legal-document">
+        <article class="legal-card">
+          <div class="legal-document-subtitle">COMMUNITY STANDARDS</div>
+          <h2 class="legal-document-title">안전한 글림을 위한 기준</h2>
+          <p class="legal-paragraph">
+            글과 댓글 작성 전 최신 이용약관과 커뮤니티 기준 동의가 필요합니다.
+            금지된 내용은 등록되지 않거나 운영자 검토를 위해 격리될 수
+            있습니다.
+          </p>
+          <section class="legal-section">
+            <h3 class="legal-section-title">등록할 수 없는 내용</h3>
+            <ul class="legal-list">
+              <li>스팸, 광고, 사기성 링크 또는 반복 도배</li>
+              <li>욕설, 괴롭힘, 혐오 표현, 특정 개인·집단에 대한 공격</li>
+              <li>성적·폭력적 묘사 또는 자해·위해를 조장하는 내용</li>
+              <li>전화번호, 주소, 계정 정보 등 개인정보 노출</li>
+              <li>저작권 침해, 명예훼손, 기타 불법적이거나 부당한 내용</li>
+            </ul>
+          </section>
+          <section class="legal-section">
+            <h3 class="legal-section-title">신고와 차단</h3>
+            <p class="legal-paragraph">
+              게시글, 댓글, 사용자 프로필의 신고 버튼으로 운영팀에 검토를
+              요청할 수 있습니다. 차단한 사용자의 글과 댓글은 피드, 댓글,
+              알림에서 숨겨지며 설정에서 언제든 해제할 수 있습니다.
+            </p>
+          </section>
+        </article>
+      </main>
+    </div>
+
     <div id="view-theme-settings" class="app-view settings-view">
       <header class="settings-page-topbar">
         <button
           type="button"
           class="settings-page-back"
-          onclick="closeThemeSettingsView()"
+          data-glim-click="closeThemeSettingsView()"
           aria-label="설정으로 돌아가기"
         >
           <span class="material-symbols-outlined">arrow_back</span>
@@ -5478,7 +5722,7 @@
               type="button"
               class="settings-row theme-choice"
               data-theme-option="dark"
-              onclick="setThemePreference('dark')"
+              data-glim-click="setThemePreference('dark')"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >dark_mode</span
@@ -5497,7 +5741,7 @@
               type="button"
               class="settings-row theme-choice"
               data-theme-option="light"
-              onclick="setThemePreference('light')"
+              data-glim-click="setThemePreference('light')"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >light_mode</span
@@ -5516,7 +5760,7 @@
               type="button"
               class="settings-row theme-choice"
               data-theme-option="system"
-              onclick="setThemePreference('system')"
+              data-glim-click="setThemePreference('system')"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >settings_brightness</span
@@ -5541,7 +5785,7 @@
         <button
           type="button"
           class="settings-page-back"
-          onclick="closeAccountCenterView()"
+          data-glim-click="closeAccountCenterView()"
           aria-label="설정으로 돌아가기"
         >
           <span class="material-symbols-outlined">arrow_back</span>
@@ -5568,7 +5812,7 @@
             <button
               type="button"
               class="settings-row"
-              onclick="openBlockedUsersSheet()"
+              data-glim-click="openBlockedUsersSheet()"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >block</span
@@ -5586,7 +5830,7 @@
             <button
               type="button"
               class="settings-row"
-              onclick="handleSignOut()"
+              data-glim-click="handleSignOut()"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >logout</span
@@ -5598,7 +5842,7 @@
             <button
               type="button"
               class="settings-row is-danger"
-              onclick="requestAccountDeletion()"
+              data-glim-click="requestAccountDeletion()"
             >
               <span class="material-symbols-outlined settings-row-icon"
                 >person_remove</span
@@ -5615,6 +5859,70 @@
       </main>
     </div>
 
+    <div id="view-account-delete" class="app-view settings-view">
+      <header class="settings-page-topbar">
+        <button
+          type="button"
+          class="settings-page-back"
+          data-glim-click="closeAccountDeleteView()"
+          aria-label="이전 화면으로 돌아가기"
+        >
+          <span class="material-symbols-outlined">arrow_back</span>
+        </button>
+        <h1 class="settings-page-title">계정 및 데이터 삭제</h1>
+        <span></span>
+      </header>
+
+      <main class="legal-page-content">
+        <article class="legal-article account-delete-card">
+          <div>
+            <h2 class="legal-document-title">글림 계정 삭제 요청</h2>
+            <div class="legal-document-subtitle">ACCOUNT DELETION</div>
+            <p class="legal-intro">
+              로그인할 수 있다면 앱의 설정 &gt; 계정센터 &gt; 회원 탈퇴에서
+              즉시 삭제를 진행할 수 있습니다. 로그인할 수 없는 경우 아래에
+              이메일을 남겨 주세요. 계정 존재 여부는 화면에 표시하지 않으며,
+              접수된 요청은 본인 확인 절차 후 처리됩니다.
+            </p>
+          </div>
+
+          <form id="accountDeleteRequestForm" class="account-delete-form">
+            <label class="account-delete-label" for="accountDeleteRequestEmail">
+              가입에 사용했을 수 있는 이메일
+            </label>
+            <input
+              id="accountDeleteRequestEmail"
+              class="auth-input"
+              type="email"
+              name="email"
+              inputmode="email"
+              autocomplete="email"
+              placeholder="you@example.com"
+              required
+            />
+            <button
+              type="submit"
+              class="account-delete-submit"
+              id="accountDeleteRequestSubmit"
+            >
+              삭제 요청 접수
+            </button>
+            <p
+              class="account-delete-status"
+              id="accountDeleteRequestStatus"
+              role="status"
+              aria-live="polite"
+            ></p>
+          </form>
+
+          <p class="legal-paragraph">
+            요청 접수 결과는 가입 여부를 드러내지 않도록 동일하게 안내됩니다.
+            보안을 위해 추가 본인 확인이 필요할 수 있습니다.
+          </p>
+        </article>
+      </main>
+    </div>
+
     <div id="view-notice-detail" class="app-view">
       <div
         class="page-container"
@@ -5622,7 +5930,7 @@
       >
         <button
           class="notice-detail-back"
-          onclick="closeNoticeDetail()"
+          data-glim-click="closeNoticeDetail()"
           style="
             background: none;
             border: none;
@@ -5640,27 +5948,27 @@
     </div>
 
     <nav class="bottom-nav">
-      <div class="nav-item active" id="nav-home" onclick="handleNavTap('home')">
+      <div class="nav-item active" id="nav-home" data-glim-click="handleNavTap('home')">
         <span class="material-symbols-outlined nav-icon">home</span
         ><span class="nav-text">홈</span>
       </div>
-      <div class="nav-item" id="nav-explore" onclick="handleNavTap('explore')">
+      <div class="nav-item" id="nav-explore" data-glim-click="handleNavTap('explore')">
         <span class="material-symbols-outlined nav-icon">search</span
         ><span class="nav-text">탐색</span>
       </div>
       <div
         class="nav-item write-btn"
         id="nav-write"
-        onclick="switchTab('write')"
+        data-glim-click="switchTab('write')"
       >
         <span class="material-symbols-outlined nav-icon">add_circle</span
         ><span class="nav-text">글쓰기</span>
       </div>
-      <div class="nav-item" id="nav-noti" onclick="handleNavTap('noti')">
+      <div class="nav-item" id="nav-noti" data-glim-click="handleNavTap('noti')">
         <span class="material-symbols-outlined nav-icon">notifications</span
         ><span class="nav-text">알림</span>
       </div>
-      <div class="nav-item" id="nav-profile" onclick="handleNavTap('profile')">
+      <div class="nav-item" id="nav-profile" data-glim-click="handleNavTap('profile')">
         <span class="material-symbols-outlined nav-icon">person</span
         ><span class="nav-text">프로필</span>
       </div>
@@ -5669,14 +5977,14 @@
     <div
       class="sheet-backdrop"
       id="editProfileSheetBackdrop"
-      onclick="closeSheet('editProfileSheet')"
+      data-glim-click="closeSheet('editProfileSheet')"
     ></div>
 
     <div class="bottom-sheet" id="editProfileSheet" style="height: 68%">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
         <div class="sheet-title">프로필 편집</div>
-        <button class="close-btn" onclick="closeSheet('editProfileSheet')">
+        <button class="close-btn" data-glim-click="closeSheet('editProfileSheet')">
           ✕
         </button>
       </div>
@@ -5686,7 +5994,7 @@
             type="button"
             class="edit-avatar-preview"
             id="editAvatarPreview"
-            onclick="document.getElementById('editAvatarInput').click()"
+            data-glim-click="document.getElementById('editAvatarInput').click()"
             aria-label="프로필 사진 변경"
           >
             <span
@@ -5700,20 +6008,20 @@
             id="editAvatarInput"
             class="edit-avatar-file"
             accept="image/jpeg,image/png,image/webp,image/gif"
-            onchange="handleProfileAvatarChange(event)"
+            data-glim-change="handleProfileAvatarChange(event)"
           />
           <div class="edit-avatar-actions">
             <button
               type="button"
               class="edit-avatar-btn"
-              onclick="document.getElementById('editAvatarInput').click()"
+              data-glim-click="document.getElementById('editAvatarInput').click()"
             >
               사진 변경
             </button>
             <button
               type="button"
               class="edit-avatar-btn secondary"
-              onclick="removeProfileAvatar()"
+              data-glim-click="removeProfileAvatar()"
             >
               삭제
             </button>
@@ -5749,7 +6057,7 @@
         <button
           id="editProfileSaveButton"
           class="submit-btn"
-          onclick="saveProfile()"
+          data-glim-click="saveProfile()"
           style="margin-top: 25px"
         >
           저장하기
@@ -5760,14 +6068,14 @@
     <div
       class="sheet-backdrop avatar-crop-backdrop"
       id="avatarCropSheetBackdrop"
-      onclick="cancelAvatarCropper()"
+      data-glim-click="cancelAvatarCropper()"
     ></div>
 
     <div class="bottom-sheet avatar-crop-sheet" id="avatarCropSheet">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
         <div class="sheet-title">프로필 사진 맞추기</div>
-        <button class="close-btn" onclick="cancelAvatarCropper()">✕</button>
+        <button class="close-btn" data-glim-click="cancelAvatarCropper()">✕</button>
       </div>
       <div class="avatar-crop-body">
         <div class="avatar-crop-stage" id="avatarCropStage">
@@ -5795,14 +6103,14 @@
           <button
             type="button"
             class="avatar-crop-btn"
-            onclick="cancelAvatarCropper()"
+            data-glim-click="cancelAvatarCropper()"
           >
             취소
           </button>
           <button
             type="button"
             class="avatar-crop-btn primary"
-            onclick="applyAvatarCrop()"
+            data-glim-click="applyAvatarCrop()"
           >
             적용
           </button>
@@ -5813,7 +6121,7 @@
     <div
       class="sheet-backdrop"
       id="followListSheetBackdrop"
-      onclick="closeSheet('followListSheet')"
+      data-glim-click="closeSheet('followListSheet')"
     ></div>
 
     <div
@@ -5824,7 +6132,7 @@
       <div class="sheet-handle"></div>
       <div class="sheet-header">
         <div class="sheet-title" id="followListTitle">팔로워</div>
-        <button class="close-btn" onclick="closeSheet('followListSheet')">
+        <button class="close-btn" data-glim-click="closeSheet('followListSheet')">
           ✕
         </button>
       </div>
@@ -5836,14 +6144,14 @@
     <div
       class="sheet-backdrop"
       id="commentSheetBackdrop"
-      onclick="closeSheet('commentSheet')"
+      data-glim-click="closeSheet('commentSheet')"
     ></div>
 
     <div class="bottom-sheet" id="commentSheet">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
         <div class="sheet-title">생각 나누기</div>
-        <button class="close-btn" onclick="closeSheet('commentSheet')">
+        <button class="close-btn" data-glim-click="closeSheet('commentSheet')">
           ✕
         </button>
       </div>
@@ -5855,7 +6163,7 @@
           class="comment-input"
           placeholder="따뜻한 댓글을 남겨주세요."
         />
-        <button class="comment-submit-btn" onclick="submitComment()">
+        <button class="comment-submit-btn" data-glim-click="submitComment()">
           등록
         </button>
       </div>
@@ -5864,14 +6172,14 @@
     <div
       class="sheet-backdrop"
       id="reportSheetBackdrop"
-      onclick="closeReportSheet()"
+      data-glim-click="closeReportSheet()"
     ></div>
 
     <div class="bottom-sheet report-sheet" id="reportSheet">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
         <div class="sheet-title" id="reportTargetLabel">신고하기</div>
-        <button class="close-btn" type="button" onclick="closeReportSheet()">
+        <button class="close-btn" type="button" data-glim-click="closeReportSheet()">
           ✕
         </button>
       </div>
@@ -5923,7 +6231,7 @@
           type="button"
           class="report-submit-btn"
           id="reportSubmitButton"
-          onclick="submitReport()"
+          data-glim-click="submitReport()"
         >
           신고 접수
         </button>
@@ -5933,14 +6241,14 @@
     <div
       class="sheet-backdrop"
       id="moodSheetBackdrop"
-      onclick="closeMoodPicker()"
+      data-glim-click="closeMoodPicker()"
     ></div>
 
     <div class="bottom-sheet mood-sheet" id="moodSheet">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
         <div class="sheet-title">감성 온도</div>
-        <button class="close-btn" onclick="closeMoodPicker()">✕</button>
+        <button class="close-btn" data-glim-click="closeMoodPicker()">✕</button>
       </div>
       <p class="mood-sheet-copy">지금 쓴 글과 가장 가까운 느낌을 골라주세요.</p>
       <div class="mood-option-list" id="moodOptionList"></div>
@@ -5949,14 +6257,14 @@
     <div
       class="sheet-backdrop"
       id="blockedUsersSheetBackdrop"
-      onclick="closeSheet('blockedUsersSheet')"
+      data-glim-click="closeSheet('blockedUsersSheet')"
     ></div>
 
     <div class="bottom-sheet" id="blockedUsersSheet" style="height: 62%">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
         <div class="sheet-title">차단한 사용자</div>
-        <button class="close-btn" onclick="closeSheet('blockedUsersSheet')">
+        <button class="close-btn" data-glim-click="closeSheet('blockedUsersSheet')">
           ✕
         </button>
       </div>
@@ -5968,14 +6276,14 @@
     <div
       class="sheet-backdrop"
       id="noticeSheetBackdrop"
-      onclick="closeSheet('noticeSheet')"
+      data-glim-click="closeSheet('noticeSheet')"
     ></div>
 
     <div class="bottom-sheet" id="noticeSheet" style="z-index: 110">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
         <div class="sheet-title">공지사항</div>
-        <button class="close-btn" onclick="closeSheet('noticeSheet')">✕</button>
+        <button class="close-btn" data-glim-click="closeSheet('noticeSheet')">✕</button>
       </div>
       <div
         style="flex-grow: 1; overflow-y: auto; padding-bottom: 20px"

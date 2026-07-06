@@ -1,8 +1,57 @@
 const SUPABASE_URL = "https://qdnpeliqtxdglqewbvgg.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_mwYlhge63nnNjL9lAFhxRw_fxRtRGvO";
 const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const ADMIN_EMAIL = "weardockm@gmail.com";
 const nativeConfirm = window.confirm.bind(window);
+const SUPABASE_STORAGE_ORIGIN = new URL(SUPABASE_URL).origin;
+const GLIM_PRODUCTION_ORIGIN = "https://glimfactory.com";
+const AUTH_CALLBACK_PATH = "/auth/callback";
+const VISIBLE_CONTENT_MODERATION_STATUS = "approved";
+
+function selectVisibleContent(query) {
+  return query.eq("moderation_status", VISIBLE_CONTENT_MODERATION_STATUS);
+}
+
+function isMissingModerationStatusColumnError(error) {
+  return (
+    error?.code === "42703" &&
+    String(error.message || "").includes("moderation_status")
+  );
+}
+
+async function runVisibleContentQuery(buildQuery, diagnosticContext) {
+  const result = await selectVisibleContent(buildQuery());
+  if (!isMissingModerationStatusColumnError(result.error)) return result;
+
+  reportClientDiagnostic(
+    `${diagnosticContext}-moderation-status-missing`,
+    result.error,
+  );
+  return buildQuery();
+}
+
+function reportClientDiagnostic(context, detail = null) {
+  const diagnostic = { context };
+  if (detail && typeof detail === "object") {
+    if (typeof detail.name === "string") diagnostic.name = detail.name;
+    if (typeof detail.code === "string") diagnostic.code = detail.code;
+    if (Number.isInteger(detail.status)) diagnostic.status = detail.status;
+  }
+  console.warn("[glim]", diagnostic);
+}
+
+function getTrustedMediaUrl(value) {
+  try {
+    const candidate = new URL(String(value || ""), window.location.href);
+    const isSameOrigin = candidate.origin === window.location.origin;
+    const isSupabaseBgm =
+      candidate.origin === SUPABASE_STORAGE_ORIGIN &&
+      candidate.pathname.startsWith("/storage/v1/object/public/bgm/");
+    if (!["http:", "https:"].includes(candidate.protocol)) return "";
+    return isSameOrigin || isSupabaseBgm ? candidate.href : "";
+  } catch (_error) {
+    return "";
+  }
+}
 
 let currentPlayingBtn = null; // 현재 재생중인 버튼 기억
 let isBgmEnabled = true;
@@ -11,6 +60,7 @@ let bgmSyncFrame = null;
 let isWaitingForBgmGesture = false;
 let previewingBgmUrl = "";
 let currentUser = null;
+let currentUserIsModerator = false;
 const blockedUserIds = new Set();
 const blockedUserNicknames = new Set();
 const likedPostIds = new Set();
@@ -343,8 +393,11 @@ function setBottomNavView(viewId) {
     "view-theme-settings",
     "view-notification-settings",
     "view-account-center",
+    "view-account-delete",
     "view-privacy-policy",
     "view-terms-of-service",
+    "view-support",
+    "view-community-standards",
     "view-notice-detail",
   ]);
   document
@@ -438,7 +491,7 @@ function renderBgmPicker() {
             type="button"
             class="bgm-picker-preview-btn${isPreviewing ? " is-previewing" : ""}"
             data-bgm-url="${escapeHtml(track.url)}"
-            onclick="toggleBgmPreview(this.dataset.bgmUrl)"
+            data-glim-click="toggle-bgm-preview"
             aria-label="${isPreviewing ? "미리듣기 정지" : "미리듣기"}"
           >
             <span class="material-symbols-outlined bgm-picker-preview-icon">${isPreviewing ? "pause" : "play_arrow"}</span>
@@ -454,7 +507,7 @@ function renderBgmPicker() {
             type="button"
             class="bgm-picker-select-btn"
             data-bgm-url="${escapeHtml(track.url)}"
-            onclick="selectPostBgm(this.dataset.bgmUrl)"
+            data-glim-click="select-post-bgm"
           >
             <div class="bgm-picker-option-text">
               <div class="bgm-picker-option-title">${escapeHtml(track.title)}</div>
@@ -544,6 +597,167 @@ function escapeHtml(value) {
     };
     return entities[char];
   });
+}
+
+function runDeclarativeAction(action, element, event) {
+  const fixedActions = {
+    "applyAvatarCrop()": () => applyAvatarCrop(),
+    "cancelAvatarCropper()": () => cancelAvatarCropper(),
+    "clearExploreSearchHistory()": () => clearExploreSearchHistory(),
+    "closeAccountCenterView()": () => closeAccountCenterView(),
+    "closeAccountDeleteView()": () => closeAccountDeleteView(),
+    "closeBgmPicker()": () => closeBgmPicker(),
+    "closeContextPostFeed()": () => closeContextPostFeed(),
+    "closeExploreSearch()": () => closeExploreSearch(),
+    "closeMoodPicker()": () => closeMoodPicker(),
+    "closeNoticeDetail()": () => closeNoticeDetail(),
+    "closeNotificationSettingsView()": () => closeNotificationSettingsView(),
+    "closePrivacyPolicyView()": () => closePrivacyPolicyView(),
+    "closeReportSheet()": () => closeReportSheet(),
+    "closeSettingsView()": () => closeSettingsView(),
+    "closeTermsOfServiceView()": () => closeTermsOfServiceView(),
+    "closeSupportView()": () => closeSupportView(),
+    "closeCommunityStandardsView()": () => closeCommunityStandardsView(),
+    "closeThemeSettingsView()": () => closeThemeSettingsView(),
+    "closeUserProfile()": () => closeUserProfile(),
+    "closeSheet('blockedUsersSheet')": () => closeSheet("blockedUsersSheet"),
+    "closeSheet('commentSheet')": () => closeSheet("commentSheet"),
+    "closeSheet('editProfileSheet')": () => closeSheet("editProfileSheet"),
+    "closeSheet('followListSheet')": () => closeSheet("followListSheet"),
+    "closeSheet('noticeSheet')": () => closeSheet("noticeSheet"),
+    "document.getElementById('editAvatarInput').click()": () =>
+      document.getElementById("editAvatarInput")?.click(),
+    "event.stopPropagation(); blockUser(viewedProfileUserId)": () => {
+      event.stopPropagation();
+      blockUser(viewedProfileUserId);
+    },
+    "event.stopPropagation(); reportUser(viewedProfileUserId)": () => {
+      event.stopPropagation();
+      reportUser(viewedProfileUserId);
+    },
+    "handleNavTap('explore')": () => handleNavTap("explore"),
+    "handleNavTap('home')": () => handleNavTap("home"),
+    "handleNavTap('noti')": () => handleNavTap("noti"),
+    "handleNavTap('profile')": () => handleNavTap("profile"),
+    "handleProfileAvatarChange(event)": () => handleProfileAvatarChange(event),
+    "handleSignOut()": () => handleSignOut(),
+    "handleSocialLogin('apple')": () => handleSocialLogin("apple"),
+    "handleSocialLogin('google')": () => handleSocialLogin("google"),
+    "handleSocialLogin('kakao')": () => handleSocialLogin("kakao"),
+    "handleExploreSearchInput()": () => handleExploreSearchInput(),
+    "handlePostContentInput(event)": () => handlePostContentInput(event),
+    "location.href = 'admin.html'": () =>
+      window.location.assign(new URL("admin.html", window.location.href).href),
+    "openAccountCenterView()": () => openAccountCenterView(),
+    "openAccountDeleteView()": () => openAccountDeleteView(),
+    "openBgmPicker()": () => openBgmPicker(),
+    "openBlockedUsersSheet()": () => openBlockedUsersSheet(),
+    "openEditProfile()": () => openEditProfile(),
+    "openMoodPicker()": () => openMoodPicker(),
+    "openMyFollowList('followers')": () => openMyFollowList("followers"),
+    "openMyFollowList('following')": () => openMyFollowList("following"),
+    "openNoticeSheet()": () => openNoticeSheet(),
+    "openNotificationSettingsView()": () => openNotificationSettingsView(),
+    "openPrivacyPolicyView()": () => openPrivacyPolicyView(),
+    "openExploreSearch()": () => openExploreSearch(),
+    "openSettingsView()": () => openSettingsView(),
+    "openTermsOfServiceView()": () => openTermsOfServiceView(),
+    "openSupportView()": () => openSupportView(),
+    "openCommunityStandardsView()": () => openCommunityStandardsView(),
+    "openThemeSettingsView()": () => openThemeSettingsView(),
+    "openViewedFollowList('followers')": () => openViewedFollowList("followers"),
+    "openViewedFollowList('following')": () => openViewedFollowList("following"),
+    "removeProfileAvatar()": () => removeProfileAvatar(),
+    "requestAccountDeletion()": () => requestAccountDeletion(),
+    "saveProfile()": () => saveProfile(),
+    "scrollToProfileTab(0)": () => scrollToProfileTab(0),
+    "scrollToProfileTab(1)": () => scrollToProfileTab(1),
+    "scrollToProfileTab(2)": () => scrollToProfileTab(2),
+    "searchPosts()": () => searchPosts(),
+    "setNotificationPreference('announcements', this.checked)": () =>
+      setNotificationPreference("announcements", element.checked),
+    "setNotificationPreference('comments', this.checked)": () =>
+      setNotificationPreference("comments", element.checked),
+    "setNotificationPreference('follows', this.checked)": () =>
+      setNotificationPreference("follows", element.checked),
+    "setNotificationPreference('likes', this.checked)": () =>
+      setNotificationPreference("likes", element.checked),
+    "setThemePreference('dark')": () => setThemePreference("dark"),
+    "setThemePreference('light')": () => setThemePreference("light"),
+    "setThemePreference('system')": () => setThemePreference("system"),
+    "showAppAlert('고객센터를 준비 중입니다.')": () => openSupportView(),
+    "submitComment()": () => submitComment(),
+    "submitPost()": () => submitPost(),
+    "submitReport()": () => submitReport(),
+    "switchTab('write')": () => switchTab("write"),
+    "toggleFollow()": () => toggleFollow(),
+    "toggleMoreMenu(this, event)": () => toggleMoreMenu(element, event),
+    "togglePushNotifications(this.checked)": () =>
+      togglePushNotifications(element.checked),
+    "updateTabIndicator()": () => updateTabIndicator(),
+  };
+  const dynamicActions = {
+    "toggle-bgm-preview": () => toggleBgmPreview(element.dataset.bgmUrl),
+    "select-post-bgm": () => selectPostBgm(element.dataset.bgmUrl),
+    "select-post-mood": () => selectPostMood(element.dataset.moodValue),
+    "open-notification-target": () => openNotificationTarget(element),
+  };
+  const handler = fixedActions[action] || dynamicActions[action];
+  if (!handler) {
+    reportClientDiagnostic("declarative-action-unknown", { code: "unknown" });
+    return;
+  }
+  return handler();
+}
+
+function setupDeclarativeEventHandlers() {
+  const handle = (event, attribute) => {
+    const element = event.target.closest?.(`[${attribute}]`);
+    if (!element) return;
+    const action = element.getAttribute(attribute);
+    if (!action) return;
+    runDeclarativeAction(action, element, event);
+  };
+  document.addEventListener("click", (event) =>
+    handle(event, "data-glim-click"),
+  );
+  document.addEventListener("input", (event) =>
+    handle(event, "data-glim-input"),
+  );
+  document.addEventListener("change", (event) =>
+    handle(event, "data-glim-change"),
+  );
+  document.addEventListener("focusin", (event) =>
+    handle(event, "data-glim-focus"),
+  );
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      const enterElement = event.target.closest?.("[data-glim-enter]");
+      if (enterElement) {
+        event.preventDefault();
+        runDeclarativeAction(
+          enterElement.getAttribute("data-glim-enter"),
+          enterElement,
+          event,
+        );
+        return;
+      }
+    }
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const element = event.target.closest?.("[data-glim-keydown]");
+    if (!element) return;
+    event.preventDefault();
+    runDeclarativeAction(
+      element.getAttribute("data-glim-keydown"),
+      element,
+      event,
+    );
+  });
+  document.addEventListener(
+    "scroll",
+    (event) => handle(event, "data-glim-scroll"),
+    true,
+  );
 }
 
 function setupAppAlert() {
@@ -820,7 +1034,7 @@ function renderMoodPicker() {
         type="button"
         class="mood-option-btn${isSelected ? " is-selected" : ""}"
         data-mood-value="${escapeHtml(mood.value)}"
-        onclick="selectPostMood(this.dataset.moodValue)"
+        data-glim-click="select-post-mood"
       >
         <span class="material-symbols-outlined mood-option-icon">${escapeHtml(mood.icon)}</span>
         <span class="mood-option-text">
@@ -952,16 +1166,18 @@ function setupBgmAudioUnlock() {
 function playBgmUrl(bgmUrl) {
   const bgmPlayer = document.getElementById("bgmPlayer");
   if (!bgmPlayer) return;
+  const trustedBgmUrl = getTrustedMediaUrl(bgmUrl);
 
-  if (!bgmUrl) {
+  if (!trustedBgmUrl) {
     pauseBgm();
     currentBgmUrl = "";
+    if (bgmUrl) reportClientDiagnostic("bgm-url-rejected");
     return;
   }
 
-  if (currentBgmUrl !== bgmUrl) {
-    bgmPlayer.src = bgmUrl;
-    currentBgmUrl = bgmUrl;
+  if (currentBgmUrl !== trustedBgmUrl) {
+    bgmPlayer.src = trustedBgmUrl;
+    currentBgmUrl = trustedBgmUrl;
   }
 
   const playPromise = bgmPlayer.play();
@@ -1159,10 +1375,30 @@ function hideAppSplash({ force = false } = {}) {
   }, remainingTime);
 }
 
+function updateConnectivityStatus() {
+  const status = document.getElementById("connectivityStatus");
+  if (!status) return;
+  const isOffline = navigator.onLine === false;
+  status.textContent = isOffline
+    ? "연결이 끊겼습니다. 연결 후 다시 시도해주세요."
+    : "";
+  status.classList.toggle("is-visible", isOffline);
+}
+
+function setupConnectivityStatus() {
+  window.addEventListener("offline", updateConnectivityStatus);
+  window.addEventListener("online", updateConnectivityStatus);
+  updateConnectivityStatus();
+}
+
 async function init() {
+  setupDeclarativeEventHandlers();
+  setupConnectivityStatus();
   setupThemePreferences();
   setupAppAlert();
   setupBgmAudioUnlock();
+  setupAccountDeleteRequestForm();
+  await setupNativeDeepLinks();
 
   const {
     data: { session },
@@ -1176,14 +1412,16 @@ async function init() {
   }
 
   await syncCurrentUserProfile();
+  await refreshCurrentUserRole();
   await loadBlockedUsersState();
   await loadEngagementState();
   updateAuthUI();
   initializePushNotifications().catch((error) => {
-    console.warn("푸시 알림 초기화 실패:", error);
+    reportClientDiagnostic("push-init", error);
   });
   await fetchPosts();
   await handleNotificationDeepLink();
+  handlePublicStaticRoute();
   schedulePushOnboarding();
 
   client.auth.onAuthStateChange(async (_event, session) => {
@@ -1194,11 +1432,12 @@ async function init() {
       currentUser.user_metadata.random_nickname = newNick;
     }
     await syncCurrentUserProfile();
+    await refreshCurrentUserRole();
     await loadBlockedUsersState();
     await loadEngagementState();
     updateAuthUI();
     initializePushNotifications().catch((error) => {
-      console.warn("푸시 알림 초기화 실패:", error);
+      reportClientDiagnostic("push-init-auth-change", error);
     });
     schedulePushOnboarding();
   });
@@ -1596,7 +1835,20 @@ async function syncCurrentUserProfile({ preserveStoredAvatar = true } = {}) {
   };
 
   const { error } = await client.from("profiles").upsert(profile);
-  if (error) console.warn("프로필 동기화 실패:", error.message);
+  if (error) reportClientDiagnostic("profile-sync", error);
+}
+
+async function refreshCurrentUserRole() {
+  currentUserIsModerator = false;
+  if (!currentUser) return;
+
+  const { data, error } = await client.rpc("is_moderator");
+  if (error) {
+    reportClientDiagnostic("moderator-role-check", error);
+    return;
+  }
+
+  currentUserIsModerator = data === true;
 }
 
 function getLegacyEngagementIds(prefix) {
@@ -1651,10 +1903,7 @@ async function migrateLegacyEngagementState() {
     );
     const failedResult = results.find((result) => result.error);
     if (failedResult) {
-      console.warn(
-        "기존 좋아요·북마크 이전 실패:",
-        failedResult.error.message,
-      );
+      reportClientDiagnostic("engagement-migration", failedResult.error);
       return;
     }
     batch.forEach((migration) => localStorage.removeItem(migration.key));
@@ -1678,7 +1927,7 @@ async function loadEngagementState() {
     ]);
 
   if (postLikesResult.error) {
-    console.warn("게시글 좋아요 상태를 불러오지 못했습니다:", postLikesResult.error);
+    reportClientDiagnostic("post-likes-load", postLikesResult.error);
   } else {
     (postLikesResult.data || []).forEach(({ post_id: postId }) =>
       likedPostIds.add(postId),
@@ -1686,7 +1935,7 @@ async function loadEngagementState() {
   }
 
   if (bookmarksResult.error) {
-    console.warn("북마크 상태를 불러오지 못했습니다:", bookmarksResult.error);
+    reportClientDiagnostic("bookmarks-load", bookmarksResult.error);
   } else {
     (bookmarksResult.data || []).forEach(({ post_id: postId }) =>
       bookmarkedPostIds.add(postId),
@@ -1694,10 +1943,7 @@ async function loadEngagementState() {
   }
 
   if (commentLikesResult.error) {
-    console.warn(
-      "댓글 좋아요 상태를 불러오지 못했습니다:",
-      commentLikesResult.error,
-    );
+    reportClientDiagnostic("comment-likes-load", commentLikesResult.error);
   } else {
     (commentLikesResult.data || []).forEach(({ comment_id: commentId }) =>
       likedCommentIds.add(commentId),
@@ -1715,7 +1961,7 @@ async function loadBlockedUsersState() {
     .select("blocked_id")
     .eq("blocker_id", currentUser.id);
   if (error) {
-    console.warn("차단 목록을 불러오지 못했습니다:", error.message);
+    reportClientDiagnostic("blocks-load", error);
     return;
   }
 
@@ -2261,11 +2507,15 @@ async function loadViewedProfileStats() {
 
   const [counts, postsResult] = await Promise.all([
     getFollowCounts(viewedProfileUserId),
-    client
-      .from("posts")
-      .select("*")
-      .eq("user_id", viewedProfileUserId)
-      .order("created_at", { ascending: false }),
+    runVisibleContentQuery(
+      () =>
+        client
+          .from("posts")
+          .select("*")
+          .eq("user_id", viewedProfileUserId)
+          .order("created_at", { ascending: false }),
+      "viewed-profile-posts-load",
+    ),
   ]);
 
   document.getElementById("viewedProfilePosts").innerText =
@@ -2420,7 +2670,7 @@ async function toggleFollow() {
          },
       ]);
     if (notificationError) {
-      console.warn("앱 내부 팔로우 알림 저장 실패:", notificationError.message);
+      reportClientDiagnostic("follow-notification-save", notificationError);
     }
     void sendPushNotification(viewedProfileUserId, "follows");
   }
@@ -2517,8 +2767,7 @@ function updateAuthUI() {
   const authContainer = document.getElementById("authContainer");
   const profileContainer = document.getElementById("profileContainer");
   const adminCenterMenu = document.getElementById("adminCenterMenu");
-  adminCenterMenu.style.display =
-    currentUser?.email === ADMIN_EMAIL ? "flex" : "none";
+  adminCenterMenu.style.display = currentUserIsModerator ? "flex" : "none";
   updateSettingsAccessVisibility();
 
   if (currentUser) {
@@ -2536,11 +2785,14 @@ function updateAuthUI() {
     document.getElementById("profileId").innerText = `@${displayId}`;
     setOwnProfileAvatar(avatarUrl);
 
-    client
-      .from("posts")
-      .select("id", { count: "exact" })
-      .eq("user_id", currentUser.id)
-      .then(({ count }) => {
+    runVisibleContentQuery(
+      () =>
+        client
+          .from("posts")
+          .select("id", { count: "exact" })
+          .eq("user_id", currentUser.id),
+      "profile-post-count-load",
+    ).then(({ count }) => {
         document.getElementById("statPosts").innerText = count || 0;
       });
     loadMyFollowStats();
@@ -2634,7 +2886,7 @@ async function saveProfile() {
         "sync_authored_display_name",
       );
       if (displayNameError) {
-        console.warn("작성자 이름 동기화 실패:", displayNameError.message);
+        reportClientDiagnostic("author-name-sync", displayNameError);
       }
     }
 
@@ -2645,7 +2897,7 @@ async function saveProfile() {
     fetchPosts();
     alert("프로필이 성공적으로 변경되었습니다.");
   } catch (error) {
-    console.warn("프로필 사진 업로드 실패:", error);
+    reportClientDiagnostic("avatar-upload", error);
     alert(getProfileAvatarUploadErrorMessage(error));
   } finally {
     saveButton.disabled = false;
@@ -2654,10 +2906,19 @@ async function saveProfile() {
 }
 
 async function handleSocialLogin(provider) {
-  const { error } = await client.auth.signInWithOAuth({
+  const options = { redirectTo: getOAuthRedirectUrl() };
+  if (isNativeRuntime()) {
+    options.skipBrowserRedirect = true;
+  }
+
+  const { data, error } = await client.auth.signInWithOAuth({
     provider: provider,
-    options: { redirectTo: `${window.location.origin}/` },
+    options,
   });
+  if (!error && isNativeRuntime() && data?.url) {
+    await openNativeAuthSession(data.url);
+    return;
+  }
   if (error) {
     const providerName =
       { apple: "Apple", google: "Google", kakao: "카카오" }[provider] ||
@@ -2666,6 +2927,108 @@ async function handleSocialLogin(provider) {
   }
 }
 
+function getCapacitorPlugin(name) {
+  return window.Capacitor?.Plugins?.[name] || null;
+}
+
+function isNativeRuntime() {
+  if (typeof window.Capacitor?.isNativePlatform === "function") {
+    return window.Capacitor.isNativePlatform();
+  }
+  const platform = window.Capacitor?.getPlatform?.();
+  return platform === "android" || platform === "ios";
+}
+
+function getOAuthRedirectUrl() {
+  if (isNativeRuntime()) {
+    return `${GLIM_PRODUCTION_ORIGIN}${AUTH_CALLBACK_PATH}`;
+  }
+  if (window.location.origin === GLIM_PRODUCTION_ORIGIN) {
+    return `${GLIM_PRODUCTION_ORIGIN}${AUTH_CALLBACK_PATH}`;
+  }
+  return `${window.location.origin}/`;
+}
+
+async function openNativeAuthSession(url) {
+  const browser = getCapacitorPlugin("Browser");
+  if (browser?.open) {
+    await browser.open({ url });
+    return;
+  }
+  window.location.href = url;
+}
+
+function isTrustedNativeAuthUrl(url) {
+  try {
+    const candidate = new URL(url);
+    return (
+      candidate.origin === GLIM_PRODUCTION_ORIGIN &&
+      candidate.pathname === AUTH_CALLBACK_PATH
+    );
+  } catch (_error) {
+    return false;
+  }
+}
+
+async function completeAuthFromUrl(url) {
+  const callbackUrl = new URL(url);
+  const hashParams = new URLSearchParams(callbackUrl.hash.slice(1));
+  const accessToken = hashParams.get("access_token");
+  const refreshToken = hashParams.get("refresh_token");
+  const authCode = callbackUrl.searchParams.get("code");
+
+  if (accessToken && refreshToken) {
+    const { error } = await client.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    if (error) throw error;
+  } else if (authCode) {
+    const { error } = await client.auth.exchangeCodeForSession(authCode);
+    if (error) throw error;
+  }
+}
+
+async function handleNativeAppUrl(url) {
+  if (!isTrustedNativeAuthUrl(url)) {
+    reportClientDiagnostic("native-deep-link-rejected");
+    return;
+  }
+
+  try {
+    await completeAuthFromUrl(url);
+    await getCapacitorPlugin("Browser")?.close?.();
+    window.history.replaceState({}, document.title, "/");
+    const {
+      data: { session },
+    } = await client.auth.getSession();
+    currentUser = session?.user || null;
+    updateAuthUI();
+    switchTab("profile");
+  } catch (error) {
+    reportClientDiagnostic("native-auth-callback", error);
+    showAppAlert("로그인을 완료하지 못했습니다. 다시 시도해주세요.");
+  }
+}
+
+async function setupNativeDeepLinks() {
+  const app = getCapacitorPlugin("App");
+  if (!app) return;
+
+  try {
+    await app.addListener?.("appUrlOpen", (event) => {
+      if (event?.url) {
+        handleNativeAppUrl(event.url);
+      }
+    });
+    const launch = await app.getLaunchUrl?.();
+    if (launch?.url) {
+      await handleNativeAppUrl(launch.url);
+    }
+  } catch (error) {
+    reportClientDiagnostic("native-deep-link-setup", error);
+  }
+}
 function getThemePreference() {
   let storedPreference = null;
   try {
@@ -2978,7 +3341,7 @@ async function removePushSubscription(fid, userId = currentUser?.id) {
       .delete()
       .eq("user_id", userId)
       .eq("firebase_installation_id", fid);
-    if (error) console.warn("푸시 구독 삭제 실패:", error.message);
+    if (error) reportClientDiagnostic("push-subscription-delete", error);
   }
   removeStoredPushFid(userId);
 }
@@ -3021,7 +3384,7 @@ function setupPushEventListeners(modules) {
       updatePushNotificationSettingsUI();
     } catch (error) {
       settlePendingPushRegistration("reject", error);
-      console.warn("푸시 기기 정보 저장 실패:", error);
+      reportClientDiagnostic("push-device-save", error);
       updatePushNotificationSettingsUI();
     }
   });
@@ -3187,7 +3550,7 @@ async function togglePushNotifications(isEnabled) {
     await registrationPromise;
     markPushOnboardingSeen();
   } catch (error) {
-    console.warn("푸시 알림 설정 실패:", error);
+    reportClientDiagnostic("push-preference-save", error);
     showAppAlert(
       error instanceof Error
         ? error.message
@@ -3208,7 +3571,7 @@ async function disablePushNotifications({ silent = false } = {}) {
       const modules = await loadFirebasePushModules();
       await modules.messaging.unregister(pushMessaging);
     } catch (error) {
-      if (!silent) console.warn("FCM 기기 등록 해제 실패:", error);
+      if (!silent) reportClientDiagnostic("push-device-unregister", error);
     }
   }
   updatePushNotificationSettingsUI();
@@ -3245,7 +3608,7 @@ async function syncPushNotificationPreferences(preferences) {
     .eq("user_id", currentUser.id)
     .eq("firebase_installation_id", getStoredPushFid());
   if (error) {
-    console.warn("푸시 알림 카테고리 동기화 실패:", error.message);
+    reportClientDiagnostic("push-category-sync", error);
   }
 }
 
@@ -3264,7 +3627,7 @@ async function sendPushNotification(targetUserId, category, postId = "") {
       data: { session },
     } = await client.auth.getSession();
     if (!session?.access_token) {
-      console.warn("푸시 알림 발송 요청 실패: 로그인 세션이 없습니다.");
+      reportClientDiagnostic("push-send-no-session");
       return;
     }
 
@@ -3281,13 +3644,13 @@ async function sendPushNotification(targetUserId, category, postId = "") {
     });
     if (!response.ok) {
       const result = await response.json().catch(() => ({}));
-      console.warn(
-        "푸시 알림 발송 요청 실패:",
-        result.error || `${response.status} ${response.statusText}`,
-      );
+      reportClientDiagnostic("push-send-response", {
+        code: result.error ? "edge-error" : "http-error",
+        status: response.status,
+      });
     }
   } catch (error) {
-    console.warn("푸시 알림 발송 요청 실패:", error);
+    reportClientDiagnostic("push-send", error);
   }
 }
 
@@ -3431,6 +3794,91 @@ function openTermsOfServiceView() {
 
 function closeTermsOfServiceView() {
   activateAppView(legalReturnViewId);
+}
+
+function openSupportView() {
+  legalReturnViewId =
+    document.querySelector(".app-view.active")?.id || "view-settings";
+  activateAppView("view-support");
+}
+
+function closeSupportView() {
+  activateAppView(legalReturnViewId);
+}
+
+function openCommunityStandardsView() {
+  legalReturnViewId =
+    document.querySelector(".app-view.active")?.id || "view-settings";
+  activateAppView("view-community-standards");
+}
+
+function closeCommunityStandardsView() {
+  activateAppView(legalReturnViewId);
+}
+
+function openAccountDeleteView() {
+  legalReturnViewId =
+    document.querySelector(".app-view.active")?.id || "view-profile";
+  activateAppView("view-account-delete");
+}
+
+function closeAccountDeleteView() {
+  if (window.location.pathname === "/account-delete") {
+    switchTab("home");
+    return;
+  }
+  activateAppView(legalReturnViewId);
+}
+
+function handlePublicStaticRoute() {
+  if (window.location.pathname === AUTH_CALLBACK_PATH) {
+    window.history.replaceState({}, document.title, "/");
+    switchTab(currentUser ? "profile" : "home");
+  } else if (window.location.pathname === "/account-delete") {
+    openAccountDeleteView();
+  } else if (window.location.pathname === "/support") {
+    openSupportView();
+  } else if (window.location.pathname === "/community-standards") {
+    openCommunityStandardsView();
+  }
+}
+
+function setupAccountDeleteRequestForm() {
+  const form = document.getElementById("accountDeleteRequestForm");
+  form?.addEventListener("submit", submitAccountDeletionRequest);
+}
+
+async function submitAccountDeletionRequest(event) {
+  event.preventDefault();
+  const emailInput = document.getElementById("accountDeleteRequestEmail");
+  const status = document.getElementById("accountDeleteRequestStatus");
+  const submit = document.getElementById("accountDeleteRequestSubmit");
+  const email = emailInput?.value.trim() || "";
+  if (!email || !email.includes("@")) {
+    if (status) status.textContent = "요청 접수를 위해 이메일을 입력해 주세요.";
+    return;
+  }
+
+  submit?.setAttribute("disabled", "true");
+  if (status) status.textContent = "삭제 요청을 접수하고 있습니다...";
+  const receivedMessage =
+    "삭제 요청을 접수했습니다. 가입 여부와 관계없이 동일하게 안내되며, 필요한 경우 본인 확인 절차가 이어집니다.";
+  try {
+    const { error } = await client.functions.invoke("delete-account", {
+      body: { requestDeletion: true, email },
+    });
+    if (error) throw error;
+    if (emailInput) emailInput.value = "";
+    if (status) status.textContent = receivedMessage;
+  } catch (error) {
+    reportClientDiagnostic("account-delete-public-request", error);
+    if (status) {
+      status.textContent =
+        "지금은 요청을 접수하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    }
+  } finally {
+    submit?.removeAttribute("disabled");
+  }
 }
 
 function openThemeSettingsView() {
@@ -3701,15 +4149,45 @@ function clearDeletedAccountLocalData(userId) {
   keysToRemove.forEach((key) => localStorage.removeItem(key));
 }
 
+async function getCurrentProviderToken() {
+  const {
+    data: { session },
+  } = await client.auth.getSession();
+  return typeof session?.provider_token === "string" ? session.provider_token : "";
+}
+
+async function getFunctionErrorText(error) {
+  const response = error?.context;
+  if (response instanceof Response) {
+    try {
+      const body = await response.clone().json();
+      return typeof body?.error === "string" ? body.error : "";
+    } catch (parseError) {
+      if (parseError instanceof SyntaxError) return "";
+      throw parseError;
+    }
+  }
+  return typeof error?.message === "string" ? error.message : "";
+}
+
 async function performAccountDeletion() {
   if (!currentUser) return;
   const deletingUserId = currentUser.id;
   showAppAlert("계정 정보를 안전하게 삭제하고 있습니다...");
 
-  const { error } = await client.functions.invoke("delete-account", {
-    body: { confirm: true },
-  });
+  const providerToken = await getCurrentProviderToken();
+  const body = providerToken
+    ? { confirm: true, providerToken }
+    : { confirm: true };
+  const { error } = await client.functions.invoke("delete-account", { body });
   if (error) {
+    const errorText = await getFunctionErrorText(error);
+    if (errorText === "Recent sign-in required") {
+      showAppAlert(
+        "보안을 위해 다시 로그인한 뒤 회원 탈퇴를 다시 시도해 주세요.",
+      );
+      return;
+    }
     showAppAlert(
       "회원 탈퇴를 완료하지 못했습니다.\n잠시 후 다시 시도해주세요.",
     );
@@ -3767,29 +4245,35 @@ async function loadProfileGrid(tabType) {
   grid.innerHTML =
     '<div style="grid-column: 1 / -1; padding: 50px 0; text-align: center; color: #555;">불러오는 중...</div>';
 
-  let query = client
-    .from("posts")
-    .select("*")
-    .order("created_at", { ascending: false });
   let targetIds = [];
 
   if (tabType === "my") {
-    query = query.eq("user_id", currentUser.id);
+    targetIds = [currentUser.id];
   } else if (tabType === "bookmark") {
     targetIds = Array.from(bookmarkedPostIds);
     if (targetIds.length === 0)
       return (grid.innerHTML =
         '<div style="grid-column: 1 / -1; text-align: center; color: #555; padding: 50px 0;">저장된 글이 없습니다.</div>');
-    query = query.in("id", targetIds);
   } else if (tabType === "like") {
     targetIds = Array.from(likedPostIds);
     if (targetIds.length === 0)
       return (grid.innerHTML =
         '<div style="grid-column: 1 / -1; text-align: center; color: #555; padding: 50px 0;">좋아요한 글이 없습니다.</div>');
-    query = query.in("id", targetIds);
   }
 
-  const { data, error } = await query;
+  const buildProfileGridQuery = () => {
+    let query = client
+      .from("posts")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (tabType === "my") query = query.eq("user_id", currentUser.id);
+    else query = query.in("id", targetIds);
+    return query;
+  };
+  const { data, error } = await runVisibleContentQuery(
+    buildProfileGridQuery,
+    `profile-${tabType}-grid-load`,
+  );
   if (error)
     return (grid.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #ff3b30;">오류</div>`);
   const visiblePosts = filterBlockedPosts(data);
@@ -4163,6 +4647,16 @@ function setupSwipeBackNavigation() {
     closeTermsOfServiceView,
   );
   addInteractiveSwipeBack(
+    document.getElementById("view-support"),
+    () => "view-settings",
+    closeSupportView,
+  );
+  addInteractiveSwipeBack(
+    document.getElementById("view-community-standards"),
+    () => "view-settings",
+    closeCommunityStandardsView,
+  );
+  addInteractiveSwipeBack(
     document.getElementById("view-notice-detail"),
     () => noticeReturnViewId,
     completeNoticeSwipeBack,
@@ -4173,24 +4667,71 @@ function setupSwipeBackNavigation() {
   );
 }
 
+function renderFeedState(
+  container,
+  { title, description = "", allowRetry = false, kind = "error" },
+) {
+  const state = document.createElement("div");
+  state.className = "feed-state";
+  state.classList.add(kind === "empty" ? "is-empty" : "is-error");
+  const titleElement = document.createElement("div");
+  titleElement.className = "feed-state-title";
+  titleElement.textContent = title;
+  state.appendChild(titleElement);
+  if (description) {
+    const descriptionElement = document.createElement("p");
+    descriptionElement.className = "feed-state-description";
+    descriptionElement.textContent = description;
+    state.appendChild(descriptionElement);
+  }
+  if (allowRetry) {
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "feed-state-retry";
+    retry.textContent = "다시 시도";
+    retry.addEventListener("click", () => fetchPosts());
+    state.appendChild(retry);
+  }
+  container.replaceChildren(state);
+}
+
 async function fetchPosts() {
   // ✅ 1. 일단 최신 글을 넉넉히(100개) 가져옵니다.
-  const { data, error } = await client
-    .from("posts")
-    .select("*")
-    .neq("author", "🚨글림 운영자")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const { data, error } = await runVisibleContentQuery(
+    () =>
+      client
+        .from("posts")
+        .select("*")
+        .neq("author", "🚨글림 운영자")
+        .order("created_at", { ascending: false })
+        .limit(100),
+    "feed-load",
+  );
 
   const feedContainer = document.getElementById("postFeed");
-  if (error)
-    return (feedContainer.innerHTML = `<div style="height:100vh; display:flex; justify-content:center; align-items:center;">데이터 오류</div>`);
+  if (error) {
+    reportClientDiagnostic("feed-load", error);
+    renderFeedState(feedContainer, {
+      title:
+        navigator.onLine === false
+          ? "연결이 끊겼습니다."
+          : "문장을 불러오지 못했습니다.",
+      description: "네트워크 상태를 확인한 뒤 다시 시도해주세요.",
+      allowRetry: true,
+    });
+    return;
+  }
 
   observer.disconnect();
   feedContainer.innerHTML = "";
   const visiblePosts = filterBlockedPosts(data);
-  if (visiblePosts.length === 0)
-    return (feedContainer.innerHTML = `<div style="height:100vh; display:flex; justify-content:center; align-items:center; color:#555;">아직 보여드릴 문장이 없습니다.</div>`);
+  if (visiblePosts.length === 0) {
+    renderFeedState(feedContainer, {
+      title: "아직 보여드릴 문장이 없습니다.",
+      kind: "empty",
+    });
+    return;
+  }
 
   // ✅ 2. 내 취향 점수를 불러와서 알고리즘 정렬 (Sorting)
   const userMoodScores = JSON.parse(
@@ -4442,16 +4983,22 @@ async function fetchExploreMoodPosts(keyword = "") {
   rail.setAttribute("aria-busy", "true");
   renderExploreRailState(rail, `${mood.label} 글을 모으는 중...`);
 
-  let query = client
-    .from("posts")
-    .select("*")
-    .neq("author", "🚨글림 운영자")
-    .eq("mood", mood.value)
-    .order("created_at", { ascending: false })
-    .limit(30);
-  if (keyword) query = query.ilike("content", `%${keyword}%`);
+  const buildMoodQuery = () => {
+    let query = client
+      .from("posts")
+      .select("*")
+      .neq("author", "🚨글림 운영자")
+      .eq("mood", mood.value)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (keyword) query = query.ilike("content", `%${keyword}%`);
+    return query;
+  };
 
-  const { data, error } = await query;
+  const { data, error } = await runVisibleContentQuery(
+    buildMoodQuery,
+    "explore-mood-posts-load",
+  );
   if (requestId !== exploreMoodFetchRequestId) return;
 
   renderExplorePostCollection({
@@ -4524,29 +5071,33 @@ async function fetchExplorePosts(keyword = "") {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
 
-  let todayQuery = client
-    .from("posts")
-    .select("*")
-    .neq("author", "🚨글림 운영자")
-    .gte("created_at", startOfToday.toISOString())
-    .order("likes_count", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(30);
-  let allTimeQuery = client
-    .from("posts")
-    .select("*")
-    .neq("author", "🚨글림 운영자")
-    .order("likes_count", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(30);
-  if (keyword) {
-    todayQuery = todayQuery.ilike("content", `%${keyword}%`);
-    allTimeQuery = allTimeQuery.ilike("content", `%${keyword}%`);
-  }
+  const buildTodayQuery = () => {
+    let query = client
+      .from("posts")
+      .select("*")
+      .neq("author", "🚨글림 운영자")
+      .gte("created_at", startOfToday.toISOString())
+      .order("likes_count", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (keyword) query = query.ilike("content", `%${keyword}%`);
+    return query;
+  };
+  const buildAllTimeQuery = () => {
+    let query = client
+      .from("posts")
+      .select("*")
+      .neq("author", "🚨글림 운영자")
+      .order("likes_count", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (keyword) query = query.ilike("content", `%${keyword}%`);
+    return query;
+  };
 
   const [todayResult, allTimeResult] = await Promise.all([
-    todayQuery,
-    allTimeQuery,
+    runVisibleContentQuery(buildTodayQuery, "explore-today-posts-load"),
+    runVisibleContentQuery(buildAllTimeQuery, "explore-all-time-posts-load"),
   ]);
   if (requestId !== exploreFetchRequestId) {
     await moodRequest;
@@ -4846,13 +5397,17 @@ async function searchPosts(forcedQuery = null) {
       .select(profileFields)
       .ilike("custom_id", `%${query}%`)
       .limit(10),
-    client
-      .from("posts")
-      .select("*")
-      .neq("author", "🚨글림 운영자")
-      .ilike("content", `%${query}%`)
-      .order("created_at", { ascending: false })
-      .limit(50),
+    runVisibleContentQuery(
+      () =>
+        client
+          .from("posts")
+          .select("*")
+          .neq("author", "🚨글림 운영자")
+          .ilike("content", `%${query}%`)
+          .order("created_at", { ascending: false })
+          .limit(50),
+      "explore-search-posts-load",
+    ),
   ]);
   if (requestId !== exploreSearchRequestId) return;
 
@@ -4932,11 +5487,15 @@ async function incrementMetric(postId, column, element) {
   if (!isLiked || wasLiked) return;
   updateMoodScore(element.closest(".post")?.dataset.mood, 5);
 
-  const { data: postData, error: postError } = await client
-    .from("posts")
-    .select("author, user_id")
-    .eq("id", postId)
-    .maybeSingle();
+  const { data: postData, error: postError } = await runVisibleContentQuery(
+    () =>
+      client
+        .from("posts")
+        .select("author, user_id")
+        .eq("id", postId)
+        .maybeSingle(),
+    "reaction-post-load",
+  );
   if (postError || !postData?.user_id || postData.user_id === currentUser.id)
     return;
 
@@ -4957,7 +5516,7 @@ async function incrementMetric(postId, column, element) {
       },
     ]);
   if (notificationError) {
-    console.warn("앱 내부 공감 알림 저장 실패:", notificationError.message);
+    reportClientDiagnostic("reaction-notification-save", notificationError);
   }
   void sendPushNotification(postData.user_id, "likes", postId);
 }
@@ -5071,11 +5630,15 @@ async function fetchComments(postId) {
   const list = document.getElementById("commentList");
   list.innerHTML =
     '<div style="text-align:center; color:#555; margin-top:20px;">댓글을 가져오는 중...</div>';
-  const { data, error } = await client
-    .from("comments")
-    .select("*")
-    .eq("post_id", postId)
-    .order("created_at", { ascending: true });
+  const { data, error } = await runVisibleContentQuery(
+    () =>
+      client
+        .from("comments")
+        .select("*")
+        .eq("post_id", postId)
+        .order("created_at", { ascending: true }),
+    "comments-load",
+  );
 
   if (error) return (list.innerHTML = "오류 발생");
   const visibleComments = filterBlockedComments(data);
@@ -5178,6 +5741,15 @@ function getReportErrorMessage(error) {
 
 function getContentSubmissionErrorMessage(error, fallbackMessage) {
   const message = String(error?.message || "").toLowerCase();
+  if (message.includes("ugc policy acceptance required")) {
+    return "최신 이용약관과 커뮤니티 기준에 동의한 뒤 작성할 수 있습니다.";
+  }
+  if (message.includes("content violates community standards")) {
+    return "커뮤니티 기준에 맞지 않는 내용은 등록할 수 없습니다.";
+  }
+  if (message.includes("content length is not allowed")) {
+    return "글 또는 댓글 길이가 허용 범위를 벗어났습니다.";
+  }
   if (message.includes("account is banned")) {
     return "운영 정책 위반으로 글과 댓글 작성이 제한된 계정입니다.";
   }
@@ -5185,6 +5757,37 @@ function getContentSubmissionErrorMessage(error, fallbackMessage) {
     return "현재 계정의 글과 댓글 작성이 일시적으로 제한되어 있습니다.";
   }
   return fallbackMessage;
+}
+
+async function ensureCurrentUgcPolicyAccepted() {
+  const { data, error } = await client.rpc("get_ugc_policy_acceptance_status");
+  if (error) {
+    reportClientDiagnostic("ugc-policy-status", error);
+    showAppAlert(
+      "이용약관 동의 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.",
+    );
+    return false;
+  }
+
+  if (data?.[0]?.accepted) return true;
+
+  const agreed = nativeConfirm(
+    "글과 댓글을 작성하려면 최신 이용약관과 커뮤니티 기준에 동의해야 합니다. 신고·차단·운영자 검토 정책을 확인했고 이에 동의하시겠습니까?",
+  );
+  if (!agreed) {
+    showAppAlert("동의 후 글과 댓글을 작성할 수 있습니다.");
+    return false;
+  }
+
+  const { error: acceptError } = await client.rpc("accept_current_ugc_policy", {
+    acceptance_source: "client",
+  });
+  if (acceptError) {
+    reportClientDiagnostic("ugc-policy-accept", acceptError);
+    showAppAlert("동의 상태를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    return false;
+  }
+  return true;
 }
 
 async function submitReport() {
@@ -5236,6 +5839,7 @@ async function submitComment() {
     switchTab("profile");
     return;
   }
+  if (!(await ensureCurrentUgcPolicyAccepted())) return;
   const content = document.getElementById("commentInput").value.trim();
   if (!content) return;
 
@@ -5257,13 +5861,17 @@ async function submitComment() {
     document.getElementById("commentInput").value = "";
     fetchComments(currentPostIdForComment);
 
-    const { data: postData } = await client
-      .from("posts")
-      .select("author, user_id")
-      .eq("id", currentPostIdForComment)
-      .single();
+    const { data: postData } = await runVisibleContentQuery(
+      () =>
+        client
+          .from("posts")
+          .select("author, user_id")
+          .eq("id", currentPostIdForComment)
+          .single(),
+      "comment-post-load",
+    );
 
-    if (postData.user_id && postData.user_id !== currentUser.id) {
+    if (postData?.user_id && postData.user_id !== currentUser.id) {
       const notificationPayload = {
         target_user: postData.author,
         target_user_id: postData.user_id,
@@ -5283,7 +5891,7 @@ async function submitComment() {
           .insert([notificationPayload]));
       }
       if (notificationError) {
-        console.warn("앱 내부 댓글 알림 저장 실패:", notificationError.message);
+        reportClientDiagnostic("comment-notification-save", notificationError);
       }
       void sendPushNotification(
         postData.user_id,
@@ -5331,11 +5939,15 @@ function getAnnouncementNotificationTitle(content) {
 
 async function openNotificationPost(postId, notificationType = "") {
   if (!postId) return;
-  const { data: post, error } = await client
-    .from("posts")
-    .select("*")
-    .eq("id", postId)
-    .maybeSingle();
+  const { data: post, error } = await runVisibleContentQuery(
+    () =>
+      client
+        .from("posts")
+        .select("*")
+        .eq("id", postId)
+        .maybeSingle(),
+    "notification-post-load",
+  );
   if (error || !post) {
     showAppAlert("삭제되었거나 더 이상 볼 수 없는 글입니다.");
     return;
@@ -5433,12 +6045,16 @@ async function fetchNotifications() {
       .eq("target_user_id", currentUser.id)
       .order("created_at", { ascending: false }),
     preferences.announcements
-      ? client
-          .from("posts")
-          .select("id, content, created_at")
-          .eq("author", "🚨글림 운영자")
-          .order("created_at", { ascending: false })
-          .limit(10)
+      ? runVisibleContentQuery(
+          () =>
+            client
+              .from("posts")
+              .select("id, content, created_at")
+              .eq("author", "🚨글림 운영자")
+              .order("created_at", { ascending: false })
+              .limit(10),
+          "announcement-posts-load",
+        )
       : Promise.resolve({ data: [], error: null }),
   ]);
   const { data, error } = notificationResult;
@@ -5450,10 +6066,7 @@ async function fetchNotifications() {
       "잠시 후 다시 확인해주세요.",
     ));
   if (announcementResult.error) {
-    console.warn(
-      "운영자 알림을 불러오지 못했습니다:",
-      announcementResult.error.message,
-    );
+    reportClientDiagnostic("announcement-load", announcementResult.error);
   }
 
   const announcementNotifications = (announcementResult.data || []).map(
@@ -5529,7 +6142,7 @@ async function fetchNotifications() {
       );
       const itemClass = `noti-item${isActionable ? " is-actionable" : ""}`;
       const itemAttributes = isActionable
-        ? `role="button" tabindex="0" data-notification-type="${escapeHtml(n.type || "")}" data-post-id="${escapeHtml(n.post_id || "")}" data-actor-nickname="${escapeHtml(n.actor_nickname || "")}" onclick="openNotificationTarget(this)" onkeydown="if(event.key === 'Enter' || event.key === ' '){event.preventDefault();openNotificationTarget(this);}"`
+        ? `role="button" tabindex="0" data-notification-type="${escapeHtml(n.type || "")}" data-post-id="${escapeHtml(n.post_id || "")}" data-actor-nickname="${escapeHtml(n.actor_nickname || "")}" data-glim-click="open-notification-target" data-glim-keydown="open-notification-target"`
         : `role="listitem"`;
 
       return `
@@ -5553,6 +6166,7 @@ async function submitPost() {
     });
     return;
   }
+  if (!(await ensureCurrentUgcPolicyAccepted())) return;
   const content = document.getElementById("postContent").value.trim();
   const bgmUrl = document.getElementById("postBgm").value;
   const mood = document.getElementById("postMood").value; // ✅ 감성 태그 값 가져오기
@@ -5584,9 +6198,6 @@ async function submitPost() {
       bgm_url: bgmUrl,
       bgm_title: bgmTitle,
       mood: mood, // ✅ DB에 저장
-      likes_count: 0,
-      dislikes_count: 0,
-      reports_count: 0,
     },
   ]);
 
@@ -5969,7 +6580,7 @@ async function sharePost(post, triggerElement) {
       "스토리용 이미지를 저장했습니다.\n인스타그램 스토리에서 불러와 공유해보세요.",
     );
   } catch (error) {
-    console.error("공유 이미지 생성 실패:", error);
+    reportClientDiagnostic("share-image-create", error);
     showAppAlert("공유 이미지를 만들지 못했습니다. 잠시 후 다시 시도해주세요.");
   } finally {
     if (triggerElement) delete triggerElement.dataset.sharing;
@@ -6086,11 +6697,15 @@ async function openNoticeSheet() {
   list.innerHTML =
     '<div style="text-align:center; color:#555; margin-top:20px;">불러오는 중...</div>';
 
-  const { data, error } = await client
-    .from("posts")
-    .select("*")
-    .eq("author", "🚨글림 운영자")
-    .order("created_at", { ascending: false });
+  const { data, error } = await runVisibleContentQuery(
+    () =>
+      client
+        .from("posts")
+        .select("*")
+        .eq("author", "🚨글림 운영자")
+        .order("created_at", { ascending: false }),
+    "notice-posts-load",
+  );
 
   if (error)
     return (list.innerHTML =
@@ -6170,6 +6785,6 @@ function viewNoticeDetail(title, date, content) {
 window.setTimeout(() => hideAppSplash({ force: true }), 7000);
 init()
   .catch((error) => {
-    console.error("앱 초기화 실패:", error);
+    reportClientDiagnostic("app-init", error);
   })
   .finally(() => hideAppSplash());

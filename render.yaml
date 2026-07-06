@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: glim-text-shortform
+    runtime: static
+    buildCommand: echo "Buildless static site"
+    staticPublishPath: ./
+    domains:
+      - glimfactory.com
+    envVars:
+      - key: SKIP_INSTALL_DEPS
+        value: "true"
+    routes:
+      - type: rewrite
+        source: /account-delete
+        destination: /index.html
+      - type: rewrite
+        source: /auth/callback
+        destination: /index.html
+      - type: rewrite
+        source: /support
+        destination: /index.html
+      - type: rewrite
+        source: /community-standards
+        destination: /index.html
+    headers:
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://cdn.jsdelivr.net https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://qdnpeliqtxdglqewbvgg.supabase.co; media-src 'self' blob: https://qdnpeliqtxdglqewbvgg.supabase.co; connect-src 'self' https://qdnpeliqtxdglqewbvgg.supabase.co wss://qdnpeliqtxdglqewbvgg.supabase.co https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://www.googleapis.com; worker-src 'self'; manifest-src 'self'; upgrade-insecure-requests"
+      - path: /*
+        name: Strict-Transport-Security
+        value: max-age=31536000; includeSubDomains
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), geolocation=(), microphone=(), payment=(), usb=()

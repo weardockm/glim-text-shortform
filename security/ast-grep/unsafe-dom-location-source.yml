@@ -1,0 +1,9 @@
+id: unsafe-dom-location-source
+language: JavaScript
+severity: error
+message: Do not write attacker-controlled location data directly to innerHTML.
+rule:
+  any:
+    - pattern: $TARGET.innerHTML = location.hash
+    - pattern: $TARGET.innerHTML = location.search
+    - pattern: $TARGET.innerHTML = location.href

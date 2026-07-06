@@ -1,0 +1,4 @@
+This is a scanner fixture, not a real credential.
+-----BEGIN PRIVATE KEY-----
+R0xJTV9TRUNVUklUWV9ORUdBVElWRV9GSVhUVVJF
+-----END PRIVATE KEY-----
