@@ -262,7 +262,7 @@ test("Render blueprint preserves the buildless canonical-domain contract", async
   assert.match(source, /staticPublishPath: \.\//);
   assert.match(source, /domains:\s*\n\s*- glimfactory\.com/);
   assert.doesNotMatch(source, /server\.url/);
-  assert.equal(source.match(/type:\s*rewrite/g)?.length ?? 0, 1);
+  assert.equal(source.match(/type:\s*rewrite/g)?.length ?? 0, 4);
   assert.match(
     source,
     /routes:\s*\n\s*-\s*type:\s*rewrite\s*\n\s*source:\s*\/account-delete\s*\n\s*destination:\s*\/index\.html/,

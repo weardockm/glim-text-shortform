@@ -85,6 +85,7 @@ let exploreSearchRequestId = 0;
 let isExploreSearchOpen = false;
 let selectedExploreMood = "사색";
 let postTextMeasureElement = null;
+let isPostContentInputHandlerReady = false;
 let selectedProfileAvatarFile = null;
 let shouldRemoveProfileAvatar = false;
 let editAvatarPreviewObjectUrl = null;
@@ -6262,6 +6263,16 @@ function constrainPostContent(content) {
   return characters.slice(0, low).join("");
 }
 
+function setupPostContentInputHandler() {
+  if (isPostContentInputHandlerReady) return;
+  const input = document.getElementById("postContent");
+  if (!input) return;
+
+  input.addEventListener("input", handlePostContentInput);
+  input.addEventListener("compositionend", handlePostContentInput);
+  isPostContentInputHandlerReady = true;
+}
+
 function handlePostContentInput(event) {
   const input = event?.currentTarget || document.getElementById("postContent");
   if (!input) return;
@@ -6783,6 +6794,7 @@ function viewNoticeDetail(title, date, content) {
 }
 
 window.setTimeout(() => hideAppSplash({ force: true }), 7000);
+setupPostContentInputHandler();
 init()
   .catch((error) => {
     reportClientDiagnostic("app-init", error);

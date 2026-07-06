@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { supabaseBrowserStub } from "../security/fixtures/supabase-browser-stub.mjs";
 
 test("serves the Korean application shell and runtime assets", async ({
   page,
@@ -24,4 +25,33 @@ test("serves the Korean application shell and runtime assets", async ({
   const logo = await request.get("/image/app-logo.png");
   expect(logo.status()).toBe(200);
   expect(logo.headers()["content-type"]).toBe("image/png");
+});
+
+test("updates the write counter for English letters and numbers", async ({
+  page,
+}) => {
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    const url = route.request().url();
+    if (!url.startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", {
+    timeout: 10_000,
+    waitUntil: "domcontentloaded",
+  });
+  await page.evaluate(() => {
+    document
+      .querySelectorAll(".app-view")
+      .forEach((view) => view.classList.remove("active"));
+    document.getElementById("view-write").classList.add("active");
+  });
+
+  await page.locator("#postContent").click();
+  await page.keyboard.type("abc123");
+  await expect(page.locator("#charCount")).toContainText("6 / 120");
 });

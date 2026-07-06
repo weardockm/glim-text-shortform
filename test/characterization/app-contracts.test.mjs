@@ -46,13 +46,15 @@ test("Given an anonymous user, When write or notifications are opened, Then logi
   assert.match(indexHtml, /id="nav-home"[\s\S]*?id="nav-write"/);
 });
 
-test("Given each supported sign-in provider, When OAuth starts, Then it returns to the current origin", () => {
-  assert.match(
-    indexSource,
-    /signInWithOAuth\(\{[\s\S]*?provider,[\s\S]*?redirectTo: `\$\{window\.location\.origin\}\/`/,
-  );
+test("Given each supported sign-in provider, When OAuth starts, Then it returns to the configured web or native callback", () => {
+  assert.ok(indexSource.includes("const options = { redirectTo: getOAuthRedirectUrl() };"));
+  assert.ok(indexSource.includes("provider: provider,"));
+  assert.ok(indexSource.includes("options,"));
+  assert.ok(indexSource.includes("function getOAuthRedirectUrl()"));
+  assert.ok(indexSource.includes("GLIM_PRODUCTION_ORIGIN"));
+  assert.ok(indexSource.includes("AUTH_CALLBACK_PATH"));
   for (const provider of ["google", "kakao"]) {
-    assert.match(indexHtml, new RegExp(`handleSocialLogin\\([\"']${provider}[\"']\\)`));
+    assert.ok(indexHtml.includes(`handleSocialLogin('${provider}')`));
   }
 });
 
