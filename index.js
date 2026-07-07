@@ -18,6 +18,14 @@ function isMissingModerationStatusColumnError(error) {
   );
 }
 
+function isMissingPostBgmTitleColumnError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    ["42703", "PGRST204"].includes(error?.code) &&
+    message.includes("bgm_title")
+  );
+}
+
 async function runVisibleContentQuery(buildQuery, diagnosticContext) {
   const result = await selectVisibleContent(buildQuery());
   if (!isMissingModerationStatusColumnError(result.error)) return result;
@@ -972,6 +980,25 @@ function showAppConfirm(
   });
 }
 
+function showAppConfirmAsync(message, options = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    showAppConfirm(message, () => settle(true), options);
+    const alertElement = document.getElementById("appAlert");
+    if (!alertElement) {
+      settle(false);
+      return;
+    }
+    appAlertOnClose = () => settle(false);
+  });
+}
+
 function closeAppAlert(confirmed = false) {
   const alertElement = document.getElementById("appAlert");
   if (!alertElement) return;
@@ -1006,7 +1033,11 @@ function closeAppAlert(confirmed = false) {
   appAlertPreviousFocus = null;
   setAppAlertVerification();
   if (isConfirmDialog) {
-    if (confirmed) onConfirm();
+    if (confirmed) {
+      onConfirm();
+    } else if (typeof onClose === "function") {
+      onClose();
+    }
   } else if (typeof onClose === "function") {
     onClose();
   }
@@ -2917,7 +2948,7 @@ async function handleSocialLogin(provider) {
   const requiresLoginConsent =
     !hasSeenUgcPolicyLoginConsent() && !hasPendingUgcPolicyAcceptanceAfterOAuth();
   if (requiresLoginConsent) {
-    if (!nativeConfirm(getUgcPolicyAgreementMessage())) return;
+    if (!(await requestUgcPolicyAgreement())) return;
     markPendingUgcPolicyAcceptanceAfterOAuth();
   }
 
@@ -5779,6 +5810,14 @@ function getUgcPolicyAgreementMessage() {
   return "글림 가입 및 글/댓글 작성을 위해 최신 이용약관과 커뮤니티 기준에 동의해야 합니다. 신고·차단·운영자 검토 정책을 확인했고 이에 동의하시겠습니까?";
 }
 
+function requestUgcPolicyAgreement() {
+  return showAppConfirmAsync(getUgcPolicyAgreementMessage(), {
+    title: "약관 및 커뮤니티 기준 동의",
+    icon: "policy",
+    confirmText: "동의",
+  });
+}
+
 function markPendingUgcPolicyAcceptanceAfterOAuth() {
   localStorage.setItem(PENDING_UGC_POLICY_ACCEPTANCE_STORAGE_KEY, "1");
 }
@@ -5832,7 +5871,7 @@ async function promptForUgcPolicyAcceptanceAfterSignIn() {
   }
 
   promptedUgcPolicyUserId = currentUser.id;
-  if (!nativeConfirm(getUgcPolicyAgreementMessage())) return;
+  if (!(await requestUgcPolicyAgreement())) return;
 
   markPendingUgcPolicyAcceptanceAfterOAuth();
   await acceptPendingUgcPolicyAfterAuth();
@@ -5850,7 +5889,7 @@ async function ensureCurrentUgcPolicyAccepted() {
 
   if (data?.[0]?.accepted) return true;
 
-  const agreed = nativeConfirm(getUgcPolicyAgreementMessage());
+  const agreed = await requestUgcPolicyAgreement();
   if (!agreed) {
     showAppAlert("동의 후 글과 댓글을 작성할 수 있습니다.");
     return false;
@@ -6268,18 +6307,24 @@ async function submitPost() {
     currentUser.user_metadata?.random_nickname ||
     currentUser.email.split("@")[0];
 
-  const { error } = await client.from("posts").insert([
-    {
-      content: content,
-      author: authorNickname,
-      user_id: currentUser.id,
-      bgm_url: bgmUrl,
-      bgm_title: bgmTitle,
-      mood: mood, // ✅ DB에 저장
-    },
-  ]);
+  const postPayload = {
+    content: content,
+    author: authorNickname,
+    user_id: currentUser.id,
+    bgm_url: bgmUrl,
+    bgm_title: bgmTitle,
+    mood: mood,
+  };
+
+  let { error } = await client.from("posts").insert([postPayload]);
+  if (isMissingPostBgmTitleColumnError(error)) {
+    reportClientDiagnostic("post-create-bgm-title-missing", error);
+    const { bgm_title: _bgmTitle, ...legacyPostPayload } = postPayload;
+    ({ error } = await client.from("posts").insert([legacyPostPayload]));
+  }
 
   if (error) {
+    reportClientDiagnostic("post-create", error);
     showAppAlert(
       getContentSubmissionErrorMessage(
         error,
