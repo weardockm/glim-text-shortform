@@ -405,6 +405,13 @@ Deno.test(
     assertEquals(await response.json(), { sent: 1, failed: 0 });
     assertEquals(calls.length, 1);
     assertEquals(calls[0]?.authorization, "Bearer test-access-token");
+    assertEquals(getFcmData(calls[0]?.body), {
+      title: "테스터",
+      body: "회원님의 글에 좋아요를 눌렀습니다.",
+      category: "likes",
+      postId: "post-1",
+      url: "./?notificationPost=post-1&notificationType=likes",
+    });
     assertEquals(admin.getInsertedLogs().length, 1);
   },
 );
@@ -648,6 +655,13 @@ function createDependencies(input: {
       );
     },
   };
+}
+
+function getFcmData(body: unknown) {
+  if (typeof body !== "object" || body === null) return null;
+  const message = (body as { readonly message?: unknown }).message;
+  if (typeof message !== "object" || message === null) return null;
+  return (message as { readonly data?: unknown }).data ?? null;
 }
 
 function createPostRequest(body: Record<string, unknown>) {

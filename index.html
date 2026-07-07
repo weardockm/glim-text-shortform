@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=75" defer></script>
+    <script src="index.js?v=81" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -2612,9 +2612,9 @@
         overflow-y: auto;
         display: flex;
         flex-direction: column;
-        gap: 20px;
-        padding-bottom: 20px;
-        margin-bottom: 15px;
+        gap: 10px;
+        padding-bottom: 12px;
+        margin-bottom: 10px;
         touch-action: pan-y;
       }
       .comment-list::-webkit-scrollbar {
@@ -2622,26 +2622,26 @@
       }
       .comment-item {
         border-bottom: 1px solid #222;
-        padding-bottom: 15px;
+        padding-bottom: 10px;
       }
       .comment-author {
-        font-size: 0.85rem;
+        font-size: 0.78rem;
         color: #888;
-        margin-bottom: 6px;
+        margin-bottom: 3px;
         font-family: "Noto Serif KR", serif;
         font-weight: 700;
       }
       .comment-text {
-        font-size: 1rem;
+        font-size: 0.92rem;
         color: #eee;
-        line-height: 1.4;
-        margin-bottom: 10px;
+        line-height: 1.32;
+        margin-bottom: 7px;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
       .comment-actions {
         display: flex;
-        gap: 15px;
+        gap: 12px;
         align-items: center;
       }
       .comment-action-btn {
@@ -2661,6 +2661,35 @@
       .comment-action-btn .action-count {
         margin-top: 0;
         color: inherit;
+        line-height: 1;
+      }
+      .comment-more-wrapper {
+        position: relative;
+      }
+      .comment-more-wrapper > .material-symbols-outlined {
+        font-size: 1.15rem;
+      }
+      .comment-more-menu {
+        top: 22px;
+        bottom: auto;
+        left: -4px;
+        right: auto;
+        width: 112px;
+      }
+      .comment-more-menu .more-menu-item {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 8px;
+        color: #d6d6d6;
+        padding: 10px 12px;
+        text-align: left;
+      }
+      .comment-more-menu .more-menu-item.danger {
+        color: #ff5a52;
+      }
+      .comment-menu-icon {
+        font-size: 1rem;
         line-height: 1;
       }
 

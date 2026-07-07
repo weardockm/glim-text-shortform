@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import vm from "node:vm";
 
 const indexSource = readFileSync(new URL("../../index.js", import.meta.url), "utf8");
 const indexHtml = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
@@ -12,6 +13,13 @@ function positionOf(source, fragment) {
   const position = source.indexOf(fragment);
   assert.notEqual(position, -1, `missing contract fragment: ${fragment}`);
   return position;
+}
+
+function extractSourceBlock(startFragment, endFragment) {
+  const start = positionOf(indexSource, startFragment);
+  const end = positionOf(indexSource, endFragment);
+  assert.ok(end > start, `invalid source block: ${startFragment}`);
+  return indexSource.slice(start, end);
 }
 
 test("Given an anonymous startup, When init runs, Then session and read state load before the feed", () => {
@@ -184,4 +192,54 @@ test("Given local browser state, When preferences are stored, Then the character
     assert.ok(indexSource.includes(key) || indexHtml.includes(key), `missing storage namespace: ${key}`);
   }
   assert.doesNotMatch(indexSource, /sessionStorage/);
+});
+
+test("Given home recommendations, When posts are ranked, Then personal fit beats raw recency and seen posts fall", () => {
+  const context = { result: null, Set, Date, Math, Object, Number, String };
+  vm.createContext(context);
+  vm.runInContext(
+    extractSourceBlock(
+      "const FEED_RECOMMENDATION_CANDIDATE_LIMIT",
+      "function updateMoodScore",
+    ),
+    context,
+  );
+
+  context.posts = [
+    { id: "fresh", user_id: "a", mood: "new", likes_count: 2, dislikes_count: 1, created_at: "2026-07-08T00:00:00Z" },
+    { id: "match", user_id: "b", mood: "comfort", likes_count: 1, dislikes_count: 1, created_at: "2026-07-07T23:00:00Z" },
+    { id: "seen", user_id: "c", mood: "comfort", likes_count: 80, dislikes_count: 30, created_at: "2026-07-08T00:00:00Z" },
+    {
+      id: "ai-match",
+      user_id: "d",
+      mood: "new",
+      likes_count: 0,
+      dislikes_count: 0,
+      created_at: "2026-07-07T22:00:00Z",
+      ai_profile: {
+        topics: ["연애"],
+        emotions: ["그리움"],
+        tone: "고백",
+        recommendation_vector: { keywords: ["기다림"] },
+      },
+    },
+  ];
+  context.signals = {
+    moodScores: { comfort: 20 },
+    seenPostIds: new Set(["seen"]),
+    likedPostIds: new Set(),
+    bookmarkedPostIds: new Set(),
+    aiPreferenceScores: { "연애": 20, "그리움": 16, "고백": 8 },
+    nowMs: Date.parse("2026-07-08T00:00:00Z"),
+    todaySeed: "recommendation-test",
+  };
+
+  vm.runInContext("result = rankRecommendedPosts(posts, signals).map((post) => post.id)", context);
+
+  assert.equal(context.result[0], "match");
+  assert.ok(context.result.indexOf("ai-match") < context.result.indexOf("fresh"));
+  assert.ok(context.result.indexOf("seen") > context.result.indexOf("fresh"));
+  assert.match(indexSource, /limit\(FEED_RECOMMENDATION_CANDIDATE_LIMIT\)/);
+  assert.match(indexSource, /post_ai_profiles/);
+  assert.match(indexSource, /functions\/v1\/analyze-post/);
 });

@@ -178,13 +178,207 @@ const avatarCropState = {
 };
 const contextPostCollections = new Map();
 const contextPostTitles = new Map();
-// --- 기존 전역 변수들 아래에 추가 ---
-const postViewTimers = new Map(); // 체류 시간 측정을 위한 타이머 저장소
+const postViewTimers = new Map();
 
+const FEED_RECOMMENDATION_CANDIDATE_LIMIT = 160;
+const AI_RECOMMENDATION_SCORES_KEY = "glim_ai_recommendation_scores";
+const AI_PROFILE_TABLE_MISSING_CODES = new Set(["42P01", "PGRST204", "PGRST205"]);
+const RECOMMENDATION_AUTHOR_DIVERSITY_WINDOW = 2;
+const RECOMMENDATION_AUTHOR_SEARCH_WINDOW = 8;
+const RECOMMENDATION_AUTHOR_SWAP_SCORE_GAP = 18;
+
+function readStoredJson(key, fallbackValue) {
+  if (typeof localStorage === "undefined") return fallbackValue;
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) ?? fallbackValue : fallbackValue;
+  } catch {
+    return fallbackValue;
+  }
+}
+
+function clampRecommendationValue(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getPostMetric(post, key) {
+  const value = Number(post?.[key] ?? 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function getPostAgeDays(post, nowMs = Date.now()) {
+  const createdAtMs = new Date(post?.created_at || 0).getTime();
+  if (!Number.isFinite(createdAtMs)) return 30;
+  return Math.max(0, (nowMs - createdAtMs) / 86400000);
+}
+
+function getDailyRecommendationJitter(post, seed = new Date().toISOString().slice(0, 10)) {
+  const source = String(post?.id || post?.created_at || "post") + ":" + seed;
+  let hash = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    hash = (hash * 31 + source.charCodeAt(index)) >>> 0;
+  }
+  return (hash % 1000) / 1000;
+}
+
+function getNormalizedMoodPreference(moodScores, mood) {
+  if (!mood || !moodScores || typeof moodScores !== "object") return 0;
+  const scores = Object.values(moodScores)
+    .map((value) => Number(value) || 0)
+    .filter((value) => value > 0);
+  if (scores.length === 0) return 0;
+  return clampRecommendationValue((Number(moodScores[mood]) || 0) / Math.max(...scores, 1), 0, 1);
+}
+
+function getPostAuthorKey(post) {
+  return String(post?.user_id || post?.author || "");
+}
+
+function normalizeAiRecommendationTerm(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getPostAiProfile(post) {
+  return post?.ai_profile || post?.aiProfile || null;
+}
+
+function getAiTermsFromProfile(profile) {
+  if (!profile || typeof profile !== "object") return [];
+  const vector = profile.recommendation_vector && typeof profile.recommendation_vector === "object"
+    ? profile.recommendation_vector
+    : {};
+  const rawTerms = [
+    ...(Array.isArray(profile.topics) ? profile.topics : []),
+    ...(Array.isArray(profile.emotions) ? profile.emotions : []),
+    ...(Array.isArray(vector.topics) ? vector.topics : []),
+    ...(Array.isArray(vector.emotions) ? vector.emotions : []),
+    ...(Array.isArray(vector.keywords) ? vector.keywords : []),
+    profile.tone,
+    vector.tone,
+    vector.selected_mood,
+  ];
+  return [...new Set(rawTerms.map(normalizeAiRecommendationTerm).filter(Boolean))].slice(0, 18);
+}
+
+function getPostAiTerms(post) {
+  return getAiTermsFromProfile(getPostAiProfile(post));
+}
+
+function getAiRecommendationPreferenceScore(terms, aiPreferenceScores = {}) {
+  if (!terms.length || !aiPreferenceScores || typeof aiPreferenceScores !== "object") return 0;
+  const values = Object.values(aiPreferenceScores)
+    .map((value) => Number(value) || 0)
+    .filter((value) => value > 0);
+  if (values.length === 0) return 0;
+  const maxScore = Math.max(...values, 1);
+  const total = terms.reduce((sum, term) => sum + (Number(aiPreferenceScores[term]) || 0), 0);
+  return clampRecommendationValue(total / (maxScore * Math.min(terms.length, 4)), 0, 1);
+}
+
+function updateAiPreferenceScores(terms, points) {
+  if (!Array.isArray(terms) || terms.length === 0 || !points) return;
+  const scores = readStoredJson(AI_RECOMMENDATION_SCORES_KEY, {});
+  terms.slice(0, 12).forEach((term) => {
+    const key = normalizeAiRecommendationTerm(term);
+    if (key) scores[key] = (Number(scores[key]) || 0) + points;
+  });
+  localStorage.setItem(AI_RECOMMENDATION_SCORES_KEY, JSON.stringify(scores));
+}
+
+function updateAiPreferenceScoresFromElement(element, points) {
+  if (!element?.dataset?.aiTerms) return;
+  try {
+    updateAiPreferenceScores(JSON.parse(element.dataset.aiTerms), points);
+  } catch {
+    // Ignore malformed local DOM state and keep the base recommendation path.
+  }
+}
+
+function isMissingAiProfileTableError(error) {
+  return Boolean(error?.code && AI_PROFILE_TABLE_MISSING_CODES.has(error.code));
+}
+
+async function attachAiProfilesToPosts(posts) {
+  const ids = [...new Set((posts || []).map((post) => post?.id).filter(Boolean))];
+  if (ids.length === 0) return posts || [];
+  const { data, error } = await client
+    .from("post_ai_profiles")
+    .select("post_id, topics, emotions, tone, recommendation_vector")
+    .in("post_id", ids);
+  if (error) {
+    if (!isMissingAiProfileTableError(error)) {
+      reportClientDiagnostic("post-ai-profiles-load", error);
+    }
+    return posts || [];
+  }
+  const profilesByPostId = new Map((data || []).map((profile) => [profile.post_id, profile]));
+  return (posts || []).map((post) => ({
+    ...post,
+    ai_profile: profilesByPostId.get(post.id) || null,
+  }));
+}
+
+function calculateRecommendedPostScore(post, signals = {}) {
+  const ageDays = getPostAgeDays(post, signals.nowMs ?? Date.now());
+  const moodPreference = getNormalizedMoodPreference(signals.moodScores || {}, post?.mood);
+  const likes = getPostMetric(post, "likes_count");
+  const comments = getPostMetric(post, "dislikes_count");
+  const seenPostIds = signals.seenPostIds || new Set();
+  const likedIds = signals.likedPostIds || new Set();
+  const bookmarkedIds = signals.bookmarkedPostIds || new Set();
+  const aiPreference = getAiRecommendationPreferenceScore(
+    getPostAiTerms(post),
+    signals.aiPreferenceScores || {},
+  );
+  const personalScore = moodPreference * 42 + aiPreference * 38 + (bookmarkedIds.has(post?.id) ? 12 : 0) + (likedIds.has(post?.id) ? 8 : 0);
+  const engagementScore = clampRecommendationValue(Math.log1p(likes) * 8 + Math.log1p(comments) * 10, 0, 35);
+  const freshnessScore = clampRecommendationValue(24 - ageDays * 5, 0, 24);
+  const explorationScore = getDailyRecommendationJitter(post, signals.todaySeed) * 12 + (moodPreference === 0 ? 6 : 0);
+  const seenPenalty = seenPostIds.has(post?.id) ? 75 : 0;
+  const agePenalty = clampRecommendationValue(ageDays * 2.2, 0, 28);
+  return personalScore + engagementScore + freshnessScore + explorationScore - seenPenalty - agePenalty;
+}
+
+function diversifyRecommendedPosts(scoredPosts, signals = {}) {
+  const pool = [...scoredPosts];
+  const result = [];
+  while (pool.length > 0) {
+    const recentAuthors = new Set(result.slice(-RECOMMENDATION_AUTHOR_DIVERSITY_WINDOW).map(({ post }) => getPostAuthorKey(post)).filter(Boolean));
+    let pickIndex = 0;
+    const alternativeIndex = pool.findIndex(({ post }, index) => index < RECOMMENDATION_AUTHOR_SEARCH_WINDOW && !recentAuthors.has(getPostAuthorKey(post)));
+    if (alternativeIndex > 0 && pool[0].score - pool[alternativeIndex].score <= RECOMMENDATION_AUTHOR_SWAP_SCORE_GAP) {
+      pickIndex = alternativeIndex;
+    }
+    result.push(pool.splice(pickIndex, 1)[0]);
+  }
+  return result.map(({ post }) => post);
+}
+
+function rankRecommendedPosts(posts, signals = {}) {
+  const ranked = [...(posts || [])].map((post, index) => ({ post, index, score: calculateRecommendedPostScore(post, signals) })).sort((left, right) => {
+    if (right.score !== left.score) return right.score - left.score;
+    const rightCreatedAt = new Date(right.post?.created_at || 0).getTime() || 0;
+    const leftCreatedAt = new Date(left.post?.created_at || 0).getTime() || 0;
+    return rightCreatedAt !== leftCreatedAt ? rightCreatedAt - leftCreatedAt : left.index - right.index;
+  });
+  return diversifyRecommendedPosts(ranked, signals);
+}
+
+function getFeedRecommendationSignals() {
+  return {
+    moodScores: readStoredJson("glim_mood_scores", {}),
+    seenPostIds: new Set(readStoredJson("glim_seen_posts", [])),
+    likedPostIds,
+    bookmarkedPostIds,
+    aiPreferenceScores: readStoredJson(AI_RECOMMENDATION_SCORES_KEY, {}),
+    nowMs: Date.now(),
+    todaySeed: new Date().toISOString().slice(0, 10),
+  };
+}
 // 유저의 감성 취향 점수를 로컬 스토리지에 누적하는 함수
 function updateMoodScore(mood, points) {
   if (!mood) return;
-  let scores = JSON.parse(localStorage.getItem("glim_mood_scores") || "{}");
+  const scores = readStoredJson("glim_mood_scores", {});
   scores[mood] = (scores[mood] || 0) + points;
   localStorage.setItem("glim_mood_scores", JSON.stringify(scores));
 } // <--- 🌟 여기서 updateMoodScore 함수를 닫아주세요!
@@ -192,7 +386,7 @@ function updateMoodScore(mood, points) {
 // 유저가 읽은 글의 ID를 로컬스토리지에 저장하는 함수
 function markPostAsSeen(postId) {
   if (!postId) return;
-  let seenPosts = JSON.parse(localStorage.getItem("glim_seen_posts") || "[]");
+  const seenPosts = readStoredJson("glim_seen_posts", []);
 
   // 아직 안 읽은 글이라면 기록
   if (!seenPosts.includes(postId)) {
@@ -295,8 +489,10 @@ function handleIntersection(entries, viewElement) {
         // 10초 이상 깊게 읽으면 3점, 3초 이상 읽으면 1점
         if (viewDuration >= 10 && mood) {
           updateMoodScore(mood, 3);
+          updateAiPreferenceScoresFromElement(postElement, 2);
         } else if (viewDuration >= 3 && mood) {
           updateMoodScore(mood, 1);
+          updateAiPreferenceScoresFromElement(postElement, 1);
         }
       }
     }
@@ -3670,6 +3866,32 @@ async function syncPushNotificationPreferences(preferences) {
   }
 }
 
+async function requestPostAiAnalysis(postId) {
+  if (!currentUser || !postId) return;
+  try {
+    const {
+      data: { session },
+    } = await client.auth.getSession();
+    if (!session?.access_token) return;
+    const response = await fetch(SUPABASE_URL + "/functions/v1/analyze-post", {
+      method: "POST",
+      mode: "cors",
+      keepalive: true,
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + session.access_token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ postId }),
+    });
+    if (!response.ok) {
+      reportClientDiagnostic("post-ai-analysis-response", { status: response.status });
+    }
+  } catch (error) {
+    reportClientDiagnostic("post-ai-analysis", error);
+  }
+}
+
 async function sendPushNotification(targetUserId, category, postId = "") {
   if (
     !currentUser ||
@@ -4356,6 +4578,7 @@ function createContextFeedPost(post) {
   postElement.dataset.userId = post.user_id || "";
   postElement.dataset.mood = post.mood || "";
   postElement.dataset.bgmUrl = post.bgm_url || "";
+  postElement.dataset.aiTerms = JSON.stringify(getPostAiTerms(post));
 
   const hasLiked = likedPostIds.has(post.id);
   const hasBookmarked = bookmarkedPostIds.has(post.id);
@@ -4760,7 +4983,7 @@ async function fetchPosts() {
         .select("*")
         .neq("author", "🚨글림 운영자")
         .order("created_at", { ascending: false })
-        .limit(100),
+        .limit(FEED_RECOMMENDATION_CANDIDATE_LIMIT),
     "feed-load",
   );
 
@@ -4789,42 +5012,13 @@ async function fetchPosts() {
     return;
   }
 
-  // ✅ 2. 내 취향 점수를 불러와서 알고리즘 정렬 (Sorting)
-  const userMoodScores = JSON.parse(
-    localStorage.getItem("glim_mood_scores") || "{}",
+  const postsWithAiProfiles = await attachAiProfilesToPosts(visiblePosts);
+  const recommendedPosts = rankRecommendedPosts(
+    postsWithAiProfiles,
+    getFeedRecommendationSignals(),
   );
 
-  const seenPosts = JSON.parse(localStorage.getItem("glim_seen_posts") || "[]");
-
-  visiblePosts.sort((a, b) => {
-    // 기본 점수: 내가 좋아하는 감성일수록 가산점 + 남들이 누른 좋아요 점수
-    let scoreA = (userMoodScores[a.mood] || 0) * 1.5 + (a.likes_count || 0) * 2;
-    let scoreB = (userMoodScores[b.mood] || 0) * 1.5 + (b.likes_count || 0) * 2;
-
-    // 시간 페널티: 너무 옛날 글이 계속 상단에 뜨지 않게 감점 (밀리초를 일 단위로 변환)
-    let timePenaltyA =
-      (Date.now() - new Date(a.created_at).getTime()) / (1000 * 60 * 60 * 24);
-    let timePenaltyB =
-      (Date.now() - new Date(b.created_at).getTime()) / (1000 * 60 * 60 * 24);
-
-    // 🛑 읽은 글 패널티: 이미 본 글이면 -100점 폭탄 (무조건 피드 맨 아래로 유배)
-    let seenPenaltyA = seenPosts.includes(a.id) ? 100 : 0;
-    let seenPenaltyB = seenPosts.includes(b.id) ? 100 : 0;
-
-    // 🎲 랜덤 스파이스: 동점일 때마다 순서가 미세하게 바뀌도록 0~2점 무작위 부여
-    let randomSpiceA = Math.random() * 2;
-    let randomSpiceB = Math.random() * 2;
-
-    // 최종 점수 합산
-    let finalScoreA = scoreA - timePenaltyA - seenPenaltyA + randomSpiceA;
-    let finalScoreB = scoreB - timePenaltyB - seenPenaltyB + randomSpiceB;
-
-    // 최종 점수 비교 (내림차순 정렬)
-    return finalScoreB - finalScoreA;
-  });
-
-  // ✅ 3. 정렬된 순서대로 화면에 그림
-  visiblePosts.forEach((post) => {
+  recommendedPosts.forEach((post) => {
     const postElement = createContextFeedPost(post);
     feedContainer.appendChild(postElement);
     fitPostTextToViewport(postElement);
@@ -5541,7 +5735,9 @@ async function incrementMetric(postId, column, element) {
   localStorage.removeItem(`liked_${currentUser.id}_${postId}`);
 
   if (!isLiked || wasLiked) return;
-  updateMoodScore(element.closest(".post")?.dataset.mood, 5);
+  const postElement = element.closest(".post");
+  updateMoodScore(postElement?.dataset.mood, 5);
+  updateAiPreferenceScoresFromElement(postElement, 4);
 
   const { data: postData, error: postError } = await runVisibleContentQuery(
     () =>
@@ -5608,7 +5804,9 @@ async function toggleBookmark(postId, element) {
   localStorage.removeItem(`bookmarked_${currentUser.id}_${postId}`);
 
   if (isBookmarked && !wasBookmarked) {
-    updateMoodScore(element.closest(".post")?.dataset.mood, 8);
+    const postElement = element.closest(".post");
+    updateMoodScore(postElement?.dataset.mood, 8);
+    updateAiPreferenceScoresFromElement(postElement, 6);
   }
 }
 
@@ -5634,7 +5832,7 @@ function closeSheet(id) {
   if (id === "reportSheet") pendingReportTarget = null;
 }
 
-function createCommentElement(comment) {
+function createCommentElement(comment, postOwnerId = null) {
   let authorNickname = String(comment.user_email || "익명");
   if (authorNickname.includes("@")) {
     authorNickname = authorNickname.split("@")[0];
@@ -5650,9 +5848,9 @@ function createCommentElement(comment) {
         <span class="material-symbols-outlined icon-like">favorite</span>
         <span class="action-count"></span>
       </div>
-      <div class="comment-action-btn" data-comment-action="report">
-        <span class="material-symbols-outlined" style="font-size:1rem;">report</span>
-        <span>신고</span>
+      <div class="comment-action-btn comment-more-wrapper" data-comment-action="more">
+        <span class="material-symbols-outlined">more_horiz</span>
+        <div class="more-menu comment-more-menu"></div>
       </div>
     </div>`;
 
@@ -5671,11 +5869,55 @@ function createCommentElement(comment) {
     toggleCommentLike(comment.id, likeButton),
   );
 
-  const reportButton = item.querySelector('[data-comment-action="report"]');
-  if (currentUser?.id === comment.user_id) {
-    reportButton.remove();
+  const moreButton = item.querySelector('[data-comment-action="more"]');
+  const moreMenu = moreButton.querySelector(".comment-more-menu");
+  const isOwnComment = currentUser?.id === comment.user_id;
+  const canDeleteComment =
+    Boolean(currentUser?.id) &&
+    (isOwnComment || currentUser.id === postOwnerId);
+  const menuItems = [];
+  if (!isOwnComment) {
+    menuItems.push({
+      label: "신고",
+      icon: "report",
+      action: () => reportComment(comment.id),
+    });
+  }
+  if (canDeleteComment) {
+    menuItems.push({
+      label: "삭제",
+      icon: "delete",
+      className: "danger",
+      action: () => deleteComment(comment.id),
+    });
+  }
+
+  if (menuItems.length === 0) {
+    moreButton.remove();
   } else {
-    reportButton.addEventListener("click", () => reportComment(comment.id));
+    moreMenu.textContent = "";
+    moreMenu.append(
+      ...menuItems.map(({ label, icon, className, action }) => {
+        const button = document.createElement("button");
+        const iconElement = document.createElement("span");
+        const labelElement = document.createElement("span");
+        button.className = `more-menu-item${className ? ` ${className}` : ""}`;
+        button.type = "button";
+        iconElement.className = "material-symbols-outlined comment-menu-icon";
+        iconElement.textContent = icon;
+        labelElement.textContent = label;
+        button.append(iconElement, labelElement);
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          moreMenu.classList.remove("show");
+          action();
+        });
+        return button;
+      }),
+    );
+    moreButton.addEventListener("click", (event) =>
+      toggleMoreMenu(moreButton, event),
+    );
   }
   return item;
 }
@@ -5684,24 +5926,82 @@ async function fetchComments(postId) {
   const list = document.getElementById("commentList");
   list.innerHTML =
     '<div style="text-align:center; color:#555; margin-top:20px;">댓글을 가져오는 중...</div>';
-  const { data, error } = await runVisibleContentQuery(
-    () =>
-      client
-        .from("comments")
-        .select("*")
-        .eq("post_id", postId)
-        .order("created_at", { ascending: true }),
-    "comments-load",
-  );
+  const [{ data, error }, postResult] = await Promise.all([
+    runVisibleContentQuery(
+      () =>
+        client
+          .from("comments")
+          .select("*")
+          .eq("post_id", postId)
+          .order("likes_count", { ascending: false })
+          .order("created_at", { ascending: false }),
+      "comments-load",
+    ),
+    runVisibleContentQuery(
+      () => client
+        .from("posts")
+        .select("user_id")
+        .eq("id", postId)
+        .single(),
+      "comments-post-owner-load",
+    ),
+  ]);
 
   if (error) return (list.innerHTML = "오류 발생");
+  if (postResult.error) {
+    reportClientDiagnostic("comments-post-owner-load", postResult.error);
+  }
   const visibleComments = filterBlockedComments(data);
   if (visibleComments.length === 0)
     return (list.innerHTML =
       '<div style="text-align:center; color:#555; margin-top:20px;">첫 번째로 댓글을 남겨 보세요.</div>');
 
-  list.replaceChildren(...visibleComments.map(createCommentElement));
-  list.scrollTop = list.scrollHeight;
+  const postOwnerId = postResult.data?.user_id || null;
+  list.replaceChildren(
+    ...visibleComments.map((comment) =>
+      createCommentElement(comment, postOwnerId),
+    ),
+  );
+  list.scrollTop = 0;
+}
+
+function deleteComment(commentId) {
+  if (!currentUser) {
+    showAppAlert("댓글을 삭제하려면 로그인이 필요합니다.");
+    return;
+  }
+
+  showAppConfirm(
+    "삭제한 댓글은 되돌릴 수 없습니다.\n정말 삭제하시겠습니까?",
+    () => submitCommentDelete(commentId),
+    {
+      title: "댓글 삭제",
+      icon: "delete",
+      confirmText: "삭제",
+      isDestructive: true,
+    },
+  );
+}
+
+async function submitCommentDelete(commentId) {
+  if (!currentUser || !currentPostIdForComment) return;
+
+  const { data, error } = await client
+    .from("comments")
+    .delete()
+    .eq("id", commentId)
+    .eq("post_id", currentPostIdForComment)
+    .select("id");
+
+  if (error || !data?.length) {
+    showAppAlert("댓글을 삭제하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    return;
+  }
+
+  likedCommentIds.delete(commentId);
+  localStorage.removeItem(`comment_liked_${currentUser.id}_${commentId}`);
+  fetchComments(currentPostIdForComment);
+  fetchPosts();
 }
 
 async function toggleCommentLike(commentId, element) {
@@ -5733,6 +6033,7 @@ async function toggleCommentLike(commentId, element) {
   icon.style.fontVariationSettings = isLiked ? "'FILL' 1" : "'FILL' 0";
   icon.style.color = isLiked ? "#ff3b30" : "#666";
   localStorage.removeItem(`comment_liked_${currentUser.id}_${commentId}`);
+  if (currentPostIdForComment) void fetchComments(currentPostIdForComment);
 }
 
 function getReportTargetLabel(targetType) {
@@ -6323,11 +6624,19 @@ async function submitPost() {
     mood: mood,
   };
 
-  let { error } = await client.from("posts").insert([postPayload]);
+  let { data: insertedPost, error } = await client
+    .from("posts")
+    .insert([postPayload])
+    .select("id")
+    .single();
   if (isMissingPostBgmTitleColumnError(error)) {
     reportClientDiagnostic("post-create-bgm-title-missing", error);
     const { bgm_title: _bgmTitle, ...legacyPostPayload } = postPayload;
-    ({ error } = await client.from("posts").insert([legacyPostPayload]));
+    ({ data: insertedPost, error } = await client
+      .from("posts")
+      .insert([legacyPostPayload])
+      .select("id")
+      .single());
   }
 
   if (error) {
@@ -6347,6 +6656,7 @@ async function submitPost() {
   updateSelectedBgmLabel();
   updateSelectedMoodLabel();
   updateCharCount();
+  void requestPostAiAnalysis(insertedPost?.id);
   switchTab("home");
 }
 

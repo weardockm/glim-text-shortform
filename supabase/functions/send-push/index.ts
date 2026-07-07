@@ -361,22 +361,22 @@ function getPushCopy(
 ) {
   if (category === "likes") {
     return {
-      title: "마음이 머물렀어요",
-      body: `${actorNickname}님이 회원님의 글에 공감했어요.`,
+      title: actorNickname,
+      body: "회원님의 글에 좋아요를 눌렀습니다.",
     };
   }
   if (category === "comments") {
     return {
-      title: "새로운 생각이 도착했어요",
+      title: actorNickname,
       body: commentPreview
-        ? `${actorNickname}님 · “${commentPreview}”`
-        : `${actorNickname}님이 회원님의 글에 댓글을 남겼어요.`,
+        ? `댓글을 남겼습니다: “${commentPreview}”`
+        : "회원님의 글에 댓글을 남겼습니다.",
     };
   }
   if (category === "follows") {
     return {
-      title: "새로운 구독자가 생겼어요",
-      body: `${actorNickname}님이 회원님의 글 흐름을 구독하기 시작했어요.`,
+      title: actorNickname,
+      body: "회원님을 구독하기 시작했습니다.",
     };
   }
   return {

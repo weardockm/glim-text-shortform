@@ -82,6 +82,7 @@ function createContext() {
     reportComment() {},
     renderAvatarElement() {},
     getMoodOption: () => ({ label: "생각" }),
+    getPostAiTerms: () => [],
     openContextPostFeed() {},
     result: null,
   };
