@@ -89,6 +89,7 @@ function createContext() {
   vm.runInContext(
     [
       extractFunction("escapeHtml", "function setAppAlertVerification"),
+      extractFunction("formatEngagementCount", "function timeForToday"),
       extractFunction("createContextFeedPost", "function renderContextPostFeed"),
       extractFunction("createExploreUserResult", "function createExploreSearchPost"),
       extractFunction("createExploreSearchPost", "function renderExploreSearchLoading"),
@@ -115,6 +116,27 @@ function allTextAssignments(root) {
     ...[...root.childrenBySelector.values()].flatMap(allTextAssignments),
   ];
 }
+
+test("Given like counts, When engagement counts render, Then thousands and ten-thousands use Korean compact formatting", () => {
+  const context = createContext();
+  const cases = [
+    [0, "0"],
+    [999, "999"],
+    [1000, "1,000"],
+    [9999, "9,999"],
+    [10000, "1만"],
+    [10999, "1만"],
+    [11000, "1.1만"],
+    [11500, "1.1만"],
+    [99999, "9.9만"],
+  ];
+
+  for (const [input, expected] of cases) {
+    context.input = input;
+    vm.runInContext("result = formatEngagementCount(input)", context);
+    assert.equal(context.result, expected);
+  }
+});
 
 test("Given untrusted post text, When the production post renderer runs, Then payloads reach text sinks only", () => {
   for (const payload of payloads) {

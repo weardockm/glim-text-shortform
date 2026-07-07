@@ -320,6 +320,17 @@ const contextObserver = new IntersectionObserver(
 );
 
 // ✅ 날짜를 '방금 전', '몇 분 전' 등으로 포맷팅하는 함수 추가
+function formatEngagementCount(value) {
+  const count = Math.max(0, Math.floor(Number(value) || 0));
+  if (count >= 10000) {
+    const tenThousands = Math.floor(count / 1000) / 10;
+    return (Number.isInteger(tenThousands)
+      ? String(tenThousands)
+      : tenThousands.toFixed(1)) + "만";
+  }
+  return count.toLocaleString("en-US");
+}
+
 function timeForToday(value) {
   const today = new Date();
   const timeValue = new Date(value);
@@ -4410,9 +4421,7 @@ function createContextFeedPost(post) {
     likeIcon.style.fontVariationSettings = "'FILL' 1";
     likeIcon.style.color = "#ff3b30";
   }
-  likeButton.querySelector(".action-count").textContent = String(
-    post.likes_count || 0,
-  );
+  likeButton.querySelector(".action-count").textContent = formatEngagementCount(post.likes_count);
   likeButton.addEventListener("click", () =>
     incrementMetric(post.id, "likes_count", likeButton),
   );
@@ -4943,7 +4952,7 @@ function createExploreHotCard(
   likeIcon.setAttribute("aria-hidden", "true");
 
   const likeCount = document.createElement("span");
-  likeCount.innerText = post.likes_count || 0;
+  likeCount.innerText = formatEngagementCount(post.likes_count);
   likes.append(likeIcon, likeCount);
   footer.append(author, likes);
 
@@ -5354,7 +5363,7 @@ function createExploreSearchPost(post, index) {
   author.innerText = post.author || "익명";
   const mood = document.createElement("span");
   const moodOption = getMoodOption(post.mood);
-  mood.innerText = `${moodOption?.label || "감성"} · 좋아요 ${post.likes_count || 0}`;
+  mood.innerText = `${moodOption?.label || "감성"} · 좋아요 ${formatEngagementCount(post.likes_count)}`;
   meta.append(author, mood);
   button.append(content, meta);
   return button;
@@ -5526,7 +5535,7 @@ async function incrementMetric(postId, column, element) {
   if (isLiked) likedPostIds.add(postId);
   else likedPostIds.delete(postId);
 
-  countSpan.innerText = String(Math.max(0, Number(result?.total_count) || 0));
+  countSpan.innerText = formatEngagementCount(result?.total_count);
   icon.style.fontVariationSettings = isLiked ? "'FILL' 1" : "'FILL' 0";
   icon.style.color = isLiked ? "#ff3b30" : "#ccc";
   localStorage.removeItem(`liked_${currentUser.id}_${postId}`);
@@ -5657,9 +5666,7 @@ function createCommentElement(comment) {
   const likeIcon = likeButton.querySelector(".icon-like");
   likeIcon.style.fontVariationSettings = hasLiked ? "'FILL' 1" : "'FILL' 0";
   likeIcon.style.color = hasLiked ? "#ff3b30" : "#666";
-  likeButton.querySelector(".action-count").textContent = String(
-    comment.likes_count || 0,
-  );
+  likeButton.querySelector(".action-count").textContent = formatEngagementCount(comment.likes_count);
   likeButton.addEventListener("click", () =>
     toggleCommentLike(comment.id, likeButton),
   );
@@ -5722,7 +5729,7 @@ async function toggleCommentLike(commentId, element) {
   const isLiked = Boolean(result?.liked);
   if (isLiked) likedCommentIds.add(commentId);
   else likedCommentIds.delete(commentId);
-  countSpan.innerText = String(Math.max(0, Number(result?.total_count) || 0));
+  countSpan.innerText = formatEngagementCount(result?.total_count);
   icon.style.fontVariationSettings = isLiked ? "'FILL' 1" : "'FILL' 0";
   icon.style.color = isLiked ? "#ff3b30" : "#666";
   localStorage.removeItem(`comment_liked_${currentUser.id}_${commentId}`);
