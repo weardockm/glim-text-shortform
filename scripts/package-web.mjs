@@ -12,6 +12,7 @@ const runtimeFiles = [
 ];
 
 const runtimeDirectories = ["assets/fonts", "image"];
+const optionalRuntimeDirectories = [".well-known"];
 
 const forbiddenSegments = new Set([
   ".git",
@@ -78,6 +79,18 @@ for (const runtimeDirectory of runtimeDirectories) {
     throw new Error(`Runtime asset path is not a directory: ${runtimeDirectory}`);
   }
   copiedFiles.push(...(await copyRuntimeDirectory(runtimeDirectory)));
+}
+
+for (const runtimeDirectory of optionalRuntimeDirectories) {
+  try {
+    const info = await stat(path.join(rootDir, runtimeDirectory));
+    if (!info.isDirectory()) {
+      throw new Error(`Runtime asset path is not a directory: ${runtimeDirectory}`);
+    }
+    copiedFiles.push(...(await copyRuntimeDirectory(runtimeDirectory)));
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
 }
 
 copiedFiles.sort();

@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
+import path from "node:path";
 import process from "node:process";
 
 const productFiles = [
@@ -15,7 +16,9 @@ const toolingFiles = [
     .filter((file) => file.endsWith(".mjs"))
     .map((file) => `scripts/${file}`),
   "test/e2e/smoke.spec.js",
-  "test/unit/quality-foundation.test.js",
+  ...readdirSync(path.join("test", "unit"))
+    .filter((file) => file.endsWith(".js") || file.endsWith(".mjs"))
+    .map((file) => path.join("test", "unit", file)),
 ];
 
 for (const file of [...productFiles, ...toolingFiles]) {

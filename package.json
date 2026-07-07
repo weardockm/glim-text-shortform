@@ -10,7 +10,7 @@
   "scripts": {
     "check": "node scripts/check-syntax.mjs && node scripts/validate-render.mjs",
     "test": "npm run test:unit && npm run test:characterization && npm run test:security:web",
-    "test:unit": "node --test test/unit/quality-foundation.test.js",
+    "test:unit": "node --test test/unit/quality-foundation.test.js test/unit/native-packaging.test.mjs test/unit/render-contract.test.mjs test/unit/native-auth-links.test.mjs",
     "test:characterization": "node --test test/characterization/app-contracts.test.mjs test/security/dom-rendering.test.mjs test/security/dom-sink-inventory.test.mjs test/security/dom-sink-proof.test.mjs",
     "test:security:web": "node --test test/security/web-hardening.test.mjs",
     "test:edge:delete-account": "deno test --node-modules-dir=auto supabase/functions/delete-account/index.test.ts",
@@ -32,26 +32,27 @@
     "verify:foundation": "node scripts/verify-foundation.mjs",
     "qa:cleanup": "node scripts/cleanup-qa.mjs",
     "package:web": "node scripts/package-web.mjs",
-    "cap:sync": "npm run package:web && npx cap sync"
+    "cap:sync": "npm run package:web && npx cap sync",
+    "native:associations": "node scripts/generate-native-associations.mjs"
   },
   "devDependencies": {
     "@ast-grep/cli": "0.44.0",
     "@cyclonedx/cyclonedx-npm": "5.0.0",
     "@playwright/test": "1.61.1",
-    "@capacitor/android": "^8.0.0",
-    "@capacitor/cli": "^8.0.0",
-    "@capacitor/ios": "^8.0.0"
+    "@capacitor/android": "8.4.1",
+    "@capacitor/cli": "8.4.1",
+    "@capacitor/ios": "8.4.1"
   },
   "dependencies": {
-    "@capacitor/app": "^8.0.0",
-    "@capacitor/browser": "^8.0.0",
-    "@capacitor/core": "^8.0.0",
-    "@capacitor/haptics": "^8.0.0",
-    "@capacitor/keyboard": "^8.0.0",
-    "@capacitor/network": "^8.0.0",
-    "@capacitor/push-notifications": "^8.0.0",
-    "@capacitor/share": "^8.0.0",
-    "@capacitor/splash-screen": "^8.0.0",
-    "@capacitor/status-bar": "^8.0.0"
+    "@capacitor/app": "8.1.0",
+    "@capacitor/browser": "8.0.3",
+    "@capacitor/core": "8.4.1",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/keyboard": "8.0.5",
+    "@capacitor/network": "8.0.1",
+    "@capacitor/push-notifications": "8.1.1",
+    "@capacitor/share": "8.0.1",
+    "@capacitor/splash-screen": "8.0.1",
+    "@capacitor/status-bar": "8.0.2"
   }
 }

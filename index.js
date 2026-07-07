@@ -123,6 +123,11 @@ const DEFAULT_NOTIFICATION_PREFERENCES = Object.freeze({
 const NOTIFICATION_PREFERENCE_KEYS = new Set(
   Object.keys(DEFAULT_NOTIFICATION_PREFERENCES),
 );
+const PENDING_UGC_POLICY_ACCEPTANCE_STORAGE_KEY =
+  "glim_pending_ugc_policy_acceptance";
+const UGC_POLICY_LOGIN_CONSENT_SEEN_STORAGE_KEY =
+  "glim_ugc_policy_login_consent_seen";
+let promptedUgcPolicyUserId = null;
 const FIREBASE_WEB_SDK_VERSION = "12.15.0";
 const PUSH_FID_STORAGE_PREFIX = "glim_push_fid";
 const PUSH_ONBOARDING_STORAGE_PREFIX = "glim_push_onboarding_seen";
@@ -1412,6 +1417,7 @@ async function init() {
     currentUser.user_metadata.random_nickname = newNick;
   }
 
+  await acceptPendingUgcPolicyAfterAuth();
   await syncCurrentUserProfile();
   await refreshCurrentUserRole();
   await loadBlockedUsersState();
@@ -1437,6 +1443,7 @@ async function init() {
     await loadBlockedUsersState();
     await loadEngagementState();
     updateAuthUI();
+    await promptForUgcPolicyAcceptanceAfterSignIn();
     initializePushNotifications().catch((error) => {
       reportClientDiagnostic("push-init-auth-change", error);
     });
@@ -2907,6 +2914,13 @@ async function saveProfile() {
 }
 
 async function handleSocialLogin(provider) {
+  const requiresLoginConsent =
+    !hasSeenUgcPolicyLoginConsent() && !hasPendingUgcPolicyAcceptanceAfterOAuth();
+  if (requiresLoginConsent) {
+    if (!nativeConfirm(getUgcPolicyAgreementMessage())) return;
+    markPendingUgcPolicyAcceptanceAfterOAuth();
+  }
+
   const options = { redirectTo: getOAuthRedirectUrl() };
   if (isNativeRuntime()) {
     options.skipBrowserRedirect = true;
@@ -3005,6 +3019,7 @@ async function handleNativeAppUrl(url) {
     } = await client.auth.getSession();
     currentUser = session?.user || null;
     updateAuthUI();
+    await promptForUgcPolicyAcceptanceAfterSignIn();
     switchTab("profile");
   } catch (error) {
     reportClientDiagnostic("native-auth-callback", error);
@@ -5760,6 +5775,69 @@ function getContentSubmissionErrorMessage(error, fallbackMessage) {
   return fallbackMessage;
 }
 
+function getUgcPolicyAgreementMessage() {
+  return "글림 가입 및 글/댓글 작성을 위해 최신 이용약관과 커뮤니티 기준에 동의해야 합니다. 신고·차단·운영자 검토 정책을 확인했고 이에 동의하시겠습니까?";
+}
+
+function markPendingUgcPolicyAcceptanceAfterOAuth() {
+  localStorage.setItem(PENDING_UGC_POLICY_ACCEPTANCE_STORAGE_KEY, "1");
+}
+
+function clearPendingUgcPolicyAcceptanceAfterOAuth() {
+  localStorage.removeItem(PENDING_UGC_POLICY_ACCEPTANCE_STORAGE_KEY);
+}
+
+function hasPendingUgcPolicyAcceptanceAfterOAuth() {
+  return localStorage.getItem(PENDING_UGC_POLICY_ACCEPTANCE_STORAGE_KEY) === "1";
+}
+
+function markUgcPolicyLoginConsentSeen() {
+  localStorage.setItem(UGC_POLICY_LOGIN_CONSENT_SEEN_STORAGE_KEY, "1");
+}
+
+function hasSeenUgcPolicyLoginConsent() {
+  return localStorage.getItem(UGC_POLICY_LOGIN_CONSENT_SEEN_STORAGE_KEY) === "1";
+}
+
+async function acceptPendingUgcPolicyAfterAuth() {
+  if (!currentUser || !hasPendingUgcPolicyAcceptanceAfterOAuth()) return false;
+
+  const { error } = await client.rpc("accept_current_ugc_policy", {
+    acceptance_source: "client",
+  });
+  if (error) {
+    reportClientDiagnostic("ugc-policy-post-auth-accept", error);
+    showAppAlert("동의 상태를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.");
+    return false;
+  }
+
+  clearPendingUgcPolicyAcceptanceAfterOAuth();
+  markUgcPolicyLoginConsentSeen();
+  return true;
+}
+
+async function promptForUgcPolicyAcceptanceAfterSignIn() {
+  if (!currentUser) return;
+  if (await acceptPendingUgcPolicyAfterAuth()) return;
+  if (promptedUgcPolicyUserId === currentUser.id) return;
+
+  const { data, error } = await client.rpc("get_ugc_policy_acceptance_status");
+  if (error) {
+    reportClientDiagnostic("ugc-policy-post-auth-status", error);
+    return;
+  }
+  if (data?.[0]?.accepted) {
+    markUgcPolicyLoginConsentSeen();
+    return;
+  }
+
+  promptedUgcPolicyUserId = currentUser.id;
+  if (!nativeConfirm(getUgcPolicyAgreementMessage())) return;
+
+  markPendingUgcPolicyAcceptanceAfterOAuth();
+  await acceptPendingUgcPolicyAfterAuth();
+}
+
 async function ensureCurrentUgcPolicyAccepted() {
   const { data, error } = await client.rpc("get_ugc_policy_acceptance_status");
   if (error) {
@@ -5772,9 +5850,7 @@ async function ensureCurrentUgcPolicyAccepted() {
 
   if (data?.[0]?.accepted) return true;
 
-  const agreed = nativeConfirm(
-    "글과 댓글을 작성하려면 최신 이용약관과 커뮤니티 기준에 동의해야 합니다. 신고·차단·운영자 검토 정책을 확인했고 이에 동의하시겠습니까?",
-  );
+  const agreed = nativeConfirm(getUgcPolicyAgreementMessage());
   if (!agreed) {
     showAppAlert("동의 후 글과 댓글을 작성할 수 있습니다.");
     return false;
@@ -5788,6 +5864,7 @@ async function ensureCurrentUgcPolicyAccepted() {
     showAppAlert("동의 상태를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.");
     return false;
   }
+  markUgcPolicyLoginConsentSeen();
   return true;
 }
 
