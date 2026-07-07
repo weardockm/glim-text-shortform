@@ -26,6 +26,14 @@ function isMissingPostBgmTitleColumnError(error) {
   );
 }
 
+function isMissingProfileAppearanceColumnError(error) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    ["42703", "PGRST204"].includes(error?.code) &&
+    (message.includes("bio") || message.includes("theme"))
+  );
+}
+
 async function runVisibleContentQuery(buildQuery, diagnosticContext) {
   const result = await selectVisibleContent(buildQuery());
   if (!isMissingModerationStatusColumnError(result.error)) return result;
@@ -99,10 +107,28 @@ let shouldRemoveProfileAvatar = false;
 let editAvatarPreviewObjectUrl = null;
 let avatarCropSourceUrl = null;
 let avatarCropOriginalFile = null;
+let currentProfileBio = "";
+let currentProfileTheme = "default";
+let selectedProfileTheme = "default";
 const AVATAR_CROP_OUTPUT_SIZE = 512;
 const MAX_AVATAR_SOURCE_SIZE = 15 * 1024 * 1024;
 const DEFAULT_PROFILE_AVATAR_URL = "image/glimmer-profile-image.png";
 const PROFILE_AVATAR_STORAGE_PATH = "/storage/v1/object/public/avatars/";
+const PROFILE_BIO_MAX_LENGTH = 60;
+const PROFILE_THEMES = Object.freeze({
+  default: {
+    label: "기본",
+    viewClass: "profile-theme-default",
+  },
+  lofi_night: {
+    label: "로파이 나이트",
+    viewClass: "profile-theme-lofi-night",
+  },
+  vintage_analog: {
+    label: "빈티지 아날로그",
+    viewClass: "profile-theme-vintage-analog",
+  },
+});
 const POST_MIN_CHARACTERS = 5;
 const POST_MAX_CHARACTERS = 120;
 const POST_MAX_VISUAL_LINES = 12;
@@ -831,6 +857,58 @@ function escapeHtml(value) {
   });
 }
 
+function normalizeProfileBio(value) {
+  return Array.from(String(value ?? "").trim())
+    .slice(0, PROFILE_BIO_MAX_LENGTH)
+    .join("");
+}
+
+function getProfileBioLength(value) {
+  return Array.from(String(value ?? "").trim()).length;
+}
+
+function isValidProfileTheme(value) {
+  return Object.prototype.hasOwnProperty.call(PROFILE_THEMES, value);
+}
+
+function getSafeProfileTheme(value) {
+  return isValidProfileTheme(value) ? value : "default";
+}
+
+function renderProfileBio(elementId, value) {
+  const bio = normalizeProfileBio(value);
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  element.textContent = bio;
+  element.hidden = !bio;
+}
+
+function updateProfileThemePicker() {
+  document.querySelectorAll("[data-profile-theme-option]").forEach((option) => {
+    const isSelected = option.dataset.profileThemeOption === selectedProfileTheme;
+    option.classList.toggle("is-selected", isSelected);
+    option.setAttribute("aria-pressed", String(isSelected));
+    const check = option.querySelector(".profile-theme-option-check");
+    if (check) {
+      check.textContent = isSelected ? "check_circle" : "radio_button_unchecked";
+    }
+  });
+}
+
+function setSelectedProfileTheme(theme) {
+  selectedProfileTheme = getSafeProfileTheme(theme);
+  updateProfileThemePicker();
+}
+
+function applyViewedProfileTheme(theme) {
+  const view = document.getElementById("view-user-profile");
+  if (!view) return;
+  Object.values(PROFILE_THEMES).forEach((profileTheme) => {
+    view.classList.remove(profileTheme.viewClass);
+  });
+  view.classList.add(PROFILE_THEMES[getSafeProfileTheme(theme)].viewClass);
+}
+
 function runDeclarativeAction(action, element, event) {
   const fixedActions = {
     "applyAvatarCrop()": () => applyAvatarCrop(),
@@ -914,6 +992,11 @@ function runDeclarativeAction(action, element, event) {
       setNotificationPreference("follows", element.checked),
     "setNotificationPreference('likes', this.checked)": () =>
       setNotificationPreference("likes", element.checked),
+    "setProfileTheme('default')": () => setSelectedProfileTheme("default"),
+    "setProfileTheme('lofi_night')": () =>
+      setSelectedProfileTheme("lofi_night"),
+    "setProfileTheme('vintage_analog')": () =>
+      setSelectedProfileTheme("vintage_analog"),
     "setThemePreference('dark')": () => setThemePreference("dark"),
     "setThemePreference('light')": () => setThemePreference("light"),
     "setThemePreference('system')": () => setThemePreference("system"),
@@ -2063,6 +2146,8 @@ function getCurrentProfileData() {
     avatar_url: normalizePersistedAvatarUrl(
       currentUser.user_metadata?.avatar_url,
     ),
+    bio: normalizeProfileBio(currentProfileBio),
+    theme: getSafeProfileTheme(currentProfileTheme),
     updated_at: new Date().toISOString(),
   };
 }
@@ -2072,27 +2157,55 @@ async function syncCurrentUserProfile({ preserveStoredAvatar = true } = {}) {
   if (!profile) return;
 
   if (preserveStoredAvatar) {
-    const { data: storedProfile, error: readError } = await client
+    let { data: storedProfile, error: readError } = await client
       .from("profiles")
-      .select("avatar_url")
+      .select("avatar_url, bio, theme")
       .eq("id", currentUser.id)
       .maybeSingle();
+
+    if (isMissingProfileAppearanceColumnError(readError)) {
+      reportClientDiagnostic("profile-appearance-columns-missing", readError);
+      ({ data: storedProfile, error: readError } = await client
+        .from("profiles")
+        .select("avatar_url")
+        .eq("id", currentUser.id)
+        .maybeSingle());
+    }
 
     if (!readError && storedProfile) {
       profile.avatar_url = normalizePersistedAvatarUrl(
         storedProfile.avatar_url,
       );
+      profile.bio = normalizeProfileBio(storedProfile.bio);
+      profile.theme = getSafeProfileTheme(storedProfile.theme);
     }
   }
 
   profile.avatar_url = normalizePersistedAvatarUrl(profile.avatar_url);
+  profile.bio = normalizeProfileBio(profile.bio);
+  profile.theme = getSafeProfileTheme(profile.theme);
+  currentProfileBio = profile.bio;
+  currentProfileTheme = profile.theme;
   currentUser.user_metadata = {
     ...currentUser.user_metadata,
     avatar_url: profile.avatar_url,
   };
 
   const { error } = await client.from("profiles").upsert(profile);
-  if (error) reportClientDiagnostic("profile-sync", error);
+  if (!error) return;
+
+  if (isMissingProfileAppearanceColumnError(error)) {
+    const legacyProfile = { ...profile };
+    delete legacyProfile.bio;
+    delete legacyProfile.theme;
+    const { error: fallbackError } = await client
+      .from("profiles")
+      .upsert(legacyProfile);
+    if (fallbackError) reportClientDiagnostic("profile-sync", fallbackError);
+    return;
+  }
+
+  reportClientDiagnostic("profile-sync", error);
 }
 
 async function refreshCurrentUserRole() {
@@ -2832,13 +2945,24 @@ async function openUserProfile(userId) {
     '<div class="profile-list-empty">게시글을 불러오는 중...</div>';
   name.innerText = "불러오는 중...";
   id.innerText = "";
+  renderProfileBio("viewedProfileBio", "");
+  applyViewedProfileTheme("default");
   button.disabled = true;
 
-  const { data: profile, error } = await client
+  let { data: profile, error } = await client
     .from("profiles")
-    .select("id, nickname, custom_id, avatar_url")
+    .select("id, nickname, custom_id, avatar_url, bio, theme")
     .eq("id", userId)
     .single();
+
+  if (isMissingProfileAppearanceColumnError(error)) {
+    reportClientDiagnostic("viewed-profile-appearance-columns-missing", error);
+    ({ data: profile, error } = await client
+      .from("profiles")
+      .select("id, nickname, custom_id, avatar_url")
+      .eq("id", userId)
+      .single());
+  }
 
   if (error || !profile) {
     closeUserProfile();
@@ -2848,6 +2972,8 @@ async function openUserProfile(userId) {
 
   name.innerText = profile.nickname;
   id.innerText = `@${profile.custom_id || profile.nickname}`;
+  renderProfileBio("viewedProfileBio", profile.bio);
+  applyViewedProfileTheme(profile.theme);
   button.dataset.nickname = profile.nickname;
   contextPostTitles.set("viewed-profile", `${profile.nickname}님의 게시물`);
   setViewedProfileAvatar(profile.avatar_url);
@@ -2867,6 +2993,7 @@ async function openUserProfile(userId) {
 }
 
 function closeUserProfile() {
+  applyViewedProfileTheme("default");
   activateAppView(userProfileReturnViewId);
 }
 
@@ -3040,6 +3167,7 @@ function updateAuthUI() {
 
     document.getElementById("profileName").innerText = displayName;
     document.getElementById("profileId").innerText = `@${displayId}`;
+    renderProfileBio("profileBio", currentProfileBio);
     setOwnProfileAvatar(avatarUrl);
 
     runVisibleContentQuery(
@@ -3071,6 +3199,8 @@ function openEditProfile() {
   setEditProfileAvatarPreview(getCurrentAvatarUrl());
   document.getElementById("editNicknameInput").value = currentNick;
   document.getElementById("editIdInput").value = currentId;
+  document.getElementById("editBioInput").value = currentProfileBio;
+  setSelectedProfileTheme(currentProfileTheme);
   openSheet("editProfileSheet");
 }
 
@@ -3078,6 +3208,9 @@ async function saveProfile() {
   if (!currentUser) return;
   const newNick = document.getElementById("editNicknameInput").value.trim();
   const newId = document.getElementById("editIdInput").value.trim();
+  const rawBio = document.getElementById("editBioInput").value;
+  const newBio = normalizeProfileBio(rawBio);
+  const newTheme = getSafeProfileTheme(selectedProfileTheme);
   const saveButton = document.getElementById("editProfileSaveButton");
 
   if (!newNick || newNick.length < 2 || newNick.length > 40) {
@@ -3098,6 +3231,10 @@ async function saveProfile() {
     alert(
       "아이디는 3자 이상 40자 이하이며, 영문/숫자/밑줄(_)/마침표(.)만 사용할 수 있습니다.",
     );
+    return;
+  }
+  if (getProfileBioLength(rawBio) > PROFILE_BIO_MAX_LENGTH) {
+    alert("소개글은 60자 이하로 입력해주세요.");
     return;
   }
 
@@ -3135,6 +3272,8 @@ async function saveProfile() {
       custom_id: newId,
     };
     if (avatarChanged) currentUser.user_metadata.avatar_url = avatarUrl;
+    currentProfileBio = newBio;
+    currentProfileTheme = newTheme;
 
     await syncCurrentUserProfile({ preserveStoredAvatar: false });
 

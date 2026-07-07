@@ -10,7 +10,7 @@
   "scripts": {
     "check": "node scripts/check-syntax.mjs && node scripts/validate-render.mjs",
     "test": "npm run test:unit && npm run test:characterization && npm run test:security:web",
-    "test:unit": "node --test test/unit/quality-foundation.test.js test/unit/native-packaging.test.mjs test/unit/render-contract.test.mjs test/unit/native-auth-links.test.mjs",
+    "test:unit": "node --test test/unit/quality-foundation.test.js test/unit/native-packaging.test.mjs test/unit/render-contract.test.mjs test/unit/native-auth-links.test.mjs test/unit/profile-bio-theme.test.mjs",
     "test:characterization": "node --test test/characterization/app-contracts.test.mjs test/security/dom-rendering.test.mjs test/security/dom-sink-inventory.test.mjs test/security/dom-sink-proof.test.mjs",
     "test:security:web": "node --test test/security/web-hardening.test.mjs",
     "test:edge:delete-account": "deno test --node-modules-dir=auto supabase/functions/delete-account/index.test.ts",
