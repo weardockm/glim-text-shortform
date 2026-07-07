@@ -183,6 +183,7 @@ const postViewTimers = new Map();
 const FEED_RECOMMENDATION_CANDIDATE_LIMIT = 160;
 const AI_RECOMMENDATION_SCORES_KEY = "glim_ai_recommendation_scores";
 const AI_PROFILE_TABLE_MISSING_CODES = new Set(["42P01", "PGRST204", "PGRST205"]);
+const postAiAnalysisRequestIds = new Set();
 const RECOMMENDATION_AUTHOR_DIVERSITY_WINDOW = 2;
 const RECOMMENDATION_AUTHOR_SEARCH_WINDOW = 8;
 const RECOMMENDATION_AUTHOR_SWAP_SCORE_GAP = 18;
@@ -312,6 +313,13 @@ async function attachAiProfilesToPosts(posts) {
     return posts || [];
   }
   const profilesByPostId = new Map((data || []).map((profile) => [profile.post_id, profile]));
+  if (currentUser) {
+    for (const post of posts || []) {
+      if (!post?.id || profilesByPostId.has(post.id)) continue;
+      if (post.user_id !== currentUser.id) continue;
+      void requestPostAiAnalysis(post.id);
+    }
+  }
   return (posts || []).map((post) => ({
     ...post,
     ai_profile: profilesByPostId.get(post.id) || null,
@@ -3868,6 +3876,8 @@ async function syncPushNotificationPreferences(preferences) {
 
 async function requestPostAiAnalysis(postId) {
   if (!currentUser || !postId) return;
+  if (postAiAnalysisRequestIds.has(postId)) return;
+  postAiAnalysisRequestIds.add(postId);
   try {
     const {
       data: { session },
