@@ -92,6 +92,14 @@ function requireEnv(envGet: AnalyzePostDependencies["envGet"], name: string) {
   return value;
 }
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
+function getSafeAnalysisErrorMessage(error: unknown) {
+  return getErrorMessage(error).replace(/sk-[A-Za-z0-9_-]+/g, "[redacted]").slice(0, 220);
+}
+
 async function parseBody(request: Request) {
   try {
     const value = await request.json();
@@ -262,15 +270,40 @@ export async function handleAnalyzePostRequest(
 
     const { data: existing, error: existingError } = await admin
       .from("post_ai_profiles")
-      .select("post_id")
+      .select("post_id, analysis_status")
       .eq("post_id", postId)
       .maybeSingle();
     if (existingError) throw existingError;
-    if (existing && body.force !== true) return jsonResponse({ analyzed: true, cached: true }, 200, corsHeaders);
+    if (existing?.analysis_status === "ready" && body.force !== true) {
+      return jsonResponse({ analyzed: true, cached: true }, 200, corsHeaders);
+    }
 
     const content = asString(post.content).trim().slice(0, 1400);
     const mood = asString(post.mood).trim().slice(0, 40);
-    const analysis = await analyzePostWithOpenAi(dependencies.fetchImpl, openAiKey, model, content, mood);
+    const startedAt = dependencies.now().toISOString();
+    const { error: processingError } = await admin.from("post_ai_profiles").upsert({
+      post_id: postId,
+      model,
+      analysis_status: "processing",
+      error_message: null,
+      updated_at: startedAt,
+    }, { onConflict: "post_id" });
+    if (processingError) throw processingError;
+
+    let analysis: AnalysisResult;
+    try {
+      analysis = await analyzePostWithOpenAi(dependencies.fetchImpl, openAiKey, model, content, mood);
+    } catch (analysisError) {
+      const failedAt = dependencies.now().toISOString();
+      await admin.from("post_ai_profiles").upsert({
+        post_id: postId,
+        model,
+        analysis_status: "failed",
+        error_message: getSafeAnalysisErrorMessage(analysisError),
+        updated_at: failedAt,
+      }, { onConflict: "post_id" });
+      throw analysisError;
+    }
     const now = dependencies.now().toISOString();
 
     const { error: upsertError } = await admin.from("post_ai_profiles").upsert({
@@ -281,6 +314,8 @@ export async function handleAnalyzePostRequest(
       emotions: analysis.emotions,
       tone: analysis.tone,
       safety_labels: analysis.safety_labels,
+      analysis_status: "ready",
+      error_message: null,
       recommendation_vector: {
         topics: analysis.topics,
         emotions: analysis.emotions,
@@ -298,7 +333,7 @@ export async function handleAnalyzePostRequest(
   } catch (error) {
     console.error(error);
     return jsonResponse(
-      { error: error instanceof Error ? error.message : "Unknown error" },
+      { error: getErrorMessage(error) },
       500,
       corsHeaders,
     );

@@ -304,7 +304,7 @@ async function attachAiProfilesToPosts(posts) {
   if (ids.length === 0) return posts || [];
   const { data, error } = await client
     .from("post_ai_profiles")
-    .select("post_id, topics, emotions, tone, recommendation_vector")
+    .select("post_id, topics, emotions, tone, recommendation_vector, analysis_status")
     .in("post_id", ids);
   if (error) {
     if (!isMissingAiProfileTableError(error)) {
@@ -315,14 +315,17 @@ async function attachAiProfilesToPosts(posts) {
   const profilesByPostId = new Map((data || []).map((profile) => [profile.post_id, profile]));
   if (currentUser) {
     for (const post of posts || []) {
-      if (!post?.id || profilesByPostId.has(post.id)) continue;
-      if (post.user_id !== currentUser.id) continue;
+      if (!post?.id || post.user_id !== currentUser.id) continue;
+      const profile = profilesByPostId.get(post.id);
+      if (profile && profile.analysis_status !== "failed") continue;
       void requestPostAiAnalysis(post.id);
     }
   }
   return (posts || []).map((post) => ({
     ...post,
-    ai_profile: profilesByPostId.get(post.id) || null,
+    ai_profile: profilesByPostId.get(post.id)?.analysis_status === "ready"
+      ? profilesByPostId.get(post.id)
+      : null,
   }));
 }
 
