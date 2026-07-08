@@ -93,10 +93,15 @@ test("comment sheet uses the real source post instead of a cloned preview", asyn
   assert.match(html, /contenteditable="true"/u);
   assert.match(html, /data-placeholder="따뜻한 댓글을 남겨주세요."/u);
   assert.match(html, /\.comment-sheet\.is-input-focused/u);
+  assert.match(html, /\.post\.is-comment-source/u);
+  assert.match(html, /--comment-source-y/u);
   assert.doesNotMatch(js, /cloneNode\(true\)/u);
   assert.doesNotMatch(js, /comment-post-clone/u);
   assert.doesNotMatch(js, /renderCommentPostPreview/u);
   assert.doesNotMatch(js, /commentPostPreview/u);
+  assert.match(js, /function setCommentSourcePost/u);
+  assert.match(js, /function updateCommentSourcePostMotion/u);
+  assert.match(js, /function clearCommentSourcePost/u);
   assert.match(js, /function getCommentInputContent/u);
   assert.match(js, /function setupCommentInputFocusState/u);
   assert.match(js, /function setupCommentSheetDragInteractions/u);

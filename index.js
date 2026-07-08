@@ -88,12 +88,16 @@ const bookmarkedPostIds = new Set();
 const likedCommentIds = new Set();
 const ENGAGEMENT_MIGRATION_STORAGE_PREFIX = "glim_engagement_migrated";
 let currentPostIdForComment = null;
+let currentCommentPostElement = null;
 let isCommentSheetDragging = false;
 const COMMENT_SHEET_REST_HEIGHT_DVH = 55;
 const COMMENT_SHEET_FOCUSED_HEIGHT_DVH = 62;
 const COMMENT_SHEET_DRAG_RANGE_PX = 180;
 const COMMENT_SHEET_DRAG_SETTLE_PX = 54;
 const COMMENT_SHEET_DRAG_TRANSLATE_RATIO = 0.32;
+const COMMENT_SOURCE_FOCUS_LIFT_PX = 22;
+const COMMENT_SOURCE_DRAG_TRANSLATE_RATIO = 0.74;
+const COMMENT_SOURCE_FOCUSED_SCALE_DELTA = 0.035;
 let pendingReportTarget = null;
 let viewedProfileUserId = null;
 let viewedProfileIsFollowing = false;
@@ -6084,6 +6088,45 @@ async function toggleBookmark(postId, element) {
   }
 }
 
+function getCommentSourcePostElement(postId) {
+  if (!postId) return null;
+  const targetPostId = String(postId);
+  return [...document.querySelectorAll(".post")].find(
+    (element) => element.dataset.postId === targetPostId,
+  ) || null;
+}
+
+function clearCommentSourcePost() {
+  if (!currentCommentPostElement) return;
+  currentCommentPostElement.classList.remove(
+    "is-comment-source",
+    "is-comment-source-dragging",
+  );
+  currentCommentPostElement.style.removeProperty("--comment-source-y");
+  currentCommentPostElement.style.removeProperty("--comment-source-scale");
+  currentCommentPostElement = null;
+}
+
+function updateCommentSourcePostMotion(progress, dragDistance = 0) {
+  if (!currentCommentPostElement) return;
+  const nextProgress = clampCommentSheetProgress(progress);
+  const dragOffset = Math.max(0, dragDistance) * COMMENT_SHEET_DRAG_TRANSLATE_RATIO;
+  const sourceY = -COMMENT_SOURCE_FOCUS_LIFT_PX * nextProgress
+    + dragOffset * COMMENT_SOURCE_DRAG_TRANSLATE_RATIO;
+  const sourceScale = 1 - COMMENT_SOURCE_FOCUSED_SCALE_DELTA * nextProgress;
+
+  currentCommentPostElement.style.setProperty("--comment-source-y", String(sourceY) + "px");
+  currentCommentPostElement.style.setProperty("--comment-source-scale", String(sourceScale));
+}
+
+function setCommentSourcePost(postId) {
+  clearCommentSourcePost();
+  currentCommentPostElement = getCommentSourcePostElement(postId);
+  if (!currentCommentPostElement) return;
+  currentCommentPostElement.classList.add("is-comment-source");
+  updateCommentSourcePostMotion(0);
+}
+
 function getCommentInputContent() {
   return document.getElementById("commentInput")?.textContent?.trim() || "";
 }
@@ -6096,6 +6139,7 @@ function clearCommentInputContent() {
 function openSheet(id, postId = null) {
   if (id === "commentSheet") {
     currentPostIdForComment = postId;
+    setCommentSourcePost(postId);
     fetchComments(postId);
   }
   const sheet = document.getElementById(id);
@@ -6117,6 +6161,7 @@ function closeSheet(id) {
   if (id === "commentSheet") {
     settleCommentSheetFocus(false);
     document.getElementById("commentInput")?.blur();
+    clearCommentSourcePost();
     currentPostIdForComment = null;
   }
   if (id === "reportSheet") pendingReportTarget = null;
@@ -6135,12 +6180,14 @@ function applyCommentSheetFocusProgress(progress, dragDistance = 0) {
 
   sheet?.style.setProperty("--comment-sheet-height", String(nextHeight) + "dvh");
   sheet?.style.setProperty("--comment-sheet-drag", String(dragOffset) + "px");
+  updateCommentSourcePostMotion(nextProgress, dragDistance);
 }
 
 function setCommentSheetDragging(isDragging) {
   const sheet = document.getElementById("commentSheet");
   isCommentSheetDragging = isDragging;
   sheet?.classList.toggle("is-dragging", isDragging);
+  currentCommentPostElement?.classList.toggle("is-comment-source-dragging", isDragging);
 }
 
 function settleCommentSheetFocus(isFocused) {

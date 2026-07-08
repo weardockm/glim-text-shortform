@@ -168,7 +168,9 @@ test("keeps the real source post singular while the comment sheet is dragged", a
 
   await expect(page.locator("#commentPostPreview")).toHaveCount(0);
   await expect(page.locator(".comment-post-clone")).toHaveCount(0);
-  await expect(page.locator('.post[data-post-id="comment-preview-fixture"]')).toHaveCount(1);
+  const sourcePost = page.locator('.post[data-post-id="comment-preview-fixture"]');
+  await expect(sourcePost).toHaveCount(1);
+  await expect(sourcePost).toHaveClass(/is-comment-source/);
   await expect(page.locator("#commentSheet")).toHaveClass(/open/);
   await expect(page.locator("#commentList")).toContainText("기존 댓글");
 
@@ -179,11 +181,15 @@ test("keeps the real source post singular while the comment sheet is dragged", a
       sheetTop: sheet.top,
       sheetHeight: sheet.height,
       sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
+      sourceY: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
+      sourceScale: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
   });
   expect(layout.sourcePostCount).toBe(1);
   expect(layout.cloneCount).toBe(0);
+  expect(layout.sourceY).toBe(0);
+  expect(layout.sourceScale).toBe(1);
   expect(layout.sheetHeight / layout.viewportHeight).toBeGreaterThan(0.52);
   expect(layout.sheetHeight / layout.viewportHeight).toBeLessThan(0.58);
 
@@ -198,11 +204,15 @@ test("keeps the real source post singular while the comment sheet is dragged", a
       sheetTop: sheet.top,
       sheetHeight: sheet.height,
       sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
+      sourceY: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
+      sourceScale: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
   });
   expect(focusedLayout.sourcePostCount).toBe(1);
   expect(focusedLayout.cloneCount).toBe(0);
+  expect(focusedLayout.sourceY).toBeLessThan(layout.sourceY - 12);
+  expect(focusedLayout.sourceScale).toBeLessThan(1);
   expect(focusedLayout.sheetHeight).toBeGreaterThan(layout.sheetHeight + 12);
   expect(focusedLayout.sheetTop).toBeLessThan(layout.sheetTop - 12);
 
@@ -238,11 +248,15 @@ test("keeps the real source post singular while the comment sheet is dragged", a
       sheetHeight: box.height,
       dragOffset: parseFloat(sheet.style.getPropertyValue("--comment-sheet-drag")) || 0,
       sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
+      sourceY: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
+      sourceScale: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
   });
   expect(draggingLayout.sheetTop).toBeGreaterThan(focusedLayout.sheetTop + 20);
   expect(draggingLayout.dragOffset).toBeGreaterThan(20);
+  expect(draggingLayout.sourceY).toBeGreaterThan(focusedLayout.sourceY + 20);
+  expect(draggingLayout.sourceScale).toBeGreaterThanOrEqual(focusedLayout.sourceScale);
   expect(draggingLayout.sourcePostCount).toBe(1);
   expect(draggingLayout.cloneCount).toBe(0);
 
@@ -266,6 +280,8 @@ test("keeps the real source post singular while the comment sheet is dragged", a
       sheetTop: sheet.top,
       sheetHeight: sheet.height,
       sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
+      sourceY: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
+      sourceScale: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
   });
@@ -273,6 +289,8 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   expect(restoredLayout.sheetTop).toBeGreaterThan(focusedLayout.sheetTop + 12);
   expect(restoredLayout.sourcePostCount).toBe(1);
   expect(restoredLayout.cloneCount).toBe(0);
+  expect(restoredLayout.sourceY).toBe(0);
+  expect(restoredLayout.sourceScale).toBe(1);
   await expect(page.locator("#commentList")).toContainText("기존 댓글");
 });
 
