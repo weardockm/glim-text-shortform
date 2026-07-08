@@ -315,8 +315,10 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   });
   expect(layout.sourcePostCount).toBe(1);
   expect(layout.cloneCount).toBe(0);
-  expect(layout.sourceY).toBeLessThan(-layout.viewportHeight * 0.2);
+  expect(layout.sourceY).toBeLessThan(-layout.viewportHeight * 0.15);
+  expect(layout.sourceY).toBeGreaterThan(-layout.viewportHeight * 0.22);
   expect(layout.sourceScale).toBe(1);
+  expect(layout.sourceRect.center).toBeGreaterThan(layout.viewportHeight * 0.25);
   expect(layout.sourceRect.center).toBeLessThan(layout.sheetTop - 70);
   expect(layout.sheetHeight / layout.viewportHeight).toBeGreaterThan(0.48);
   expect(layout.sheetHeight / layout.viewportHeight).toBeLessThan(0.52);
@@ -400,13 +402,13 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   });
   expect(focusedLayout.sourcePostCount).toBe(1);
   expect(focusedLayout.cloneCount).toBe(0);
-  expect(focusedLayout.sourceY).toBeLessThan(layout.sourceY - 16);
+  expect(focusedLayout.sourceY).toBeLessThan(layout.sourceY - 12);
   expect(focusedLayout.sourceScale).toBeLessThan(1);
   expect(focusedLayout.sourceRect.center).toBeLessThan(layout.sourceRect.center - 10);
   expect(focusedLayout.sheetHeight).toBeGreaterThan(layout.sheetHeight + 12);
   expect(focusedLayout.sheetTop).toBeLessThan(layout.sheetTop - 12);
-  expect(focusedLayout.inputBottomGap).toBeGreaterThanOrEqual(7);
-  expect(focusedLayout.inputBottomGap).toBeLessThanOrEqual(18);
+  expect(focusedLayout.inputBottomGap).toBeGreaterThanOrEqual(5);
+  expect(focusedLayout.inputBottomGap).toBeLessThanOrEqual(16);
 
   const dragStart = await page.evaluate(() => {
     const input = document.getElementById("commentInput").getBoundingClientRect();

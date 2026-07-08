@@ -101,6 +101,7 @@ const COMMENT_SHEET_DRAG_RANGE_PX = 180;
 const COMMENT_SHEET_DRAG_SETTLE_PX = 54;
 const COMMENT_SHEET_DRAG_TRANSLATE_RATIO = 0.32;
 const COMMENT_SOURCE_FOCUSED_SCALE_DELTA = 0.035;
+const COMMENT_SOURCE_SHEET_LIFT_RATIO = 0.36;
 const COMMENT_SOURCE_SCROLL_PIN_DELAYS_MS = [40, 120, 240, 420, 620, 820];
 let pendingReportTarget = null;
 let viewedProfileUserId = null;
@@ -6185,7 +6186,7 @@ function updateCommentSourcePostMotion(progress, dragDistance = 0) {
   const sheetResizeFollowOffset = isFocusedSheetDrag
     ? Math.max(0, focusedSheetHeight - sheetHeight) / 2
     : 0;
-  const sourceY = -sheetHeight / 2 + dragOffset + sheetResizeFollowOffset;
+  const sourceY = -sheetHeight * COMMENT_SOURCE_SHEET_LIFT_RATIO + dragOffset + sheetResizeFollowOffset;
   const sourceScale = 1 - COMMENT_SOURCE_FOCUSED_SCALE_DELTA * nextProgress;
 
   currentCommentPostElement.style.setProperty("--comment-source-y", String(sourceY) + "px");
