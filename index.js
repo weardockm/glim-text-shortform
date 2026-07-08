@@ -89,14 +89,13 @@ const likedCommentIds = new Set();
 const ENGAGEMENT_MIGRATION_STORAGE_PREFIX = "glim_engagement_migrated";
 let currentPostIdForComment = null;
 let currentCommentPostElement = null;
+let pendingCommentSourceAnimationFrame = 0;
 let isCommentSheetDragging = false;
 const COMMENT_SHEET_REST_HEIGHT_DVH = 55;
 const COMMENT_SHEET_FOCUSED_HEIGHT_DVH = 62;
 const COMMENT_SHEET_DRAG_RANGE_PX = 180;
 const COMMENT_SHEET_DRAG_SETTLE_PX = 54;
 const COMMENT_SHEET_DRAG_TRANSLATE_RATIO = 0.32;
-const COMMENT_SOURCE_FOCUS_LIFT_PX = 22;
-const COMMENT_SOURCE_DRAG_TRANSLATE_RATIO = 0.74;
 const COMMENT_SOURCE_FOCUSED_SCALE_DELTA = 0.035;
 let pendingReportTarget = null;
 let viewedProfileUserId = null;
@@ -6097,6 +6096,10 @@ function getCommentSourcePostElement(postId) {
 }
 
 function clearCommentSourcePost() {
+  if (pendingCommentSourceAnimationFrame) {
+    cancelAnimationFrame(pendingCommentSourceAnimationFrame);
+    pendingCommentSourceAnimationFrame = 0;
+  }
   if (!currentCommentPostElement) return;
   currentCommentPostElement.classList.remove(
     "is-comment-source",
@@ -6111,8 +6114,13 @@ function updateCommentSourcePostMotion(progress, dragDistance = 0) {
   if (!currentCommentPostElement) return;
   const nextProgress = clampCommentSheetProgress(progress);
   const dragOffset = Math.max(0, dragDistance) * COMMENT_SHEET_DRAG_TRANSLATE_RATIO;
-  const sourceY = -COMMENT_SOURCE_FOCUS_LIFT_PX * nextProgress
-    + dragOffset * COMMENT_SOURCE_DRAG_TRANSLATE_RATIO;
+  const expectedSheetHeight = window.innerHeight
+    * (COMMENT_SHEET_REST_HEIGHT_DVH
+      + (COMMENT_SHEET_FOCUSED_HEIGHT_DVH - COMMENT_SHEET_REST_HEIGHT_DVH)
+        * nextProgress)
+    / 100;
+  const sheetHeight = Math.min(expectedSheetHeight, 640);
+  const sourceY = -Math.max(0, sheetHeight - dragOffset) / 2;
   const sourceScale = 1 - COMMENT_SOURCE_FOCUSED_SCALE_DELTA * nextProgress;
 
   currentCommentPostElement.style.setProperty("--comment-source-y", String(sourceY) + "px");
@@ -6124,7 +6132,12 @@ function setCommentSourcePost(postId) {
   currentCommentPostElement = getCommentSourcePostElement(postId);
   if (!currentCommentPostElement) return;
   currentCommentPostElement.classList.add("is-comment-source");
-  updateCommentSourcePostMotion(0);
+  currentCommentPostElement.style.setProperty("--comment-source-y", "0px");
+  currentCommentPostElement.style.setProperty("--comment-source-scale", "1");
+  pendingCommentSourceAnimationFrame = requestAnimationFrame(() => {
+    pendingCommentSourceAnimationFrame = 0;
+    updateCommentSourcePostMotion(0);
+  });
 }
 
 function getCommentInputContent() {

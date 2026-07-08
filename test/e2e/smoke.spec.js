@@ -149,11 +149,18 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   });
 
   await page.evaluate(() => {
-    const post = document.createElement("div");
-    post.className = "post";
-    post.dataset.postId = "comment-preview-fixture";
-    post.innerHTML = '<div class="text-content">댓글 시트에서 보여줄 원문입니다.</div><div class="author-info"><div class="author-name">미리보기 작성자</div></div><div class="side-actions"><div class="action-btn">작업</div></div>';
-    document.body.append(post);
+    const feed = document.getElementById("postFeed");
+    const post = createContextFeedPost({
+      id: "comment-preview-fixture",
+      user_id: "comment-author-fixture",
+      author: "미리보기 작성자",
+      content: "댓글 시트에서 보여줄 원문입니다.",
+      created_at: "2026-07-08T00:00:00Z",
+      likes_count: 0,
+      dislikes_count: 0,
+    });
+    feed.replaceChildren(post);
+    fitPostTextToViewport(post);
     window.__supabaseRows.comments = [{
       id: "comment-row-fixture",
       post_id: "comment-preview-fixture",
@@ -173,6 +180,7 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   await expect(sourcePost).toHaveClass(/is-comment-source/);
   await expect(page.locator("#commentSheet")).toHaveClass(/open/);
   await expect(page.locator("#commentList")).toContainText("기존 댓글");
+  await page.waitForTimeout(620);
 
   const layout = await page.evaluate(() => {
     const sheet = document.getElementById("commentSheet").getBoundingClientRect();
@@ -183,13 +191,18 @@ test("keeps the real source post singular while the comment sheet is dragged", a
       sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
       sourceY: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
       sourceScale: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
+      sourceRect: (() => {
+        const rect = document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
+        return rect ? { top: rect.top, bottom: rect.bottom, center: rect.top + rect.height / 2 } : null;
+      })(),
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
   });
   expect(layout.sourcePostCount).toBe(1);
   expect(layout.cloneCount).toBe(0);
-  expect(layout.sourceY).toBe(0);
+  expect(layout.sourceY).toBeLessThan(-layout.viewportHeight * 0.2);
   expect(layout.sourceScale).toBe(1);
+  expect(layout.sourceRect.center).toBeLessThan(layout.sheetTop - 70);
   expect(layout.sheetHeight / layout.viewportHeight).toBeGreaterThan(0.52);
   expect(layout.sheetHeight / layout.viewportHeight).toBeLessThan(0.58);
 
@@ -206,13 +219,18 @@ test("keeps the real source post singular while the comment sheet is dragged", a
       sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
       sourceY: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
       sourceScale: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
+      sourceRect: (() => {
+        const rect = document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
+        return rect ? { top: rect.top, bottom: rect.bottom, center: rect.top + rect.height / 2 } : null;
+      })(),
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
   });
   expect(focusedLayout.sourcePostCount).toBe(1);
   expect(focusedLayout.cloneCount).toBe(0);
-  expect(focusedLayout.sourceY).toBeLessThan(layout.sourceY - 12);
+  expect(focusedLayout.sourceY).toBeLessThan(layout.sourceY - 16);
   expect(focusedLayout.sourceScale).toBeLessThan(1);
+  expect(focusedLayout.sourceRect.center).toBeLessThan(layout.sourceRect.center - 10);
   expect(focusedLayout.sheetHeight).toBeGreaterThan(layout.sheetHeight + 12);
   expect(focusedLayout.sheetTop).toBeLessThan(layout.sheetTop - 12);
 
@@ -250,13 +268,18 @@ test("keeps the real source post singular while the comment sheet is dragged", a
       sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
       sourceY: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
       sourceScale: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
+      sourceRect: (() => {
+        const rect = document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
+        return rect ? { top: rect.top, bottom: rect.bottom, center: rect.top + rect.height / 2 } : null;
+      })(),
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
   });
   expect(draggingLayout.sheetTop).toBeGreaterThan(focusedLayout.sheetTop + 20);
   expect(draggingLayout.dragOffset).toBeGreaterThan(20);
-  expect(draggingLayout.sourceY).toBeGreaterThan(focusedLayout.sourceY + 20);
+  expect(draggingLayout.sourceY).toBeGreaterThan(focusedLayout.sourceY + 10);
   expect(draggingLayout.sourceScale).toBeGreaterThanOrEqual(focusedLayout.sourceScale);
+  expect(draggingLayout.sourceRect.center).toBeGreaterThan(focusedLayout.sourceRect.center + 10);
   expect(draggingLayout.sourcePostCount).toBe(1);
   expect(draggingLayout.cloneCount).toBe(0);
 
@@ -282,6 +305,10 @@ test("keeps the real source post singular while the comment sheet is dragged", a
       sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
       sourceY: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
       sourceScale: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
+      sourceRect: (() => {
+        const rect = document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
+        return rect ? { top: rect.top, bottom: rect.bottom, center: rect.top + rect.height / 2 } : null;
+      })(),
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
   });
@@ -289,8 +316,9 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   expect(restoredLayout.sheetTop).toBeGreaterThan(focusedLayout.sheetTop + 12);
   expect(restoredLayout.sourcePostCount).toBe(1);
   expect(restoredLayout.cloneCount).toBe(0);
-  expect(restoredLayout.sourceY).toBe(0);
+  expect(Math.abs(restoredLayout.sourceY - layout.sourceY)).toBeLessThan(2);
   expect(restoredLayout.sourceScale).toBe(1);
+  expect(Math.abs(restoredLayout.sourceRect.center - layout.sourceRect.center)).toBeLessThan(2);
   await expect(page.locator("#commentList")).toContainText("기존 댓글");
 });
 
