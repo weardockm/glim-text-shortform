@@ -101,7 +101,7 @@ const COMMENT_SHEET_DRAG_RANGE_PX = 180;
 const COMMENT_SHEET_DRAG_SETTLE_PX = 54;
 const COMMENT_SHEET_DRAG_TRANSLATE_RATIO = 0.32;
 const COMMENT_SOURCE_FOCUSED_SCALE_DELTA = 0.035;
-const COMMENT_SOURCE_SHEET_LIFT_RATIO = 0.36;
+const COMMENT_SOURCE_SHEET_LIFT_RATIO = 0.24;
 const COMMENT_SOURCE_SCROLL_PIN_DELAYS_MS = [40, 120, 240, 420, 620, 820];
 let pendingReportTarget = null;
 let viewedProfileUserId = null;
@@ -6176,7 +6176,14 @@ function updateCommentSourcePostMotion(progress, dragDistance = 0) {
       + (COMMENT_SHEET_FOCUSED_HEIGHT_DVH - COMMENT_SHEET_REST_HEIGHT_DVH)
         * nextProgress)
     / 100;
-  const sheetHeight = Math.min(expectedSheetHeight, 640);
+  const sheet = document.getElementById("commentSheet");
+  const renderedSheetHeight = sheet?.classList.contains("open")
+    ? sheet.getBoundingClientRect().height
+    : 0;
+  const activeSheetHeight = dragDistance > 0
+    ? (renderedSheetHeight || expectedSheetHeight)
+    : Math.max(renderedSheetHeight, expectedSheetHeight);
+  const sheetHeight = Math.min(activeSheetHeight, 640);
   const focusedSheetHeight = Math.min(
     viewportHeight * COMMENT_SHEET_FOCUSED_HEIGHT_DVH / 100,
     640,

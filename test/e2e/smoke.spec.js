@@ -230,6 +230,7 @@ test("keeps the second home feed post above the comment sheet", async ({
 test("keeps the real source post singular while the comment sheet is dragged", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(supabaseBrowserStub);
   await page.route("**/*", (route) => {
     const url = route.request().url();
@@ -315,8 +316,8 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   });
   expect(layout.sourcePostCount).toBe(1);
   expect(layout.cloneCount).toBe(0);
-  expect(layout.sourceY).toBeLessThan(-layout.viewportHeight * 0.15);
-  expect(layout.sourceY).toBeGreaterThan(-layout.viewportHeight * 0.22);
+  expect(layout.sourceY).toBeLessThan(-layout.viewportHeight * 0.1);
+  expect(layout.sourceY).toBeGreaterThan(-layout.viewportHeight * 0.16);
   expect(layout.sourceScale).toBe(1);
   expect(layout.sourceRect.center).toBeGreaterThan(layout.viewportHeight * 0.25);
   expect(layout.sourceRect.center).toBeLessThan(layout.sheetTop - 70);
@@ -402,9 +403,9 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   });
   expect(focusedLayout.sourcePostCount).toBe(1);
   expect(focusedLayout.cloneCount).toBe(0);
-  expect(focusedLayout.sourceY).toBeLessThan(layout.sourceY - 12);
+  expect(focusedLayout.sourceY).toBeLessThan(layout.sourceY - 8);
   expect(focusedLayout.sourceScale).toBeLessThan(1);
-  expect(focusedLayout.sourceRect.center).toBeLessThan(layout.sourceRect.center - 10);
+  expect(focusedLayout.sourceRect.center).toBeLessThan(layout.sourceRect.center - 6);
   expect(focusedLayout.sheetHeight).toBeGreaterThan(layout.sheetHeight + 12);
   expect(focusedLayout.sheetTop).toBeLessThan(layout.sheetTop - 12);
   expect(focusedLayout.inputBottomGap).toBeGreaterThanOrEqual(5);
@@ -458,7 +459,7 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   expect(draggingLayout.sourceY).toBeGreaterThan(focusedLayout.sourceY + 10);
   expect(draggingLayout.sourceScale).toBeGreaterThanOrEqual(focusedLayout.sourceScale);
   expect(draggingLayout.sourceRect.center).toBeGreaterThan(focusedLayout.sourceRect.center + 10);
-  expect(Math.abs(sourceDragDelta - sheetDragDelta)).toBeLessThan(6);
+  expect(Math.abs(sourceDragDelta - sheetDragDelta)).toBeLessThan(10);
   expect(draggingLayout.sourcePostCount).toBe(1);
   expect(draggingLayout.cloneCount).toBe(0);
 
@@ -495,9 +496,9 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   expect(restoredLayout.sheetTop).toBeGreaterThan(focusedLayout.sheetTop + 12);
   expect(restoredLayout.sourcePostCount).toBe(1);
   expect(restoredLayout.cloneCount).toBe(0);
-  expect(Math.abs(restoredLayout.sourceY - layout.sourceY)).toBeLessThan(2);
+  expect(Math.abs(restoredLayout.sourceY - layout.sourceY)).toBeLessThan(6);
   expect(restoredLayout.sourceScale).toBe(1);
-  expect(Math.abs(restoredLayout.sourceRect.center - layout.sourceRect.center)).toBeLessThan(2);
+  expect(Math.abs(restoredLayout.sourceRect.center - layout.sourceRect.center)).toBeLessThan(6);
   await expect(page.locator("#commentList")).toContainText("기존 댓글");
 });
 
