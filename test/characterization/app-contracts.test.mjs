@@ -106,7 +106,7 @@ test("Given moderated content, When public feeds and comments are fetched, Then 
   );
   assert.match(
     indexSource,
-    /async function runVisibleContentQuery\(buildQuery, diagnosticContext\)[\s\S]*?selectVisibleContent\(buildQuery\(\)\)[\s\S]*?isMissingModerationStatusColumnError\(result\.error\)[\s\S]*?return buildQuery\(\)/,
+    /async function runVisibleContentQuery\([\s\S]*?buildQuery,[\s\S]*?diagnosticContext,[\s\S]*?finalizeQuery = \(query\) => query,[\s\S]*?finalizeQuery\(selectVisibleContent\(buildQuery\(\)\)\)[\s\S]*?isMissingModerationStatusColumnError\(result\.error\)[\s\S]*?return finalizeQuery\(buildQuery\(\)\)/,
   );
   assert.match(
     indexSource,

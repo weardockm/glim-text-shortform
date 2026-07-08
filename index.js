@@ -34,15 +34,19 @@ function isMissingProfileAppearanceColumnError(error) {
   );
 }
 
-async function runVisibleContentQuery(buildQuery, diagnosticContext) {
-  const result = await selectVisibleContent(buildQuery());
+async function runVisibleContentQuery(
+  buildQuery,
+  diagnosticContext,
+  finalizeQuery = (query) => query,
+) {
+  const result = await finalizeQuery(selectVisibleContent(buildQuery()));
   if (!isMissingModerationStatusColumnError(result.error)) return result;
 
   reportClientDiagnostic(
     `${diagnosticContext}-moderation-status-missing`,
     result.error,
   );
-  return buildQuery();
+  return finalizeQuery(buildQuery());
 }
 
 function reportClientDiagnostic(context, detail = null) {
@@ -107,6 +111,8 @@ let shouldRemoveProfileAvatar = false;
 let editAvatarPreviewObjectUrl = null;
 let avatarCropSourceUrl = null;
 let avatarCropOriginalFile = null;
+let currentProfileNickname = "";
+let currentProfileCustomId = "";
 let currentProfileBio = "";
 let currentProfileTheme = "default";
 let selectedProfileTheme = "default";
@@ -120,15 +126,12 @@ const PROFILE_THEMES = Object.freeze({
     label: "기본",
     viewClass: "profile-theme-default",
   },
-  lofi_night: {
-    label: "로파이 나이트",
-    viewClass: "profile-theme-lofi-night",
-  },
-  vintage_analog: {
-    label: "빈티지 아날로그",
-    viewClass: "profile-theme-vintage-analog",
-  },
 });
+const PROFILE_THEME_VIEW_CLASSES = Object.freeze([
+  "profile-theme-default",
+  "profile-theme-lofi-night",
+  "profile-theme-vintage-analog",
+]);
 const POST_MIN_CHARACTERS = 5;
 const POST_MAX_CHARACTERS = 120;
 const POST_MAX_VISUAL_LINES = 12;
@@ -875,6 +878,35 @@ function getSafeProfileTheme(value) {
   return isValidProfileTheme(value) ? value : "default";
 }
 
+function resetCurrentProfileState() {
+  currentProfileNickname = "";
+  currentProfileCustomId = "";
+  currentProfileBio = "";
+  currentProfileTheme = "default";
+  selectedProfileTheme = "default";
+}
+
+function getCurrentEmailLocalPart() {
+  return currentUser?.email?.split("@")[0] || "";
+}
+
+function getCurrentAuthorNickname() {
+  return (
+    currentProfileNickname ||
+    currentUser?.user_metadata?.random_nickname ||
+    getCurrentEmailLocalPart() ||
+    "익명"
+  );
+}
+
+function getCurrentAuthorCustomId() {
+  return (
+    currentProfileCustomId ||
+    currentUser?.user_metadata?.custom_id ||
+    getCurrentEmailLocalPart()
+  );
+}
+
 function renderProfileBio(elementId, value) {
   const bio = normalizeProfileBio(value);
   const element = document.getElementById(elementId);
@@ -900,13 +932,25 @@ function setSelectedProfileTheme(theme) {
   updateProfileThemePicker();
 }
 
-function applyViewedProfileTheme(theme) {
-  const view = document.getElementById("view-user-profile");
+function applyProfileThemeToView(viewId, theme) {
+  const view = document.getElementById(viewId);
   if (!view) return;
-  Object.values(PROFILE_THEMES).forEach((profileTheme) => {
-    view.classList.remove(profileTheme.viewClass);
+  PROFILE_THEME_VIEW_CLASSES.forEach((viewClass) => {
+    view.classList.remove(viewClass);
   });
   view.classList.add(PROFILE_THEMES[getSafeProfileTheme(theme)].viewClass);
+}
+
+function applyOwnProfileTheme(theme) {
+  applyProfileThemeToView("view-profile", theme);
+}
+
+function applyViewedProfileTheme(theme) {
+  applyProfileThemeToView("view-user-profile", theme);
+}
+
+function prepareSwipeBackUnderlay(previousView) {
+  if (previousView?.id === "view-profile") updateAuthUI();
 }
 
 function runDeclarativeAction(action, element, event) {
@@ -993,10 +1037,6 @@ function runDeclarativeAction(action, element, event) {
     "setNotificationPreference('likes', this.checked)": () =>
       setNotificationPreference("likes", element.checked),
     "setProfileTheme('default')": () => setSelectedProfileTheme("default"),
-    "setProfileTheme('lofi_night')": () =>
-      setSelectedProfileTheme("lofi_night"),
-    "setProfileTheme('vintage_analog')": () =>
-      setSelectedProfileTheme("vintage_analog"),
     "setThemePreference('dark')": () => setThemePreference("dark"),
     "setThemePreference('light')": () => setThemePreference("light"),
     "setThemePreference('system')": () => setThemePreference("system"),
@@ -1736,12 +1776,14 @@ async function init() {
   setupAppAlert();
   setupBgmAudioUnlock();
   setupAccountDeleteRequestForm();
+  setupCommentInputFocusState();
   await setupNativeDeepLinks();
 
   const {
     data: { session },
   } = await client.auth.getSession();
   currentUser = session?.user || null;
+  if (!currentUser) resetCurrentProfileState();
 
   if (currentUser && !currentUser.user_metadata?.random_nickname) {
     const newNick = generateRandomNickname();
@@ -1765,6 +1807,7 @@ async function init() {
 
   client.auth.onAuthStateChange(async (_event, session) => {
     currentUser = session?.user || null;
+    resetCurrentProfileState();
     if (currentUser && !currentUser.user_metadata?.random_nickname) {
       const newNick = generateRandomNickname();
       await client.auth.updateUser({ data: { random_nickname: newNick } });
@@ -2138,11 +2181,8 @@ function getCurrentProfileData() {
 
   return {
     id: currentUser.id,
-    nickname:
-      currentUser.user_metadata?.random_nickname ||
-      currentUser.email.split("@")[0],
-    custom_id:
-      currentUser.user_metadata?.custom_id || currentUser.email.split("@")[0],
+    nickname: getCurrentAuthorNickname(),
+    custom_id: getCurrentAuthorCustomId(),
     avatar_url: normalizePersistedAvatarUrl(
       currentUser.user_metadata?.avatar_url,
     ),
@@ -2154,12 +2194,15 @@ function getCurrentProfileData() {
 
 async function syncCurrentUserProfile({ preserveStoredAvatar = true } = {}) {
   const profile = getCurrentProfileData();
-  if (!profile) return;
+  if (!profile) {
+    resetCurrentProfileState();
+    return;
+  }
 
   if (preserveStoredAvatar) {
     let { data: storedProfile, error: readError } = await client
       .from("profiles")
-      .select("avatar_url, bio, theme")
+      .select("nickname, custom_id, avatar_url, bio, theme")
       .eq("id", currentUser.id)
       .maybeSingle();
 
@@ -2167,12 +2210,14 @@ async function syncCurrentUserProfile({ preserveStoredAvatar = true } = {}) {
       reportClientDiagnostic("profile-appearance-columns-missing", readError);
       ({ data: storedProfile, error: readError } = await client
         .from("profiles")
-        .select("avatar_url")
+        .select("nickname, custom_id, avatar_url")
         .eq("id", currentUser.id)
         .maybeSingle());
     }
 
     if (!readError && storedProfile) {
+      profile.nickname = storedProfile.nickname || profile.nickname;
+      profile.custom_id = storedProfile.custom_id || profile.custom_id;
       profile.avatar_url = normalizePersistedAvatarUrl(
         storedProfile.avatar_url,
       );
@@ -2181,13 +2226,19 @@ async function syncCurrentUserProfile({ preserveStoredAvatar = true } = {}) {
     }
   }
 
+  profile.nickname = String(profile.nickname || getCurrentAuthorNickname());
+  profile.custom_id = String(profile.custom_id || getCurrentAuthorCustomId());
   profile.avatar_url = normalizePersistedAvatarUrl(profile.avatar_url);
   profile.bio = normalizeProfileBio(profile.bio);
   profile.theme = getSafeProfileTheme(profile.theme);
+  currentProfileNickname = profile.nickname;
+  currentProfileCustomId = profile.custom_id;
   currentProfileBio = profile.bio;
   currentProfileTheme = profile.theme;
   currentUser.user_metadata = {
     ...currentUser.user_metadata,
+    random_nickname: profile.nickname,
+    custom_id: profile.custom_id,
     avatar_url: profile.avatar_url,
   };
 
@@ -3158,16 +3209,14 @@ function updateAuthUI() {
     authContainer.style.display = "none";
     profileContainer.style.display = "block";
 
-    const displayName =
-      currentUser.user_metadata?.random_nickname ||
-      currentUser.email.split("@")[0];
-    const displayId =
-      currentUser.user_metadata?.custom_id || currentUser.email.split("@")[0];
+    const displayName = getCurrentAuthorNickname();
+    const displayId = getCurrentAuthorCustomId();
     const avatarUrl = getCurrentAvatarUrl();
 
     document.getElementById("profileName").innerText = displayName;
     document.getElementById("profileId").innerText = `@${displayId}`;
     renderProfileBio("profileBio", currentProfileBio);
+    applyOwnProfileTheme(currentProfileTheme);
     setOwnProfileAvatar(avatarUrl);
 
     runVisibleContentQuery(
@@ -3184,16 +3233,15 @@ function updateAuthUI() {
   } else {
     authContainer.style.display = "block";
     profileContainer.style.display = "none";
+    renderProfileBio("profileBio", "");
+    applyOwnProfileTheme("default");
   }
 }
 
 function openEditProfile() {
   if (!currentUser) return;
-  const currentNick =
-    currentUser.user_metadata?.random_nickname ||
-    currentUser.email.split("@")[0];
-  const currentId =
-    currentUser.user_metadata?.custom_id || currentUser.email.split("@")[0];
+  const currentNick = getCurrentAuthorNickname();
+  const currentId = getCurrentAuthorCustomId();
 
   resetEditProfileAvatarState();
   setEditProfileAvatarPreview(getCurrentAvatarUrl());
@@ -3210,7 +3258,7 @@ async function saveProfile() {
   const newId = document.getElementById("editIdInput").value.trim();
   const rawBio = document.getElementById("editBioInput").value;
   const newBio = normalizeProfileBio(rawBio);
-  const newTheme = getSafeProfileTheme(selectedProfileTheme);
+  const newTheme = "default";
   const saveButton = document.getElementById("editProfileSaveButton");
 
   if (!newNick || newNick.length < 2 || newNick.length > 40) {
@@ -3238,9 +3286,7 @@ async function saveProfile() {
     return;
   }
 
-  const oldNick =
-    currentUser.user_metadata?.random_nickname ||
-    currentUser.email.split("@")[0];
+  const oldNick = getCurrentAuthorNickname();
 
   const avatarChanged = selectedProfileAvatarFile || shouldRemoveProfileAvatar;
   let avatarUrl = getCurrentAvatarUrl();
@@ -3272,6 +3318,8 @@ async function saveProfile() {
       custom_id: newId,
     };
     if (avatarChanged) currentUser.user_metadata.avatar_url = avatarUrl;
+    currentProfileNickname = newNick;
+    currentProfileCustomId = newId;
     currentProfileBio = newBio;
     currentProfileTheme = newTheme;
 
@@ -4954,6 +5002,7 @@ function addInteractiveSwipeBack(
       if (!isDragging) {
         previousView = document.getElementById(getPreviousViewId());
         if (!previousView || previousView === view) return;
+        prepareSwipeBackUnderlay(previousView);
         isDragging = true;
         view.classList.add("swipe-back-current");
         previousView.classList.add("swipe-back-underlay");
@@ -5896,17 +5945,14 @@ async function incrementMetric(postId, column, element) {
       client
         .from("posts")
         .select("author, user_id")
-        .eq("id", postId)
-        .maybeSingle(),
+        .eq("id", postId),
     "reaction-post-load",
+    (query) => query.maybeSingle(),
   );
   if (postError || !postData?.user_id || postData.user_id === currentUser.id)
     return;
 
-  const myNickname =
-    currentUser.user_metadata?.random_nickname ||
-    currentUser.email?.split("@")[0] ||
-    "";
+  const myNickname = getCurrentAuthorNickname();
   const { error: notificationError } = await client
     .from("notifications")
     .insert([
@@ -5962,13 +6008,39 @@ async function toggleBookmark(postId, element) {
   }
 }
 
+function getCommentPostPreviewData(postId) {
+  if (!postId) return null;
+  const targetPostId = String(postId);
+  const postElement = [...document.querySelectorAll(".post")].find(
+    (element) => element.dataset.postId === targetPostId,
+  );
+  if (!postElement) return null;
+  return {
+    author: postElement.querySelector(".author-name")?.textContent?.trim() || "글림",
+    content: postElement.querySelector(".text-content")?.textContent?.trim() || "",
+  };
+}
+
+function renderCommentPostPreview(postId) {
+  const preview = document.getElementById("commentPostPreview");
+  const authorElement = document.getElementById("commentPostPreviewAuthor");
+  const contentElement = document.getElementById("commentPostPreviewContent");
+  if (!preview || !authorElement || !contentElement) return;
+
+  const post = getCommentPostPreviewData(postId);
+  preview.hidden = !post?.content;
+  authorElement.textContent = post?.author || "";
+  contentElement.textContent = post?.content || "";
+}
+
 function openSheet(id, postId = null) {
   if (id === "commentSheet") {
     currentPostIdForComment = postId;
+    renderCommentPostPreview(postId);
     fetchComments(postId);
   }
   const sheet = document.getElementById(id);
-  const backdrop = document.getElementById(`${id}Backdrop`);
+  const backdrop = document.getElementById(id + "Backdrop");
   sheet.style.transition = "bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1)";
   sheet.classList.add("open");
   backdrop?.classList.add("open");
@@ -5981,7 +6053,28 @@ function closeSheet(id) {
   sheet.style.transform = "";
   backdrop?.classList.remove("open");
   if (id === "editProfileSheet") resetEditProfileAvatarState();
+  if (id === "commentSheet") {
+    sheet.classList.remove("is-input-focused");
+    document.getElementById("commentInput")?.blur();
+    currentPostIdForComment = null;
+  }
   if (id === "reportSheet") pendingReportTarget = null;
+}
+
+function setupCommentInputFocusState() {
+  const sheet = document.getElementById("commentSheet");
+  const input = document.getElementById("commentInput");
+  if (!sheet || !input) return;
+
+  input.addEventListener("focus", () => {
+    sheet.classList.add("is-input-focused");
+    requestAnimationFrame(() => {
+      document.getElementById("commentList")?.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  });
+  input.addEventListener("blur", () => {
+    sheet.classList.remove("is-input-focused");
+  });
 }
 
 function createCommentElement(comment, postOwnerId = null) {
@@ -6093,9 +6186,9 @@ async function fetchComments(postId) {
       () => client
         .from("posts")
         .select("user_id")
-        .eq("id", postId)
-        .single(),
+        .eq("id", postId),
       "comments-post-owner-load",
+      (query) => query.single(),
     ),
   ]);
 
@@ -6420,10 +6513,8 @@ async function submitComment() {
   const content = document.getElementById("commentInput").value.trim();
   if (!content) return;
 
-  // ✅ 확실하게 본인이 설정한 닉네임만 들어가도록 처리
-  const myNickname =
-    currentUser.user_metadata?.random_nickname ||
-    currentUser.email.split("@")[0];
+  // RLS는 profiles.nickname을 작성자 계약으로 검증하므로 DB 기준 닉네임을 사용합니다.
+  const myNickname = getCurrentAuthorNickname();
 
   const { error } = await client.from("comments").insert([
     {
@@ -6443,9 +6534,9 @@ async function submitComment() {
         client
           .from("posts")
           .select("author, user_id")
-          .eq("id", currentPostIdForComment)
-          .single(),
+          .eq("id", currentPostIdForComment),
       "comment-post-load",
+      (query) => query.single(),
     );
 
     if (postData?.user_id && postData.user_id !== currentUser.id) {
@@ -6521,9 +6612,9 @@ async function openNotificationPost(postId, notificationType = "") {
       client
         .from("posts")
         .select("*")
-        .eq("id", postId)
-        .maybeSingle(),
+        .eq("id", postId),
     "notification-post-load",
+    (query) => query.maybeSingle(),
   );
   if (error || !post) {
     showAppAlert("삭제되었거나 더 이상 볼 수 없는 글입니다.");
@@ -6763,9 +6854,7 @@ async function submitPost() {
   }
   if (!mood) return alert("글의 감성 온도를 선택해주세요."); // ✅ 감성 선택 필수 확인
 
-  const authorNickname =
-    currentUser.user_metadata?.random_nickname ||
-    currentUser.email.split("@")[0];
+  const authorNickname = getCurrentAuthorNickname();
 
   const postPayload = {
     content: content,

@@ -114,6 +114,9 @@ export const supabaseBrowserStub = `
       }
       if (name === "is_moderator") return { data: adminFixture, error: null };
       if (name === "moderate_report") return { data: true, error: null };
+      if (name === "get_ugc_policy_acceptance_status") {
+        return { data: [{ accepted: window.__ugcAccepted !== false }], error: null };
+      }
       return { data: false, error: null };
     },
     functions: { invoke: async () => ({ data: {}, error: null }) },
