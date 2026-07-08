@@ -318,8 +318,8 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   expect(layout.sourceY).toBeLessThan(-layout.viewportHeight * 0.2);
   expect(layout.sourceScale).toBe(1);
   expect(layout.sourceRect.center).toBeLessThan(layout.sheetTop - 70);
-  expect(layout.sheetHeight / layout.viewportHeight).toBeGreaterThan(0.52);
-  expect(layout.sheetHeight / layout.viewportHeight).toBeLessThan(0.58);
+  expect(layout.sheetHeight / layout.viewportHeight).toBeGreaterThan(0.48);
+  expect(layout.sheetHeight / layout.viewportHeight).toBeLessThan(0.52);
 
   const handleDragStart = await page.evaluate(() => {
     const handle = document.querySelector("#commentSheet .sheet-handle").getBoundingClientRect();
@@ -392,8 +392,8 @@ test("keeps the real source post singular while the comment sheet is dragged", a
         return rect ? { top: rect.top, bottom: rect.bottom, center: rect.top + rect.height / 2 } : null;
       })(),
       inputBottomGap: (() => {
-        const inputArea = document.querySelector(".comment-input-area")?.getBoundingClientRect();
-        return inputArea ? Math.round(sheet.bottom - inputArea.bottom) : null;
+        const input = document.getElementById("commentInput")?.getBoundingClientRect();
+        return input ? Math.round(sheet.bottom - input.bottom) : null;
       })(),
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
@@ -405,7 +405,8 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   expect(focusedLayout.sourceRect.center).toBeLessThan(layout.sourceRect.center - 10);
   expect(focusedLayout.sheetHeight).toBeGreaterThan(layout.sheetHeight + 12);
   expect(focusedLayout.sheetTop).toBeLessThan(layout.sheetTop - 12);
-  expect(focusedLayout.inputBottomGap).toBeLessThanOrEqual(1);
+  expect(focusedLayout.inputBottomGap).toBeGreaterThanOrEqual(7);
+  expect(focusedLayout.inputBottomGap).toBeLessThanOrEqual(18);
 
   const dragStart = await page.evaluate(() => {
     const input = document.getElementById("commentInput").getBoundingClientRect();

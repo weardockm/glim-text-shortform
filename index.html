@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=103" defer></script>
+    <script src="index.js?v=104" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -2804,7 +2804,7 @@
       }
 
       .comment-sheet {
-        --comment-sheet-height: 55dvh;
+        --comment-sheet-height: 50dvh;
         --comment-sheet-drag: 0px;
         height: min(var(--comment-sheet-height), 640px);
         max-height: 640px;
@@ -2820,7 +2820,7 @@
           transform 0.52s cubic-bezier(0.22, 1, 0.36, 1);
       }
       .comment-sheet.is-input-focused {
-        --comment-sheet-height: 62dvh;
+        --comment-sheet-height: 56dvh;
       }
       .comment-sheet.is-dragging {
         transition: none !important;
@@ -2845,7 +2845,7 @@
         gap: 8px;
         flex-shrink: 0;
         align-items: flex-end;
-        padding: 4px 0 0;
+        padding: 4px 0 max(8px, env(safe-area-inset-bottom));
         background: linear-gradient(180deg, rgba(20, 25, 28, 0), #14191c 20%);
         touch-action: none;
       }
