@@ -97,4 +97,16 @@ test("comment sheet exposes source-post preview and focused input state", async 
   assert.match(js, /function renderCommentPostPreview/u);
   assert.match(js, /function getCommentInputContent/u);
   assert.match(js, /function setupCommentInputFocusState/u);
+  assert.match(js, /function setupCommentSheetDragInteractions/u);
+  assert.match(js, /COMMENT_SHEET_DRAG_RANGE_PX/u);
+});
+
+test("BGM pauses when the app leaves the foreground", async () => {
+  const js = await readFile(path.resolve("index.js"), "utf8");
+
+  assert.match(js, /function pauseBgmForAppExit/u);
+  assert.ok(js.includes('document.addEventListener("visibilitychange"'));
+  assert.ok(js.includes('window.addEventListener("pagehide", pauseBgmForAppExit)'));
+  assert.ok(js.includes('window.addEventListener("blur", pauseBgmForAppExit)'));
+  assert.ok(js.includes('setupBgmAppExitPause()'));
 });

@@ -88,6 +88,12 @@ const bookmarkedPostIds = new Set();
 const likedCommentIds = new Set();
 const ENGAGEMENT_MIGRATION_STORAGE_PREFIX = "glim_engagement_migrated";
 let currentPostIdForComment = null;
+let isCommentSheetDragging = false;
+const COMMENT_SHEET_REST_HEIGHT_DVH = 55;
+const COMMENT_SHEET_FOCUSED_HEIGHT_DVH = 62;
+const COMMENT_POST_FOCUS_LIFT_PX = 18;
+const COMMENT_SHEET_DRAG_RANGE_PX = 180;
+const COMMENT_SHEET_DRAG_SETTLE_PX = 54;
 let pendingReportTarget = null;
 let viewedProfileUserId = null;
 let viewedProfileIsFollowing = false;
@@ -1499,6 +1505,19 @@ function pauseBgm() {
   currentPlayingBtn = null;
 }
 
+function pauseBgmForAppExit() {
+  stopBgmPreview();
+  pauseBgm();
+}
+
+function setupBgmAppExitPause() {
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) pauseBgmForAppExit();
+  });
+  window.addEventListener("pagehide", pauseBgmForAppExit);
+  window.addEventListener("blur", pauseBgmForAppExit);
+}
+
 function resumeBgmAfterGesture() {
   isWaitingForBgmGesture = false;
   document.removeEventListener("pointerdown", resumeBgmAfterGesture);
@@ -1776,6 +1795,7 @@ async function init() {
   setupThemePreferences();
   setupAppAlert();
   setupBgmAudioUnlock();
+  setupBgmAppExitPause();
   setupAccountDeleteRequestForm();
   setupCommentInputFocusState();
   await setupNativeDeepLinks();
@@ -6108,7 +6128,9 @@ function openSheet(id, postId = null) {
   }
   const sheet = document.getElementById(id);
   const backdrop = document.getElementById(id + "Backdrop");
-  sheet.style.transition = "bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1)";
+  sheet.style.transition = id === "commentSheet"
+    ? ""
+    : "bottom 0.4s cubic-bezier(0.25, 1, 0.5, 1)";
   sheet.classList.add("open");
   backdrop?.classList.add("open");
 }
@@ -6121,9 +6143,8 @@ function closeSheet(id) {
   backdrop?.classList.remove("open");
   if (id === "editProfileSheet") resetEditProfileAvatarState();
   if (id === "commentSheet") {
-    sheet.classList.remove("is-input-focused");
+    settleCommentSheetFocus(false);
     const preview = document.getElementById("commentPostPreview");
-    preview?.classList.remove("is-input-focused");
     if (preview) {
       preview.hidden = true;
       preview.replaceChildren();
@@ -6134,22 +6155,105 @@ function closeSheet(id) {
   if (id === "reportSheet") pendingReportTarget = null;
 }
 
-function setupCommentInputFocusState() {
+function clampCommentSheetProgress(progress) {
+  return Math.min(1, Math.max(0, Number(progress) || 0));
+}
+
+function applyCommentSheetFocusProgress(progress) {
+  const sheet = document.getElementById("commentSheet");
+  const preview = document.getElementById("commentPostPreview");
+  const nextProgress = clampCommentSheetProgress(progress);
+  const nextHeight = COMMENT_SHEET_REST_HEIGHT_DVH
+    + (COMMENT_SHEET_FOCUSED_HEIGHT_DVH - COMMENT_SHEET_REST_HEIGHT_DVH) * nextProgress;
+  const nextScale = 1 - 0.06 * nextProgress;
+
+  sheet?.style.setProperty("--comment-sheet-height", String(nextHeight) + "dvh");
+  sheet?.style.setProperty("--comment-sheet-drag", "0px");
+  preview?.style.setProperty("--comment-post-bottom", String(nextHeight) + "dvh");
+  preview?.style.setProperty("--comment-post-lift", String(-COMMENT_POST_FOCUS_LIFT_PX * nextProgress) + "px");
+  preview?.style.setProperty("--comment-post-scale", String(nextScale));
+}
+
+function setCommentSheetDragging(isDragging) {
+  const sheet = document.getElementById("commentSheet");
+  const preview = document.getElementById("commentPostPreview");
+  isCommentSheetDragging = isDragging;
+  sheet?.classList.toggle("is-dragging", isDragging);
+  preview?.classList.toggle("is-dragging", isDragging);
+}
+
+function settleCommentSheetFocus(isFocused) {
+  const sheet = document.getElementById("commentSheet");
+  const preview = document.getElementById("commentPostPreview");
+  sheet?.classList.toggle("is-input-focused", isFocused);
+  preview?.classList.toggle("is-input-focused", isFocused);
+  applyCommentSheetFocusProgress(isFocused ? 1 : 0);
+}
+
+function setupCommentSheetDragInteractions() {
   const sheet = document.getElementById("commentSheet");
   const input = document.getElementById("commentInput");
-  const preview = document.getElementById("commentPostPreview");
   if (!sheet || !input) return;
 
+  let dragState = null;
+  const shouldIgnoreDragTarget = (target) => Boolean(
+    target?.closest?.("#commentInput, .comment-submit-btn, .close-btn, button, [data-comment-action], .more-menu"),
+  );
+
+  sheet.addEventListener("pointerdown", (event) => {
+    if (!sheet.classList.contains("open")) return;
+    if (!sheet.classList.contains("is-input-focused")) return;
+    if (shouldIgnoreDragTarget(event.target)) return;
+    dragState = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      currentProgress: 1,
+    };
+    sheet.setPointerCapture?.(event.pointerId);
+    setCommentSheetDragging(true);
+  });
+
+  sheet.addEventListener("pointermove", (event) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const dragDistance = Math.max(0, event.clientY - dragState.startY);
+    if (dragDistance < 2) return;
+    event.preventDefault();
+    const nextProgress = clampCommentSheetProgress(
+      1 - dragDistance / COMMENT_SHEET_DRAG_RANGE_PX,
+    );
+    dragState.currentProgress = nextProgress;
+    applyCommentSheetFocusProgress(nextProgress);
+    if (dragDistance > 24 && document.activeElement === input) input.blur();
+  });
+
+  const finishDrag = (event) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    const dragDistance = Math.max(0, event.clientY - dragState.startY);
+    const shouldStayFocused =
+      dragDistance < COMMENT_SHEET_DRAG_SETTLE_PX && dragState.currentProgress > 0.68;
+    sheet.releasePointerCapture?.(event.pointerId);
+    dragState = null;
+    setCommentSheetDragging(false);
+    settleCommentSheetFocus(shouldStayFocused);
+  };
+
+  sheet.addEventListener("pointerup", finishDrag);
+  sheet.addEventListener("pointercancel", finishDrag);
+}
+
+function setupCommentInputFocusState() {
+  const input = document.getElementById("commentInput");
+  if (!input) return;
+
   input.addEventListener("focus", () => {
-    sheet.classList.add("is-input-focused");
-    preview?.classList.add("is-input-focused");
+    if (isCommentSheetDragging) return;
+    settleCommentSheetFocus(true);
     requestAnimationFrame(() => {
       document.getElementById("commentList")?.scrollTo({ top: 0, behavior: "smooth" });
     });
   });
   input.addEventListener("blur", () => {
-    sheet.classList.remove("is-input-focused");
-    preview?.classList.remove("is-input-focused");
+    if (!isCommentSheetDragging) settleCommentSheetFocus(false);
   });
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
@@ -6157,6 +6261,7 @@ function setupCommentInputFocusState() {
       submitComment();
     }
   });
+  setupCommentSheetDragInteractions();
 }
 
 function createCommentElement(comment, postOwnerId = null) {

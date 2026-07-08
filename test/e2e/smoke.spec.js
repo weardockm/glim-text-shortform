@@ -191,6 +191,40 @@ test("shows the source post preview and focused comment sheet state", async ({
   await page.locator("#commentInput").focus();
   await expect(page.locator("#commentSheet")).toHaveClass(/is-input-focused/);
   await expect(page.locator("#commentPostPreview")).toHaveClass(/is-input-focused/);
+  await page.waitForTimeout(620);
+
+  const focusedLayout = await page.evaluate(() => {
+    const sheet = document.getElementById("commentSheet").getBoundingClientRect();
+    const preview = document.getElementById("commentPostPreview").getBoundingClientRect();
+    return {
+      sheetHeight: sheet.height,
+      previewBottom: preview.bottom,
+    };
+  });
+  expect(focusedLayout.sheetHeight).toBeGreaterThan(layout.sheetHeight + 12);
+  expect(focusedLayout.previewBottom).toBeLessThan(layout.previewBottom - 12);
+
+  const dragStart = await page.evaluate(() => {
+    const sheet = document.getElementById("commentSheet").getBoundingClientRect();
+    return { x: sheet.left + sheet.width / 2, y: sheet.top + 28 };
+  });
+  await page.mouse.move(dragStart.x, dragStart.y);
+  await page.mouse.down();
+  await page.mouse.move(dragStart.x, dragStart.y + 120, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.locator("#commentSheet")).not.toHaveClass(/is-input-focused/);
+  await page.waitForTimeout(620);
+
+  const restoredLayout = await page.evaluate(() => {
+    const sheet = document.getElementById("commentSheet").getBoundingClientRect();
+    const preview = document.getElementById("commentPostPreview").getBoundingClientRect();
+    return {
+      sheetHeight: sheet.height,
+      previewBottom: preview.bottom,
+    };
+  });
+  expect(restoredLayout.sheetHeight).toBeLessThan(focusedLayout.sheetHeight - 12);
+  expect(restoredLayout.previewBottom).toBeGreaterThan(focusedLayout.previewBottom + 12);
   await expect(page.locator("#commentList")).toContainText("기존 댓글");
 });
 
