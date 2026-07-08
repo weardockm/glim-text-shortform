@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=98" defer></script>
+    <script src="index.js?v=99" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -427,6 +427,15 @@
       }
       .post.is-comment-source.is-comment-source-dragging {
         transition: none !important;
+      }
+      .post.is-comment-source .text-content,
+      .post.is-comment-source .author-info,
+      .post.is-comment-source .side-actions {
+        opacity: 1 !important;
+        transition: none !important;
+      }
+      .post.is-comment-source .text-content {
+        transform: translateY(0) !important;
       }
       .feed-state {
         min-height: 100vh;

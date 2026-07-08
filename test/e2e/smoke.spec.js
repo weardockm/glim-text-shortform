@@ -206,6 +206,8 @@ test("keeps the second home feed post above the comment sheet", async ({
       sheetTop: sheet.top,
       scrollTop: document.getElementById("view-home").scrollTop,
       backgroundColor: getComputedStyle(post).backgroundColor,
+      textOpacity: getComputedStyle(post.querySelector(".text-content")).opacity,
+      authorOpacity: getComputedStyle(post.querySelector(".author-info")).opacity,
     };
   });
 
@@ -214,6 +216,8 @@ test("keeps the second home feed post above the comment sheet", async ({
   expect(layout.sourceCenter).toBeLessThan(layout.sheetTop - 70);
   expect(layout.scrollTop).toBeGreaterThanOrEqual(beforeScrollTop);
   expect(layout.backgroundColor).toBe("rgb(5, 5, 5)");
+  expect(layout.textOpacity).toBe("1");
+  expect(layout.authorOpacity).toBe("1");
 });
 
 

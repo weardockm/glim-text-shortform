@@ -530,6 +530,10 @@ function handleIntersection(entries, viewElement) {
       // ✅ 화면에 보이면 타이머 시작
       if (postId) postViewTimers.set(postId, Date.now());
     } else {
+      if (postElement.classList.contains("is-comment-source")) {
+        postElement.classList.add("is-visible");
+        return;
+      }
       postElement.classList.remove("is-visible");
 
       // ✅ 화면에서 벗어나면 체류 시간 계산 후 점수 반영
@@ -6191,7 +6195,7 @@ function setCommentSourcePost(postId) {
   currentCommentSourcePlaceholderElement = document.createElement("div");
   currentCommentSourcePlaceholderElement.className = "comment-source-placeholder";
   currentCommentPostElement.after(currentCommentSourcePlaceholderElement);
-  currentCommentPostElement.classList.add("is-comment-source");
+  currentCommentPostElement.classList.add("is-comment-source", "is-visible");
   currentCommentPostElement.style.setProperty("--comment-source-y", "0px");
   currentCommentPostElement.style.setProperty("--comment-source-scale", "1");
   pendingCommentSourceAnimationFrame = requestAnimationFrame(() => {
