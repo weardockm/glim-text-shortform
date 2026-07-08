@@ -315,6 +315,59 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   expect(layout.sheetHeight / layout.viewportHeight).toBeGreaterThan(0.52);
   expect(layout.sheetHeight / layout.viewportHeight).toBeLessThan(0.58);
 
+  const handleDragStart = await page.evaluate(() => {
+    const handle = document.querySelector("#commentSheet .sheet-handle").getBoundingClientRect();
+    return { x: handle.left + handle.width / 2, y: handle.top + handle.height / 2 };
+  });
+  await page.evaluate(({ x, y }) => {
+    const handle = document.querySelector("#commentSheet .sheet-handle");
+    const pointerId = 41;
+    const dispatchDragEvent = (type, clientY) => {
+      handle.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY,
+        pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+      }));
+    };
+    dispatchDragEvent("pointerdown", y);
+    [18, 36, 54, 72].forEach((delta) => dispatchDragEvent("pointermove", y + delta));
+  }, handleDragStart);
+
+  const restDraggingLayout = await page.evaluate(() => {
+    const sheet = document.getElementById("commentSheet");
+    const box = sheet.getBoundingClientRect();
+    const sourceRect = document
+      .querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')
+      .getBoundingClientRect();
+    return {
+      sheetTop: box.top,
+      dragOffset: parseFloat(sheet.style.getPropertyValue("--comment-sheet-drag")) || 0,
+      sourceCenter: sourceRect.top + sourceRect.height / 2,
+    };
+  });
+  const restSheetDragDelta = restDraggingLayout.sheetTop - layout.sheetTop;
+  const restSourceDragDelta = restDraggingLayout.sourceCenter - layout.sourceRect.center;
+  expect(restDraggingLayout.dragOffset).toBeGreaterThan(12);
+  expect(restSheetDragDelta).toBeGreaterThan(12);
+  expect(Math.abs(restSourceDragDelta - restSheetDragDelta)).toBeLessThan(6);
+
+  await page.evaluate(({ x, y }) => {
+    document.querySelector("#commentSheet .sheet-handle").dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y + 72,
+      pointerId: 41,
+      pointerType: "touch",
+      isPrimary: true,
+    }));
+  }, handleDragStart);
+  await page.waitForTimeout(620);
+
   await page.locator("#commentInput").focus();
   await expect(page.locator("#commentSheet")).toHaveClass(/is-input-focused/);
   await expect(page.locator("#commentPostPreview")).toHaveCount(0);

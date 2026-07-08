@@ -6179,7 +6179,9 @@ function updateCommentSourcePostMotion(progress, dragDistance = 0) {
     viewportHeight * COMMENT_SHEET_FOCUSED_HEIGHT_DVH / 100,
     640,
   );
-  const sheetResizeFollowOffset = dragDistance > 0
+  const isFocusedSheetDrag = dragDistance > 0
+    && document.getElementById("commentSheet")?.classList.contains("is-input-focused");
+  const sheetResizeFollowOffset = isFocusedSheetDrag
     ? Math.max(0, focusedSheetHeight - sheetHeight) / 2
     : 0;
   const sourceY = -sheetHeight / 2 + dragOffset + sheetResizeFollowOffset;
@@ -6293,12 +6295,13 @@ function setupCommentSheetDragInteractions() {
 
   const beginDrag = (clientY, pointerId, target) => {
     if (!sheet.classList.contains("open")) return false;
-    if (!sheet.classList.contains("is-input-focused")) return false;
     if (shouldIgnoreDragTarget(target)) return false;
+    const startProgress = sheet.classList.contains("is-input-focused") ? 1 : 0;
     dragState = {
       pointerId,
       startY: clientY,
-      currentProgress: 1,
+      startProgress,
+      currentProgress: startProgress,
     };
     setCommentSheetDragging(true);
     return true;
@@ -6310,7 +6313,7 @@ function setupCommentSheetDragInteractions() {
     if (dragDistance < 2) return;
     event?.preventDefault?.();
     const nextProgress = clampCommentSheetProgress(
-      1 - dragDistance / COMMENT_SHEET_DRAG_RANGE_PX,
+      dragState.startProgress - dragDistance / COMMENT_SHEET_DRAG_RANGE_PX,
     );
     dragState.currentProgress = nextProgress;
     applyCommentSheetFocusProgress(nextProgress, dragDistance);
@@ -6320,8 +6323,9 @@ function setupCommentSheetDragInteractions() {
   const finishDragAt = (clientY) => {
     if (!dragState) return;
     const dragDistance = Math.max(0, clientY - dragState.startY);
-    const shouldStayFocused =
-      dragDistance < COMMENT_SHEET_DRAG_SETTLE_PX && dragState.currentProgress > 0.68;
+    const shouldStayFocused = dragState.startProgress > 0
+      && dragDistance < COMMENT_SHEET_DRAG_SETTLE_PX
+      && dragState.currentProgress > 0.68;
     dragState = null;
     setCommentSheetDragging(false);
     settleCommentSheetFocus(shouldStayFocused);

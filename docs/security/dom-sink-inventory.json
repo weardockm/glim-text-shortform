@@ -193,91 +193,91 @@
     },
     {
       "file": "index.js",
-      "line": 6422,
+      "line": 6426,
       "classification": "constant",
       "owner": "explore search",
       "rationale": "Static user empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 6506,
+      "line": 6510,
       "classification": "constant",
       "owner": "explore search",
       "rationale": "Static post empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 6529,
+      "line": 6533,
       "classification": "constant",
       "owner": "explore search",
       "rationale": "Static error-state markup only."
     },
     {
       "file": "index.js",
-      "line": 6535,
+      "line": 6539,
       "classification": "constant",
       "owner": "comment renderer",
       "rationale": "Static shell; comment fields are assigned with textContent."
     },
     {
       "file": "index.js",
-      "line": 7030,
+      "line": 7034,
       "classification": "constant",
       "owner": "comments",
       "rationale": "Static loading-state markup only."
     },
     {
       "file": "index.js",
-      "line": 7038,
+      "line": 7042,
       "classification": "constant",
       "owner": "comments",
       "rationale": "Static error text only."
     },
     {
       "file": "index.js",
-      "line": 7065,
+      "line": 7069,
       "classification": "constant",
       "owner": "comments",
       "rationale": "Static empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 7100,
+      "line": 7104,
       "classification": "safe",
       "owner": "notifications",
       "rationale": "State renderer escapes all interpolated parameters."
     },
     {
       "file": "index.js",
-      "line": 7106,
+      "line": 7110,
       "classification": "safe",
       "owner": "notifications",
       "rationale": "State renderer escapes all interpolated parameters."
     },
     {
       "file": "index.js",
-      "line": 7112,
+      "line": 7116,
       "classification": "safe",
       "owner": "notifications",
       "rationale": "State renderer escapes all interpolated parameters."
     },
     {
       "file": "index.js",
-      "line": 7722,
+      "line": 7726,
       "classification": "safe",
       "owner": "notifications",
       "rationale": "State renderer escapes all interpolated parameters."
     },
     {
       "file": "index.js",
-      "line": 7736,
+      "line": 7740,
       "classification": "safe",
       "owner": "notifications",
       "rationale": "State renderer escapes all interpolated parameters."
     },
     {
       "file": "index.js",
-      "line": 7739,
+      "line": 7743,
       "classification": "safe",
       "owner": "notifications",
       "rationale": "External notification fields are escaped before interpolation."
