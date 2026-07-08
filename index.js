@@ -6067,26 +6067,37 @@ async function toggleBookmark(postId, element) {
 function getCommentPostPreviewData(postId) {
   if (!postId) return null;
   const targetPostId = String(postId);
-  const postElement = [...document.querySelectorAll(".post")].find(
-    (element) => element.dataset.postId === targetPostId,
-  );
-  if (!postElement) return null;
-  return {
-    author: postElement.querySelector(".author-name")?.textContent?.trim() || "글림",
-    content: postElement.querySelector(".text-content")?.textContent?.trim() || "",
-  };
+  return [...document.querySelectorAll(".post")].find(
+    (element) => element.dataset.postId === targetPostId && !element.closest("#commentPostPreview"),
+  ) || null;
 }
 
 function renderCommentPostPreview(postId) {
   const preview = document.getElementById("commentPostPreview");
-  const authorElement = document.getElementById("commentPostPreviewAuthor");
-  const contentElement = document.getElementById("commentPostPreviewContent");
-  if (!preview || !authorElement || !contentElement) return;
+  if (!preview) return;
+  preview.replaceChildren();
 
-  const post = getCommentPostPreviewData(postId);
-  preview.hidden = !post?.content;
-  authorElement.textContent = post?.author || "";
-  contentElement.textContent = post?.content || "";
+  const postElement = getCommentPostPreviewData(postId);
+  preview.hidden = !postElement;
+  if (!postElement) return;
+
+  const clone = postElement.cloneNode(true);
+  clone.classList.add("is-visible", "comment-post-clone");
+  clone.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+  clone.querySelectorAll("button, input, textarea, [contenteditable]").forEach((element) => {
+    element.setAttribute("tabindex", "-1");
+    element.setAttribute("aria-hidden", "true");
+  });
+  preview.append(clone);
+}
+
+function getCommentInputContent() {
+  return document.getElementById("commentInput")?.textContent?.trim() || "";
+}
+
+function clearCommentInputContent() {
+  const input = document.getElementById("commentInput");
+  if (input) input.textContent = "";
 }
 
 function openSheet(id, postId = null) {
@@ -6113,7 +6124,10 @@ function closeSheet(id) {
     sheet.classList.remove("is-input-focused");
     const preview = document.getElementById("commentPostPreview");
     preview?.classList.remove("is-input-focused");
-    if (preview) preview.hidden = true;
+    if (preview) {
+      preview.hidden = true;
+      preview.replaceChildren();
+    }
     document.getElementById("commentInput")?.blur();
     currentPostIdForComment = null;
   }
@@ -6136,6 +6150,12 @@ function setupCommentInputFocusState() {
   input.addEventListener("blur", () => {
     sheet.classList.remove("is-input-focused");
     preview?.classList.remove("is-input-focused");
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      submitComment();
+    }
   });
 }
 
@@ -6572,7 +6592,7 @@ async function submitComment() {
     return;
   }
   if (!(await ensureCurrentUgcPolicyAccepted())) return;
-  const content = document.getElementById("commentInput").value.trim();
+  const content = getCommentInputContent();
   if (!content) return;
 
   // RLS는 profiles.nickname을 작성자 계약으로 검증하므로 DB 기준 닉네임을 사용합니다.
@@ -6588,7 +6608,7 @@ async function submitComment() {
   ]);
 
   if (!error) {
-    document.getElementById("commentInput").value = "";
+    clearCommentInputContent();
     fetchComments(currentPostIdForComment);
 
     const { data: postData } = await runVisibleContentQuery(

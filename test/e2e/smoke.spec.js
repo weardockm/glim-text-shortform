@@ -112,7 +112,7 @@ test("uses the RLS profile nickname for post and comment inserts", async ({
     post.innerHTML = '<div class="author-name">원글작성자</div><div class="text-content">댓글을 달 원문 내용</div>';
     document.body.append(post);
     openSheet("commentSheet", "comment-target-fixture");
-    document.getElementById("commentInput").value = "좋은 댓글입니다";
+    document.getElementById("commentInput").textContent = "좋은 댓글입니다";
   });
   await page.evaluate(() => submitComment());
 
@@ -152,7 +152,7 @@ test("shows the source post preview and focused comment sheet state", async ({
     const post = document.createElement("div");
     post.className = "post";
     post.dataset.postId = "comment-preview-fixture";
-    post.innerHTML = '<div class="author-name">미리보기 작성자</div><div class="text-content">댓글 시트에서 보여줄 원문입니다.</div>';
+    post.innerHTML = '<div class="text-content">댓글 시트에서 보여줄 원문입니다.</div><div class="author-info"><div class="author-name">미리보기 작성자</div></div><div class="side-actions"><div class="action-btn">작업</div></div>';
     document.body.append(post);
     window.__supabaseRows.comments = [{
       id: "comment-row-fixture",
@@ -167,22 +167,26 @@ test("shows the source post preview and focused comment sheet state", async ({
   });
 
   await expect(page.locator("#commentPostPreview")).toBeVisible();
-  await expect(page.locator("#commentPostPreviewAuthor")).toContainText("미리보기 작성자");
-  await expect(page.locator("#commentPostPreviewContent")).toContainText("댓글 시트에서 보여줄 원문");
+  await expect(page.locator("#commentPostPreview .author-name")).toContainText("미리보기 작성자");
+  await expect(page.locator("#commentPostPreview .text-content")).toContainText("댓글 시트에서 보여줄 원문");
+  await expect(page.locator("#commentPostPreview .post")).toHaveClass(/comment-post-clone/);
 
   const layout = await page.evaluate(() => {
     const sheet = document.getElementById("commentSheet").getBoundingClientRect();
     const preview = document.getElementById("commentPostPreview").getBoundingClientRect();
+    const cloneText = document.querySelector("#commentPostPreview .text-content").getBoundingClientRect();
     return {
       viewportHeight: window.innerHeight,
       sheetTop: sheet.top,
       sheetHeight: sheet.height,
       previewBottom: preview.bottom,
+      cloneTextTop: cloneText.top,
     };
   });
   expect(layout.sheetHeight / layout.viewportHeight).toBeGreaterThan(0.52);
   expect(layout.sheetHeight / layout.viewportHeight).toBeLessThan(0.58);
-  expect(layout.previewBottom).toBeLessThanOrEqual(layout.sheetTop - 6);
+  expect(layout.previewBottom).toBeLessThanOrEqual(layout.sheetTop - 2);
+  expect(layout.cloneTextTop).toBeGreaterThanOrEqual(0);
 
   await page.locator("#commentInput").focus();
   await expect(page.locator("#commentSheet")).toHaveClass(/is-input-focused/);

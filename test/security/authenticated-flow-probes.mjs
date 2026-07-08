@@ -86,7 +86,7 @@ export async function assertAuthenticatedJourneys(page) {
       "팔로우 대상";
     await toggleFollow();
     currentPostIdForComment = "engagement-post";
-    document.querySelector("#commentInput").value = "픽스처 댓글";
+    document.querySelector("#commentInput").textContent = "픽스처 댓글";
     await submitComment();
     await submitUserBlock("blocked-target");
     pendingReportTarget = { type: "post", id: "reported-post" };
@@ -101,7 +101,7 @@ export async function assertAuthenticatedJourneys(page) {
       likeCount: likeButton.querySelector(".action-count").textContent,
       bookmarkLabel: bookmarkButton.querySelector(".action-count").textContent,
       following: viewedProfileIsFollowing,
-      commentCleared: document.querySelector("#commentInput").value,
+      commentCleared: document.querySelector("#commentInput").textContent,
       blocked: blockedUserIds.has("blocked-target"),
       reportReset: pendingReportTarget,
     };

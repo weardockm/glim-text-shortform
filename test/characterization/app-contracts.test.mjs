@@ -87,7 +87,7 @@ test("Given UGC safety controls, When post/comment/report/block routes are inspe
   assert.match(indexSource, /async function ensureCurrentUgcPolicyAccepted\(\)/);
   assert.match(indexSource, /client\.rpc\("get_ugc_policy_acceptance_status"/);
   assert.match(indexSource, /client\.rpc\("accept_current_ugc_policy"/);
-  assert.match(indexSource, /await ensureCurrentUgcPolicyAccepted\(\)[\s\S]*?document\.getElementById\("commentInput"\)/);
+  assert.match(indexSource, /await ensureCurrentUgcPolicyAccepted\(\)[\s\S]*?getCommentInputContent\(\)/);
   assert.match(indexSource, /await ensureCurrentUgcPolicyAccepted\(\)[\s\S]*?document\.getElementById\("postContent"\)/);
   assert.match(indexSource, /function reportPost\(postId\)[\s\S]*?openReportSheet\("post", postId\)/);
   assert.match(indexSource, /function reportComment\(commentId\)[\s\S]*?openReportSheet\("comment", commentId\)/);

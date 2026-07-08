@@ -89,9 +89,12 @@ test("comment sheet exposes source-post preview and focused input state", async 
   const js = await readFile(path.resolve("index.js"), "utf8");
 
   assert.match(html, /id="commentPostPreview"/u);
-  assert.match(html, /id="commentPostPreviewAuthor"/u);
-  assert.match(html, /id="commentPostPreviewContent"/u);
+  assert.match(html, /class="comment-post-stage"/u);
+  assert.match(html, /contenteditable="true"/u);
+  assert.match(html, /data-placeholder="따뜻한 댓글을 남겨주세요."/u);
   assert.match(html, /\.comment-sheet\.is-input-focused/u);
+  assert.match(js, /cloneNode\(true\)/u);
   assert.match(js, /function renderCommentPostPreview/u);
+  assert.match(js, /function getCommentInputContent/u);
   assert.match(js, /function setupCommentInputFocusState/u);
 });
