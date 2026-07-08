@@ -218,6 +218,12 @@ test("keeps the second home feed post above the comment sheet", async ({
   expect(layout.backgroundColor).toBe("rgb(5, 5, 5)");
   expect(layout.textOpacity).toBe("1");
   expect(layout.authorOpacity).toBe("1");
+
+  await page.mouse.click(190, 80);
+  await expect(page.locator("#commentSheet")).not.toHaveClass(/open/);
+  await expect(page.locator("#commentSheetBackdrop")).not.toHaveClass(/open/);
+  await expect(page.locator('#postFeed .post[data-post-id="home-comment-source-2"]'))
+    .not.toHaveClass(/is-comment-source/);
 });
 
 

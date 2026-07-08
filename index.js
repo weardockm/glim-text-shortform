@@ -1810,6 +1810,7 @@ async function init() {
   setupBgmAppExitPause();
   setupAccountDeleteRequestForm();
   setupCommentInputFocusState();
+  setupCommentSheetOutsideDismiss();
   await setupNativeDeepLinks();
 
   const {
@@ -6390,6 +6391,16 @@ function setupCommentSheetDragInteractions() {
 
   sheet.addEventListener("pointerup", finishPointerDrag);
   sheet.addEventListener("pointercancel", finishPointerDrag);
+}
+
+function setupCommentSheetOutsideDismiss() {
+  document.addEventListener("click", (event) => {
+    const sheet = document.getElementById("commentSheet");
+    if (!sheet?.classList.contains("open")) return;
+    if (sheet.contains(event.target)) return;
+    if (event.target.closest?.('[data-post-action="comment"]')) return;
+    closeSheet("commentSheet");
+  });
 }
 
 function setupCommentInputFocusState() {

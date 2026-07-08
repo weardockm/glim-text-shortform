@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=101" defer></script>
+    <script src="index.js?v=102" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -2531,6 +2531,10 @@
       .sheet-backdrop.open {
         opacity: 1;
         visibility: visible;
+      }
+      #commentSheetBackdrop {
+        z-index: 96;
+        background: transparent;
       }
       .sheet-handle {
         width: 40px;
