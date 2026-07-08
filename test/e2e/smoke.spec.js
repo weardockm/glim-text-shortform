@@ -386,9 +386,12 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   });
   expect(draggingLayout.sheetTop).toBeGreaterThan(focusedLayout.sheetTop + 20);
   expect(draggingLayout.dragOffset).toBeGreaterThan(20);
+  const sheetDragDelta = draggingLayout.sheetTop - focusedLayout.sheetTop;
+  const sourceDragDelta = draggingLayout.sourceRect.center - focusedLayout.sourceRect.center;
   expect(draggingLayout.sourceY).toBeGreaterThan(focusedLayout.sourceY + 10);
   expect(draggingLayout.sourceScale).toBeGreaterThanOrEqual(focusedLayout.sourceScale);
   expect(draggingLayout.sourceRect.center).toBeGreaterThan(focusedLayout.sourceRect.center + 10);
+  expect(Math.abs(sourceDragDelta - sheetDragDelta)).toBeLessThan(6);
   expect(draggingLayout.sourcePostCount).toBe(1);
   expect(draggingLayout.cloneCount).toBe(0);
 

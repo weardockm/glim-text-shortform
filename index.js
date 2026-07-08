@@ -6175,7 +6175,14 @@ function updateCommentSourcePostMotion(progress, dragDistance = 0) {
         * nextProgress)
     / 100;
   const sheetHeight = Math.min(expectedSheetHeight, 640);
-  const sourceY = -Math.max(0, sheetHeight - dragOffset) / 2;
+  const focusedSheetHeight = Math.min(
+    viewportHeight * COMMENT_SHEET_FOCUSED_HEIGHT_DVH / 100,
+    640,
+  );
+  const sheetResizeFollowOffset = dragDistance > 0
+    ? Math.max(0, focusedSheetHeight - sheetHeight) / 2
+    : 0;
+  const sourceY = -sheetHeight / 2 + dragOffset + sheetResizeFollowOffset;
   const sourceScale = 1 - COMMENT_SOURCE_FOCUSED_SCALE_DELTA * nextProgress;
 
   currentCommentPostElement.style.setProperty("--comment-source-y", String(sourceY) + "px");
