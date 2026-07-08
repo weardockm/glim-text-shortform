@@ -75,7 +75,7 @@ try {
   await ready;
   playwright = spawnOwned(
     process.execPath,
-    [cli, "test", "--project=chromium-smoke"],
+    [cli, "test", "--project=chromium-smoke", "--trace=off"],
     {
       cwd: process.cwd(),
       env: childEnvironment,

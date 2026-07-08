@@ -205,8 +205,8 @@ test("shows the source post preview and focused comment sheet state", async ({
   expect(focusedLayout.previewBottom).toBeLessThan(layout.previewBottom - 12);
 
   const dragStart = await page.evaluate(() => {
-    const sheet = document.getElementById("commentSheet").getBoundingClientRect();
-    return { x: sheet.left + sheet.width / 2, y: sheet.top + 28 };
+    const input = document.getElementById("commentInput").getBoundingClientRect();
+    return { x: input.left + input.width / 2, y: input.top + input.height / 2 };
   });
   await page.mouse.move(dragStart.x, dragStart.y);
   await page.mouse.down();

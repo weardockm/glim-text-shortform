@@ -6197,7 +6197,7 @@ function setupCommentSheetDragInteractions() {
 
   let dragState = null;
   const shouldIgnoreDragTarget = (target) => Boolean(
-    target?.closest?.("#commentInput, .comment-submit-btn, .close-btn, button, [data-comment-action], .more-menu"),
+    target?.closest?.(".comment-submit-btn, .close-btn, button, [data-comment-action], .more-menu"),
   );
 
   sheet.addEventListener("pointerdown", (event) => {

@@ -99,6 +99,7 @@ test("comment sheet exposes source-post preview and focused input state", async 
   assert.match(js, /function setupCommentInputFocusState/u);
   assert.match(js, /function setupCommentSheetDragInteractions/u);
   assert.match(js, /COMMENT_SHEET_DRAG_RANGE_PX/u);
+  assert.doesNotMatch(js, /#commentInput, .comment-submit-btn/u);
 });
 
 test("BGM pauses when the app leaves the foreground", async () => {
