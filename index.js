@@ -91,9 +91,9 @@ let currentPostIdForComment = null;
 let isCommentSheetDragging = false;
 const COMMENT_SHEET_REST_HEIGHT_DVH = 55;
 const COMMENT_SHEET_FOCUSED_HEIGHT_DVH = 62;
-const COMMENT_POST_FOCUS_LIFT_PX = 18;
 const COMMENT_SHEET_DRAG_RANGE_PX = 180;
 const COMMENT_SHEET_DRAG_SETTLE_PX = 54;
+const COMMENT_SHEET_DRAG_TRANSLATE_RATIO = 0.32;
 let pendingReportTarget = null;
 let viewedProfileUserId = null;
 let viewedProfileIsFollowing = false;
@@ -6084,33 +6084,6 @@ async function toggleBookmark(postId, element) {
   }
 }
 
-function getCommentPostPreviewData(postId) {
-  if (!postId) return null;
-  const targetPostId = String(postId);
-  return [...document.querySelectorAll(".post")].find(
-    (element) => element.dataset.postId === targetPostId && !element.closest("#commentPostPreview"),
-  ) || null;
-}
-
-function renderCommentPostPreview(postId) {
-  const preview = document.getElementById("commentPostPreview");
-  if (!preview) return;
-  preview.replaceChildren();
-
-  const postElement = getCommentPostPreviewData(postId);
-  preview.hidden = !postElement;
-  if (!postElement) return;
-
-  const clone = postElement.cloneNode(true);
-  clone.classList.add("is-visible", "comment-post-clone");
-  clone.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
-  clone.querySelectorAll("button, input, textarea, [contenteditable]").forEach((element) => {
-    element.setAttribute("tabindex", "-1");
-    element.setAttribute("aria-hidden", "true");
-  });
-  preview.append(clone);
-}
-
 function getCommentInputContent() {
   return document.getElementById("commentInput")?.textContent?.trim() || "";
 }
@@ -6123,7 +6096,6 @@ function clearCommentInputContent() {
 function openSheet(id, postId = null) {
   if (id === "commentSheet") {
     currentPostIdForComment = postId;
-    renderCommentPostPreview(postId);
     fetchComments(postId);
   }
   const sheet = document.getElementById(id);
@@ -6144,11 +6116,6 @@ function closeSheet(id) {
   if (id === "editProfileSheet") resetEditProfileAvatarState();
   if (id === "commentSheet") {
     settleCommentSheetFocus(false);
-    const preview = document.getElementById("commentPostPreview");
-    if (preview) {
-      preview.hidden = true;
-      preview.replaceChildren();
-    }
     document.getElementById("commentInput")?.blur();
     currentPostIdForComment = null;
   }
@@ -6159,34 +6126,26 @@ function clampCommentSheetProgress(progress) {
   return Math.min(1, Math.max(0, Number(progress) || 0));
 }
 
-function applyCommentSheetFocusProgress(progress) {
+function applyCommentSheetFocusProgress(progress, dragDistance = 0) {
   const sheet = document.getElementById("commentSheet");
-  const preview = document.getElementById("commentPostPreview");
   const nextProgress = clampCommentSheetProgress(progress);
   const nextHeight = COMMENT_SHEET_REST_HEIGHT_DVH
     + (COMMENT_SHEET_FOCUSED_HEIGHT_DVH - COMMENT_SHEET_REST_HEIGHT_DVH) * nextProgress;
-  const nextScale = 1 - 0.06 * nextProgress;
+  const dragOffset = Math.max(0, dragDistance) * COMMENT_SHEET_DRAG_TRANSLATE_RATIO;
 
   sheet?.style.setProperty("--comment-sheet-height", String(nextHeight) + "dvh");
-  sheet?.style.setProperty("--comment-sheet-drag", "0px");
-  preview?.style.setProperty("--comment-post-bottom", String(nextHeight) + "dvh");
-  preview?.style.setProperty("--comment-post-lift", String(-COMMENT_POST_FOCUS_LIFT_PX * nextProgress) + "px");
-  preview?.style.setProperty("--comment-post-scale", String(nextScale));
+  sheet?.style.setProperty("--comment-sheet-drag", String(dragOffset) + "px");
 }
 
 function setCommentSheetDragging(isDragging) {
   const sheet = document.getElementById("commentSheet");
-  const preview = document.getElementById("commentPostPreview");
   isCommentSheetDragging = isDragging;
   sheet?.classList.toggle("is-dragging", isDragging);
-  preview?.classList.toggle("is-dragging", isDragging);
 }
 
 function settleCommentSheetFocus(isFocused) {
   const sheet = document.getElementById("commentSheet");
-  const preview = document.getElementById("commentPostPreview");
   sheet?.classList.toggle("is-input-focused", isFocused);
-  preview?.classList.toggle("is-input-focused", isFocused);
   applyCommentSheetFocusProgress(isFocused ? 1 : 0);
 }
 
@@ -6196,49 +6155,106 @@ function setupCommentSheetDragInteractions() {
   if (!sheet || !input) return;
 
   let dragState = null;
+  const mouseDragId = "mouse";
   const shouldIgnoreDragTarget = (target) => Boolean(
     target?.closest?.(".comment-submit-btn, .close-btn, button, [data-comment-action], .more-menu"),
   );
 
-  sheet.addEventListener("pointerdown", (event) => {
-    if (!sheet.classList.contains("open")) return;
-    if (!sheet.classList.contains("is-input-focused")) return;
-    if (shouldIgnoreDragTarget(event.target)) return;
+  const beginDrag = (clientY, pointerId, target) => {
+    if (!sheet.classList.contains("open")) return false;
+    if (!sheet.classList.contains("is-input-focused")) return false;
+    if (shouldIgnoreDragTarget(target)) return false;
     dragState = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
+      pointerId,
+      startY: clientY,
       currentProgress: 1,
     };
-    sheet.setPointerCapture?.(event.pointerId);
     setCommentSheetDragging(true);
-  });
+    return true;
+  };
 
-  sheet.addEventListener("pointermove", (event) => {
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
-    const dragDistance = Math.max(0, event.clientY - dragState.startY);
+  const updateDrag = (clientY, event) => {
+    if (!dragState) return;
+    const dragDistance = Math.max(0, clientY - dragState.startY);
     if (dragDistance < 2) return;
-    event.preventDefault();
+    event?.preventDefault?.();
     const nextProgress = clampCommentSheetProgress(
       1 - dragDistance / COMMENT_SHEET_DRAG_RANGE_PX,
     );
     dragState.currentProgress = nextProgress;
-    applyCommentSheetFocusProgress(nextProgress);
+    applyCommentSheetFocusProgress(nextProgress, dragDistance);
     if (dragDistance > 24 && document.activeElement === input) input.blur();
-  });
+  };
 
-  const finishDrag = (event) => {
-    if (!dragState || dragState.pointerId !== event.pointerId) return;
-    const dragDistance = Math.max(0, event.clientY - dragState.startY);
+  const finishDragAt = (clientY) => {
+    if (!dragState) return;
+    const dragDistance = Math.max(0, clientY - dragState.startY);
     const shouldStayFocused =
       dragDistance < COMMENT_SHEET_DRAG_SETTLE_PX && dragState.currentProgress > 0.68;
-    sheet.releasePointerCapture?.(event.pointerId);
     dragState = null;
     setCommentSheetDragging(false);
     settleCommentSheetFocus(shouldStayFocused);
   };
 
-  sheet.addEventListener("pointerup", finishDrag);
-  sheet.addEventListener("pointercancel", finishDrag);
+  const handleMouseMove = (event) => {
+    if (!dragState || dragState.pointerId !== mouseDragId) return;
+    updateDrag(event.clientY, event);
+  };
+
+  const handleMouseUp = (event) => {
+    if (!dragState || dragState.pointerId !== mouseDragId) return;
+    document.removeEventListener("mousemove", handleMouseMove);
+    finishDragAt(event.clientY);
+  };
+
+  const startPointerDrag = (event) => {
+    if (dragState) return;
+    const isMousePointer = event.pointerType === "mouse";
+    const dragId = isMousePointer ? mouseDragId : event.pointerId;
+    if (!beginDrag(event.clientY, dragId, event.target)) return;
+    if (isMousePointer) {
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp, { once: true });
+      return;
+    }
+    try {
+      sheet.setPointerCapture?.(event.pointerId);
+    } catch {
+      // Some synthetic or browser-specific pointer streams cannot be captured.
+    }
+  };
+
+  const startMouseDrag = (event) => {
+    if (event.button !== 0 || dragState) return;
+    if (!beginDrag(event.clientY, mouseDragId, event.target)) return;
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp, { once: true });
+  };
+
+  const dragStartTargets = [sheet, input, input.closest(".comment-input-area")]
+    .filter((target, index, targets) => target && targets.indexOf(target) === index);
+  dragStartTargets.forEach((target) => {
+    target.addEventListener("pointerdown", startPointerDrag);
+    target.addEventListener("mousedown", startMouseDrag);
+  });
+
+  sheet.addEventListener("pointermove", (event) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    updateDrag(event.clientY, event);
+  });
+
+  const finishPointerDrag = (event) => {
+    if (!dragState || dragState.pointerId !== event.pointerId) return;
+    try {
+      sheet.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // Ignore release failures for uncaptured pointer streams.
+    }
+    finishDragAt(event.clientY);
+  };
+
+  sheet.addEventListener("pointerup", finishPointerDrag);
+  sheet.addEventListener("pointercancel", finishPointerDrag);
 }
 
 function setupCommentInputFocusState() {

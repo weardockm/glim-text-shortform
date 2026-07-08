@@ -130,7 +130,7 @@ test("uses the RLS profile nickname for post and comment inserts", async ({
 });
 
 
-test("shows the source post preview and focused comment sheet state", async ({
+test("keeps the real source post singular while the comment sheet is dragged", async ({
   page,
 }) => {
   await page.addInitScript(supabaseBrowserStub);
@@ -166,67 +166,116 @@ test("shows the source post preview and focused comment sheet state", async ({
     openSheet("commentSheet", "comment-preview-fixture");
   });
 
-  await expect(page.locator("#commentPostPreview")).toBeVisible();
-  await expect(page.locator("#commentPostPreview .author-name")).toContainText("미리보기 작성자");
-  await expect(page.locator("#commentPostPreview .text-content")).toContainText("댓글 시트에서 보여줄 원문");
-  await expect(page.locator("#commentPostPreview .post")).toHaveClass(/comment-post-clone/);
+  await expect(page.locator("#commentPostPreview")).toHaveCount(0);
+  await expect(page.locator(".comment-post-clone")).toHaveCount(0);
+  await expect(page.locator('.post[data-post-id="comment-preview-fixture"]')).toHaveCount(1);
+  await expect(page.locator("#commentSheet")).toHaveClass(/open/);
+  await expect(page.locator("#commentList")).toContainText("기존 댓글");
 
   const layout = await page.evaluate(() => {
     const sheet = document.getElementById("commentSheet").getBoundingClientRect();
-    const preview = document.getElementById("commentPostPreview").getBoundingClientRect();
-    const cloneText = document.querySelector("#commentPostPreview .text-content").getBoundingClientRect();
     return {
       viewportHeight: window.innerHeight,
       sheetTop: sheet.top,
       sheetHeight: sheet.height,
-      previewBottom: preview.bottom,
-      cloneTextTop: cloneText.top,
+      sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
+      cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
   });
+  expect(layout.sourcePostCount).toBe(1);
+  expect(layout.cloneCount).toBe(0);
   expect(layout.sheetHeight / layout.viewportHeight).toBeGreaterThan(0.52);
   expect(layout.sheetHeight / layout.viewportHeight).toBeLessThan(0.58);
-  expect(layout.previewBottom).toBeLessThanOrEqual(layout.sheetTop - 2);
-  expect(layout.cloneTextTop).toBeGreaterThanOrEqual(0);
 
   await page.locator("#commentInput").focus();
   await expect(page.locator("#commentSheet")).toHaveClass(/is-input-focused/);
-  await expect(page.locator("#commentPostPreview")).toHaveClass(/is-input-focused/);
+  await expect(page.locator("#commentPostPreview")).toHaveCount(0);
   await page.waitForTimeout(620);
 
   const focusedLayout = await page.evaluate(() => {
     const sheet = document.getElementById("commentSheet").getBoundingClientRect();
-    const preview = document.getElementById("commentPostPreview").getBoundingClientRect();
     return {
+      sheetTop: sheet.top,
       sheetHeight: sheet.height,
-      previewBottom: preview.bottom,
+      sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
+      cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
   });
+  expect(focusedLayout.sourcePostCount).toBe(1);
+  expect(focusedLayout.cloneCount).toBe(0);
   expect(focusedLayout.sheetHeight).toBeGreaterThan(layout.sheetHeight + 12);
-  expect(focusedLayout.previewBottom).toBeLessThan(layout.previewBottom - 12);
+  expect(focusedLayout.sheetTop).toBeLessThan(layout.sheetTop - 12);
 
   const dragStart = await page.evaluate(() => {
     const input = document.getElementById("commentInput").getBoundingClientRect();
     return { x: input.left + input.width / 2, y: input.top + input.height / 2 };
   });
-  await page.mouse.move(dragStart.x, dragStart.y);
-  await page.mouse.down();
-  await page.mouse.move(dragStart.x, dragStart.y + 120, { steps: 8 });
-  await page.mouse.up();
+  await page.evaluate(({ x, y }) => {
+    const input = document.getElementById("commentInput");
+    const pointerId = 42;
+    const dispatchDragEvent = (type, clientY) => {
+      input.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY,
+        pointerId,
+        pointerType: "touch",
+        isPrimary: true,
+      }));
+    };
+    dispatchDragEvent("pointerdown", y);
+    [15, 30, 45, 60, 75, 90, 105, 120].forEach((delta) => {
+      dispatchDragEvent("pointermove", y + delta);
+    });
+  }, dragStart);
+
+  const draggingLayout = await page.evaluate(() => {
+    const sheet = document.getElementById("commentSheet");
+    const box = sheet.getBoundingClientRect();
+    return {
+      sheetTop: box.top,
+      sheetHeight: box.height,
+      dragOffset: parseFloat(sheet.style.getPropertyValue("--comment-sheet-drag")) || 0,
+      sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
+      cloneCount: document.querySelectorAll(".comment-post-clone").length,
+    };
+  });
+  expect(draggingLayout.sheetTop).toBeGreaterThan(focusedLayout.sheetTop + 20);
+  expect(draggingLayout.dragOffset).toBeGreaterThan(20);
+  expect(draggingLayout.sourcePostCount).toBe(1);
+  expect(draggingLayout.cloneCount).toBe(0);
+
+  await page.evaluate(({ x, y }) => {
+    document.getElementById("commentInput").dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true,
+      cancelable: true,
+      clientX: x,
+      clientY: y + 120,
+      pointerId: 42,
+      pointerType: "touch",
+      isPrimary: true,
+    }));
+  }, dragStart);
   await expect(page.locator("#commentSheet")).not.toHaveClass(/is-input-focused/);
   await page.waitForTimeout(620);
 
   const restoredLayout = await page.evaluate(() => {
     const sheet = document.getElementById("commentSheet").getBoundingClientRect();
-    const preview = document.getElementById("commentPostPreview").getBoundingClientRect();
     return {
+      sheetTop: sheet.top,
       sheetHeight: sheet.height,
-      previewBottom: preview.bottom,
+      sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
+      cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
   });
   expect(restoredLayout.sheetHeight).toBeLessThan(focusedLayout.sheetHeight - 12);
-  expect(restoredLayout.previewBottom).toBeGreaterThan(focusedLayout.previewBottom + 12);
+  expect(restoredLayout.sheetTop).toBeGreaterThan(focusedLayout.sheetTop + 12);
+  expect(restoredLayout.sourcePostCount).toBe(1);
+  expect(restoredLayout.cloneCount).toBe(0);
   await expect(page.locator("#commentList")).toContainText("기존 댓글");
 });
+
 
 
 test("recovers enabled push status from the current user's active remote subscription", async ({

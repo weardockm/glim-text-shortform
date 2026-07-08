@@ -84,23 +84,27 @@ test("profile swipe-back underlay synchronizes login state before reveal", async
   );
 });
 
-test("comment sheet exposes source-post preview and focused input state", async () => {
+test("comment sheet uses the real source post instead of a cloned preview", async () => {
   const html = await readFile(path.resolve("index.html"), "utf8");
   const js = await readFile(path.resolve("index.js"), "utf8");
 
-  assert.match(html, /id="commentPostPreview"/u);
-  assert.match(html, /class="comment-post-stage"/u);
+  assert.doesNotMatch(html, /commentPostPreview/u);
+  assert.doesNotMatch(html, /comment-post-stage/u);
   assert.match(html, /contenteditable="true"/u);
   assert.match(html, /data-placeholder="따뜻한 댓글을 남겨주세요."/u);
   assert.match(html, /\.comment-sheet\.is-input-focused/u);
-  assert.match(js, /cloneNode\(true\)/u);
-  assert.match(js, /function renderCommentPostPreview/u);
+  assert.doesNotMatch(js, /cloneNode\(true\)/u);
+  assert.doesNotMatch(js, /comment-post-clone/u);
+  assert.doesNotMatch(js, /renderCommentPostPreview/u);
+  assert.doesNotMatch(js, /commentPostPreview/u);
   assert.match(js, /function getCommentInputContent/u);
   assert.match(js, /function setupCommentInputFocusState/u);
   assert.match(js, /function setupCommentSheetDragInteractions/u);
   assert.match(js, /COMMENT_SHEET_DRAG_RANGE_PX/u);
+  assert.match(js, /--comment-sheet-drag/u);
   assert.doesNotMatch(js, /#commentInput, .comment-submit-btn/u);
 });
+
 
 test("BGM pauses when the app leaves the foreground", async () => {
   const js = await readFile(path.resolve("index.js"), "utf8");

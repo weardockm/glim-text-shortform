@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=90" defer></script>
+    <script src="index.js?v=93" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -2786,64 +2786,6 @@
       }
       .comment-sheet .sheet-header {
         padding: 0 2px 8px;
-      }
-      .comment-post-stage {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: calc(var(--comment-post-bottom, 55dvh) + 6px);
-        z-index: 96;
-        display: flex;
-        align-items: stretch;
-        justify-content: center;
-        overflow: hidden;
-        pointer-events: none;
-        background: #050505;
-        transform: translateY(var(--comment-post-lift, 0px)) scale(var(--comment-post-scale, 1));
-        transform-origin: center top;
-        transition:
-          transform 0.52s cubic-bezier(0.22, 1, 0.36, 1),
-          bottom 0.52s cubic-bezier(0.22, 1, 0.36, 1),
-          opacity 0.32s ease;
-      }
-      .comment-post-stage[hidden] {
-        display: none !important;
-      }
-      .comment-post-stage.is-input-focused {
-        --comment-post-bottom: 62dvh;
-        --comment-post-lift: -18px;
-        --comment-post-scale: 0.94;
-        opacity: 0.96;
-      }
-      .comment-post-stage.is-dragging {
-        transition: none !important;
-      }
-      .comment-post-stage .post {
-        width: 100%;
-        height: 100%;
-        min-height: 0;
-        padding: 1.25rem 1.25rem 0.9rem;
-        scroll-snap-align: none;
-        transform: none !important;
-      }
-      .comment-post-stage .text-content,
-      .comment-post-stage .post.is-visible .text-content {
-        max-width: min(450px, calc(100% - 56px));
-        opacity: 1;
-        transform: translateY(-8px) scale(0.94);
-        transform-origin: center center;
-      }
-      .comment-post-stage .author-info {
-        bottom: 18px;
-        opacity: 1;
-      }
-      .comment-post-stage .side-actions {
-        bottom: 18px;
-        opacity: 1;
-      }
-      .comment-post-stage .more-menu {
-        display: none !important;
       }
       .comment-list {
         flex: 1 1 auto;
@@ -6413,8 +6355,6 @@
       id="commentSheetBackdrop"
       data-glim-click="closeSheet('commentSheet')"
     ></div>
-
-    <div class="comment-post-stage" id="commentPostPreview" hidden></div>
 
     <div class="bottom-sheet comment-sheet" id="commentSheet">
       <div class="sheet-handle"></div>
