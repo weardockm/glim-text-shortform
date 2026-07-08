@@ -130,6 +130,89 @@ test("uses the RLS profile nickname for post and comment inserts", async ({
 });
 
 
+test("keeps the second home feed post above the comment sheet", async ({
+  page,
+}) => {
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    const url = route.request().url();
+    if (!url.startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", {
+    timeout: 10_000,
+    waitUntil: "domcontentloaded",
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__supabaseCalls.some(
+      (call) => call.boundary === "table" && call.name === "posts.select",
+    )))
+    .toBe(true);
+
+  await page.evaluate(() => {
+    const feed = document.getElementById("postFeed");
+    const posts = [1, 2, 3].map((index) => createContextFeedPost({
+      id: "home-comment-source-" + index,
+      user_id: "home-comment-author-" + index,
+      author: "홈작성자" + index,
+      content: "홈 피드 " + index + "번째 댓글 원문입니다.",
+      created_at: "2026-07-08T00:00:00Z",
+      likes_count: 0,
+      dislikes_count: 0,
+    }));
+    feed.replaceChildren(...posts);
+    posts.forEach((post) => fitPostTextToViewport(post));
+    document.querySelectorAll(".app-view").forEach((view) => view.classList.remove("active"));
+    document.getElementById("view-home").classList.add("active");
+    window.__supabaseRows.comments = [{
+      id: "home-comment-row-fixture",
+      post_id: "home-comment-source-2",
+      user_id: "commenter-fixture",
+      user_email: "기존작성자",
+      content: "기존 댓글",
+      created_at: "2026-07-08T00:00:00Z",
+      likes_count: 0,
+    }];
+  });
+
+  await page.evaluate(() => {
+    const view = document.getElementById("view-home");
+    const target = document.querySelector('#postFeed .post[data-post-id="home-comment-source-2"]');
+    view.scrollTop = target.offsetTop;
+  });
+  await page.waitForTimeout(120);
+  await page.evaluate(() => {
+    document
+      .querySelector('#postFeed .post[data-post-id="home-comment-source-2"] [data-post-action="comment"]')
+      ?.click();
+  });
+  await expect(page.locator("#commentSheet")).toHaveClass(/open/);
+  await expect(page.locator("#commentList")).toContainText("기존 댓글");
+  await page.waitForTimeout(700);
+
+  const layout = await page.evaluate(() => {
+    const post = document.querySelector('#postFeed .post[data-post-id="home-comment-source-2"]');
+    const rect = post.getBoundingClientRect();
+    const sheet = document.getElementById("commentSheet").getBoundingClientRect();
+    return {
+      className: post.className,
+      sourceY: parseFloat(post.style.getPropertyValue("--comment-source-y")) || 0,
+      sourceCenter: rect.top + rect.height / 2,
+      sheetTop: sheet.top,
+      scrollTop: document.getElementById("view-home").scrollTop,
+    };
+  });
+
+  expect(layout.className).toContain("is-comment-source");
+  expect(layout.sourceY).toBeLessThan(-1);
+  expect(layout.sourceCenter).toBeLessThan(layout.sheetTop - 70);
+});
+
+
 test("keeps the real source post singular while the comment sheet is dragged", async ({
   page,
 }) => {

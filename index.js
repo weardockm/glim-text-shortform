@@ -89,7 +89,6 @@ const likedCommentIds = new Set();
 const ENGAGEMENT_MIGRATION_STORAGE_PREFIX = "glim_engagement_migrated";
 let currentPostIdForComment = null;
 let currentCommentPostElement = null;
-let currentCommentSourceBaseCenterY = 0;
 let pendingCommentSourceAnimationFrame = 0;
 let isCommentSheetDragging = false;
 const COMMENT_SHEET_REST_HEIGHT_DVH = 55;
@@ -6118,7 +6117,6 @@ function clearCommentSourcePost() {
   currentCommentPostElement.style.removeProperty("--comment-source-y");
   currentCommentPostElement.style.removeProperty("--comment-source-scale");
   currentCommentPostElement = null;
-  currentCommentSourceBaseCenterY = 0;
 }
 
 function updateCommentSourcePostMotion(progress, dragDistance = 0) {
@@ -6132,9 +6130,7 @@ function updateCommentSourcePostMotion(progress, dragDistance = 0) {
         * nextProgress)
     / 100;
   const sheetHeight = Math.min(expectedSheetHeight, 640);
-  const sheetTop = viewportHeight - sheetHeight + dragOffset;
-  const baseCenterY = currentCommentSourceBaseCenterY || viewportHeight / 2;
-  const sourceY = sheetTop / 2 - baseCenterY;
+  const sourceY = -Math.max(0, sheetHeight - dragOffset) / 2;
   const sourceScale = 1 - COMMENT_SOURCE_FOCUSED_SCALE_DELTA * nextProgress;
 
   currentCommentPostElement.style.setProperty("--comment-source-y", String(sourceY) + "px");
@@ -6145,8 +6141,6 @@ function setCommentSourcePost(postId) {
   clearCommentSourcePost();
   currentCommentPostElement = getCommentSourcePostElement(postId);
   if (!currentCommentPostElement) return;
-  const sourceRect = currentCommentPostElement.getBoundingClientRect();
-  currentCommentSourceBaseCenterY = sourceRect.top + sourceRect.height / 2;
   currentCommentPostElement.classList.add("is-comment-source");
   currentCommentPostElement.style.setProperty("--comment-source-y", "0px");
   currentCommentPostElement.style.setProperty("--comment-source-scale", "1");

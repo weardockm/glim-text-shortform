@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=96" defer></script>
+    <script src="index.js?v=97" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -401,6 +401,11 @@
         padding: 2rem;
       }
       .post.is-comment-source {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100vh;
+        height: 100dvh;
         z-index: 95;
         transform: translate3d(0, var(--comment-source-y, 0px), 0) scale(var(--comment-source-scale, 1));
         transform-origin: center center;
