@@ -149,8 +149,21 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   });
 
   await page.evaluate(() => {
-    const feed = document.getElementById("postFeed");
-    const post = createContextFeedPost({
+    const homeFeed = document.getElementById("postFeed");
+    const hiddenHomePost = createContextFeedPost({
+      id: "comment-preview-fixture",
+      user_id: "comment-author-fixture",
+      author: "숨겨진 홈 작성자",
+      content: "활성 화면이 아닌 홈 피드 사본입니다.",
+      created_at: "2026-07-08T00:00:00Z",
+      likes_count: 0,
+      dislikes_count: 0,
+    });
+    homeFeed.replaceChildren(hiddenHomePost);
+    fitPostTextToViewport(hiddenHomePost);
+
+    const contextFeed = document.getElementById("contextPostFeed");
+    const visibleContextPost = createContextFeedPost({
       id: "comment-preview-fixture",
       user_id: "comment-author-fixture",
       author: "미리보기 작성자",
@@ -159,8 +172,10 @@ test("keeps the real source post singular while the comment sheet is dragged", a
       likes_count: 0,
       dislikes_count: 0,
     });
-    feed.replaceChildren(post);
-    fitPostTextToViewport(post);
+    contextFeed.replaceChildren(visibleContextPost);
+    fitPostTextToViewport(visibleContextPost);
+    document.querySelectorAll(".app-view").forEach((view) => view.classList.remove("active"));
+    document.getElementById("view-context-feed").classList.add("active");
     window.__supabaseRows.comments = [{
       id: "comment-row-fixture",
       post_id: "comment-preview-fixture",
@@ -175,9 +190,12 @@ test("keeps the real source post singular while the comment sheet is dragged", a
 
   await expect(page.locator("#commentPostPreview")).toHaveCount(0);
   await expect(page.locator(".comment-post-clone")).toHaveCount(0);
-  const sourcePost = page.locator('.post[data-post-id="comment-preview-fixture"]');
+  const sourcePost = page.locator('#view-context-feed .post[data-post-id="comment-preview-fixture"]');
+  const hiddenSourcePost = page.locator('#view-home .post[data-post-id="comment-preview-fixture"]');
   await expect(sourcePost).toHaveCount(1);
+  await expect(hiddenSourcePost).toHaveCount(1);
   await expect(sourcePost).toHaveClass(/is-comment-source/);
+  await expect(hiddenSourcePost).not.toHaveClass(/is-comment-source/);
   await expect(page.locator("#commentSheet")).toHaveClass(/open/);
   await expect(page.locator("#commentList")).toContainText("기존 댓글");
   await page.waitForTimeout(620);
@@ -188,11 +206,11 @@ test("keeps the real source post singular while the comment sheet is dragged", a
       viewportHeight: window.innerHeight,
       sheetTop: sheet.top,
       sheetHeight: sheet.height,
-      sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
-      sourceY: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
-      sourceScale: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
+      sourcePostCount: document.querySelectorAll('#view-context-feed .post[data-post-id="comment-preview-fixture"]').length,
+      sourceY: parseFloat(document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
+      sourceScale: parseFloat(document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
       sourceRect: (() => {
-        const rect = document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
+        const rect = document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
         return rect ? { top: rect.top, bottom: rect.bottom, center: rect.top + rect.height / 2 } : null;
       })(),
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
@@ -216,11 +234,11 @@ test("keeps the real source post singular while the comment sheet is dragged", a
     return {
       sheetTop: sheet.top,
       sheetHeight: sheet.height,
-      sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
-      sourceY: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
-      sourceScale: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
+      sourcePostCount: document.querySelectorAll('#view-context-feed .post[data-post-id="comment-preview-fixture"]').length,
+      sourceY: parseFloat(document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
+      sourceScale: parseFloat(document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
       sourceRect: (() => {
-        const rect = document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
+        const rect = document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
         return rect ? { top: rect.top, bottom: rect.bottom, center: rect.top + rect.height / 2 } : null;
       })(),
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
@@ -265,11 +283,11 @@ test("keeps the real source post singular while the comment sheet is dragged", a
       sheetTop: box.top,
       sheetHeight: box.height,
       dragOffset: parseFloat(sheet.style.getPropertyValue("--comment-sheet-drag")) || 0,
-      sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
-      sourceY: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
-      sourceScale: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
+      sourcePostCount: document.querySelectorAll('#view-context-feed .post[data-post-id="comment-preview-fixture"]').length,
+      sourceY: parseFloat(document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
+      sourceScale: parseFloat(document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
       sourceRect: (() => {
-        const rect = document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
+        const rect = document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
         return rect ? { top: rect.top, bottom: rect.bottom, center: rect.top + rect.height / 2 } : null;
       })(),
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
@@ -302,11 +320,11 @@ test("keeps the real source post singular while the comment sheet is dragged", a
     return {
       sheetTop: sheet.top,
       sheetHeight: sheet.height,
-      sourcePostCount: document.querySelectorAll('.post[data-post-id="comment-preview-fixture"]').length,
-      sourceY: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
-      sourceScale: parseFloat(document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
+      sourcePostCount: document.querySelectorAll('#view-context-feed .post[data-post-id="comment-preview-fixture"]').length,
+      sourceY: parseFloat(document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-y")) || 0,
+      sourceScale: parseFloat(document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.style.getPropertyValue("--comment-source-scale")) || 1,
       sourceRect: (() => {
-        const rect = document.querySelector('.post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
+        const rect = document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
         return rect ? { top: rect.top, bottom: rect.bottom, center: rect.top + rect.height / 2 } : null;
       })(),
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
