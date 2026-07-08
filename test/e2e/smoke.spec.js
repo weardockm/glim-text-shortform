@@ -179,10 +179,11 @@ test("keeps the second home feed post above the comment sheet", async ({
     }];
   });
 
-  await page.evaluate(() => {
+  const beforeScrollTop = await page.evaluate(() => {
     const view = document.getElementById("view-home");
     const target = document.querySelector('#postFeed .post[data-post-id="home-comment-source-2"]');
     view.scrollTop = target.offsetTop;
+    return view.scrollTop;
   });
   await page.waitForTimeout(120);
   await page.evaluate(() => {
@@ -204,12 +205,15 @@ test("keeps the second home feed post above the comment sheet", async ({
       sourceCenter: rect.top + rect.height / 2,
       sheetTop: sheet.top,
       scrollTop: document.getElementById("view-home").scrollTop,
+      backgroundColor: getComputedStyle(post).backgroundColor,
     };
   });
 
   expect(layout.className).toContain("is-comment-source");
   expect(layout.sourceY).toBeLessThan(-1);
   expect(layout.sourceCenter).toBeLessThan(layout.sheetTop - 70);
+  expect(layout.scrollTop).toBeGreaterThanOrEqual(beforeScrollTop);
+  expect(layout.backgroundColor).toBe("rgb(5, 5, 5)");
 });
 
 

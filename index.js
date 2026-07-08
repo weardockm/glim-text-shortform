@@ -89,7 +89,11 @@ const likedCommentIds = new Set();
 const ENGAGEMENT_MIGRATION_STORAGE_PREFIX = "glim_engagement_migrated";
 let currentPostIdForComment = null;
 let currentCommentPostElement = null;
+let currentCommentSourceViewElement = null;
+let currentCommentSourcePlaceholderElement = null;
+let currentCommentSourceScrollTop = 0;
 let pendingCommentSourceAnimationFrame = 0;
+let pendingCommentSourceScrollTimers = [];
 let isCommentSheetDragging = false;
 const COMMENT_SHEET_REST_HEIGHT_DVH = 55;
 const COMMENT_SHEET_FOCUSED_HEIGHT_DVH = 62;
@@ -97,6 +101,7 @@ const COMMENT_SHEET_DRAG_RANGE_PX = 180;
 const COMMENT_SHEET_DRAG_SETTLE_PX = 54;
 const COMMENT_SHEET_DRAG_TRANSLATE_RATIO = 0.32;
 const COMMENT_SOURCE_FOCUSED_SCALE_DELTA = 0.035;
+const COMMENT_SOURCE_SCROLL_PIN_DELAYS_MS = [40, 120, 240, 420, 620, 820];
 let pendingReportTarget = null;
 let viewedProfileUserId = null;
 let viewedProfileIsFollowing = false;
@@ -6109,14 +6114,50 @@ function clearCommentSourcePost() {
     cancelAnimationFrame(pendingCommentSourceAnimationFrame);
     pendingCommentSourceAnimationFrame = 0;
   }
-  if (!currentCommentPostElement) return;
+  pendingCommentSourceScrollTimers.forEach((timerId) => clearTimeout(timerId));
+  pendingCommentSourceScrollTimers = [];
+  const sourceView = currentCommentSourceViewElement;
+  const sourceScrollTop = currentCommentSourceScrollTop;
+  currentCommentSourceViewElement = null;
+  currentCommentSourceScrollTop = 0;
+  const placeholder = currentCommentSourcePlaceholderElement;
+  currentCommentSourcePlaceholderElement = null;
+  if (!currentCommentPostElement) {
+    placeholder?.remove();
+    return;
+  }
   currentCommentPostElement.classList.remove(
     "is-comment-source",
     "is-comment-source-dragging",
   );
   currentCommentPostElement.style.removeProperty("--comment-source-y");
   currentCommentPostElement.style.removeProperty("--comment-source-scale");
+  placeholder?.remove();
+  if (sourceView) {
+    const restoreScroll = () => {
+      sourceView.scrollTop = sourceScrollTop;
+    };
+    restoreScroll();
+    requestAnimationFrame(restoreScroll);
+    [80, 180, 360, 620].forEach((delay) => setTimeout(restoreScroll, delay));
+    setTimeout(() => {
+      restoreScroll();
+      sourceView.classList.remove("is-comment-source-active");
+    }, 700);
+  }
   currentCommentPostElement = null;
+}
+
+function pinCommentSourceScrollPosition() {
+  if (!currentCommentSourceViewElement) return;
+  currentCommentSourceViewElement.scrollTop = currentCommentSourceScrollTop;
+}
+
+function scheduleCommentSourceScrollPin() {
+  pendingCommentSourceScrollTimers.forEach((timerId) => clearTimeout(timerId));
+  pendingCommentSourceScrollTimers = COMMENT_SOURCE_SCROLL_PIN_DELAYS_MS.map(
+    (delay) => setTimeout(pinCommentSourceScrollPosition, delay),
+  );
 }
 
 function updateCommentSourcePostMotion(progress, dragDistance = 0) {
@@ -6135,12 +6176,21 @@ function updateCommentSourcePostMotion(progress, dragDistance = 0) {
 
   currentCommentPostElement.style.setProperty("--comment-source-y", String(sourceY) + "px");
   currentCommentPostElement.style.setProperty("--comment-source-scale", String(sourceScale));
+  pinCommentSourceScrollPosition();
+  requestAnimationFrame(pinCommentSourceScrollPosition);
+  scheduleCommentSourceScrollPin();
 }
 
 function setCommentSourcePost(postId) {
   clearCommentSourcePost();
   currentCommentPostElement = getCommentSourcePostElement(postId);
   if (!currentCommentPostElement) return;
+  currentCommentSourceViewElement = currentCommentPostElement.closest(".app-view");
+  currentCommentSourceScrollTop = currentCommentSourceViewElement?.scrollTop || 0;
+  currentCommentSourceViewElement?.classList.add("is-comment-source-active");
+  currentCommentSourcePlaceholderElement = document.createElement("div");
+  currentCommentSourcePlaceholderElement.className = "comment-source-placeholder";
+  currentCommentPostElement.after(currentCommentSourcePlaceholderElement);
   currentCommentPostElement.classList.add("is-comment-source");
   currentCommentPostElement.style.setProperty("--comment-source-y", "0px");
   currentCommentPostElement.style.setProperty("--comment-source-scale", "1");

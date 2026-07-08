@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=97" defer></script>
+    <script src="index.js?v=98" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -400,6 +400,17 @@
         position: relative;
         padding: 2rem;
       }
+      .comment-source-placeholder {
+        height: 100vh;
+        height: 100dvh;
+        scroll-snap-align: start;
+        pointer-events: none;
+      }
+      .app-view.is-comment-source-active {
+        overflow-anchor: none;
+        scroll-snap-type: none !important;
+        overflow-y: hidden !important;
+      }
       .post.is-comment-source {
         position: fixed;
         inset: 0;
@@ -407,8 +418,10 @@
         height: 100vh;
         height: 100dvh;
         z-index: 95;
+        background: #050505;
         transform: translate3d(0, var(--comment-source-y, 0px), 0) scale(var(--comment-source-scale, 1));
         transform-origin: center center;
+        overflow-anchor: none;
         will-change: transform;
         transition: transform 0.52s cubic-bezier(0.22, 1, 0.36, 1);
       }
