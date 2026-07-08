@@ -391,6 +391,10 @@ test("keeps the real source post singular while the comment sheet is dragged", a
         const rect = document.querySelector('#view-context-feed .post[data-post-id="comment-preview-fixture"]')?.getBoundingClientRect();
         return rect ? { top: rect.top, bottom: rect.bottom, center: rect.top + rect.height / 2 } : null;
       })(),
+      inputBottomGap: (() => {
+        const inputArea = document.querySelector(".comment-input-area")?.getBoundingClientRect();
+        return inputArea ? Math.round(sheet.bottom - inputArea.bottom) : null;
+      })(),
       cloneCount: document.querySelectorAll(".comment-post-clone").length,
     };
   });
@@ -401,6 +405,7 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   expect(focusedLayout.sourceRect.center).toBeLessThan(layout.sourceRect.center - 10);
   expect(focusedLayout.sheetHeight).toBeGreaterThan(layout.sheetHeight + 12);
   expect(focusedLayout.sheetTop).toBeLessThan(layout.sheetTop - 12);
+  expect(focusedLayout.inputBottomGap).toBeLessThanOrEqual(1);
 
   const dragStart = await page.evaluate(() => {
     const input = document.getElementById("commentInput").getBoundingClientRect();
