@@ -408,8 +408,8 @@ test("keeps the real source post singular while the comment sheet is dragged", a
   expect(focusedLayout.sourceRect.center).toBeLessThan(layout.sourceRect.center - 6);
   expect(focusedLayout.sheetHeight).toBeGreaterThan(layout.sheetHeight + 12);
   expect(focusedLayout.sheetTop).toBeLessThan(layout.sheetTop - 12);
-  expect(focusedLayout.inputBottomGap).toBeGreaterThanOrEqual(5);
-  expect(focusedLayout.inputBottomGap).toBeLessThanOrEqual(16);
+  expect(focusedLayout.inputBottomGap).toBeGreaterThanOrEqual(7);
+  expect(focusedLayout.inputBottomGap).toBeLessThanOrEqual(18);
 
   const dragStart = await page.evaluate(() => {
     const input = document.getElementById("commentInput").getBoundingClientRect();

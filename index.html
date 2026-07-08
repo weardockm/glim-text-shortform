@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=106" defer></script>
+    <script src="index.js?v=107" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -2806,7 +2806,7 @@
       .comment-sheet {
         --comment-sheet-height: 50dvh;
         --comment-sheet-drag: 0px;
-        --comment-input-bottom-gap: clamp(10px, 1.2dvh, 16px);
+        --comment-input-bottom-gap: clamp(12px, 1.4dvh, 18px);
         height: min(var(--comment-sheet-height), 640px);
         max-height: 640px;
         padding: 16px 16px 0;
@@ -2841,7 +2841,7 @@
       }
       @media (max-width: 640px), (pointer: coarse) {
         .comment-sheet {
-          --comment-input-bottom-gap: 6px;
+          --comment-input-bottom-gap: 8px;
         }
       }
       .comment-input-area {
