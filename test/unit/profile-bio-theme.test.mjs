@@ -13,6 +13,10 @@ const defaultOnlyMigrationPath = path.resolve(
 test("profile bio migration extends public profile fields and default-only migration locks theme", async () => {
   const addSource = await readFile(addMigrationPath, "utf8");
   const defaultOnlySource = await readFile(defaultOnlyMigrationPath, "utf8");
+  const commentDeleteGrantSource = await readFile(
+    path.resolve("supabase/migrations/20260708024500_grant_comment_delete.sql"),
+    "utf8",
+  );
 
   assert.match(addSource, /alter table public\.profiles\s+add column if not exists bio text/u);
   assert.match(addSource, /alter table public\.profiles\s+add column if not exists theme text not null default 'default'/u);
@@ -31,14 +35,20 @@ test("profile bio migration extends public profile fields and default-only migra
   assert.match(defaultOnlySource, /alter table public\.profiles\s+alter column theme set default 'default'/u);
   assert.match(defaultOnlySource, /check \(theme = 'default'\)/u);
   assert.doesNotMatch(defaultOnlySource, /create policy|delete_user_data|service_role client/iu);
+
+  assert.match(commentDeleteGrantSource, /grant delete\s+on table public\.comments\s+to authenticated;/u);
+  assert.doesNotMatch(commentDeleteGrantSource, /drop policy|disable row level security|service_role/iu);
 });
 
-test("profile edit surface keeps bio controls and removes non-default theme picker", async () => {
+test("profile edit surface keeps bio controls and a default-only theme picker", async () => {
   const html = await readFile(path.resolve("index.html"), "utf8");
   const js = await readFile(path.resolve("index.js"), "utf8");
 
   assert.match(html, /id="editBioInput"/u);
   assert.match(html, /maxlength="60"/u);
+  assert.match(html, /class="profile-theme-options"/u);
+  assert.match(html, /data-profile-theme-option="default"/u);
+  assert.match(html, /profile-theme-option-check/u);
   assert.doesNotMatch(html, /data-profile-theme-option="lofi_night"|data-profile-theme-option="vintage_analog"/u);
   assert.doesNotMatch(html, /로파이 나이트|빈티지 아날로그/u);
   assert.match(html, /id="profileBio"/u);

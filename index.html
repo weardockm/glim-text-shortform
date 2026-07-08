@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=86" defer></script>
+    <script src="index.js?v=87" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -1999,6 +1999,42 @@
         resize: none;
         line-height: 1.5;
       }
+      .profile-theme-options {
+        display: grid;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .profile-theme-option {
+        width: 100%;
+        min-height: 58px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border: 1px solid #2a2a2a;
+        border-radius: 14px;
+        background: #101010;
+        color: #eee;
+        text-align: left;
+        cursor: pointer;
+        font-family: -apple-system, sans-serif;
+      }
+      .profile-theme-option.is-selected {
+        border-color: rgba(255, 158, 105, 0.45);
+        background: rgba(255, 158, 105, 0.08);
+      }
+      .profile-theme-swatch {
+        flex: 0 0 auto;
+        width: 34px;
+        height: 34px;
+        border-radius: 11px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: radial-gradient(circle at 30% 20%, rgba(255, 158, 105, 0.32), transparent 38%), linear-gradient(135deg, #151515, #070707);
+      }
+      .profile-theme-option-copy { min-width: 0; flex: 1 1 auto; }
+      .profile-theme-option-title { display: block; font-size: 0.88rem; font-weight: 800; }
+      .profile-theme-option-desc { display: block; margin-top: 3px; color: #777; font-size: 0.72rem; line-height: 1.35; }
+      .profile-theme-option-check { flex: 0 0 auto; color: #ff9e69; font-size: 1.18rem; font-variation-settings: "FILL" 1; }
       .profile-stats {
         display: flex;
         justify-content: center;
@@ -2727,7 +2763,8 @@
       }
 
       .comment-sheet {
-        height: min(76%, 680px);
+        height: 55dvh;
+        max-height: 620px;
         padding: 16px 16px max(12px, env(safe-area-inset-bottom));
         background: #14191c;
         border-radius: 30px 30px 0 0;
@@ -2737,16 +2774,28 @@
         padding: 0 2px 8px;
       }
       .comment-post-preview {
-        flex: 0 0 auto;
-        margin: 2px 0 12px;
-        padding: 12px 14px;
+        position: fixed;
+        left: 16px;
+        right: 16px;
+        bottom: calc(55dvh + 12px);
+        z-index: 96;
+        max-height: calc(45dvh - 28px);
+        padding: 14px 15px;
         border: 1px solid rgba(255, 255, 255, 0.07);
-        border-radius: 17px;
-        background: rgba(255, 255, 255, 0.035);
+        border-radius: 20px;
+        background: rgba(18, 23, 26, 0.94);
+        box-shadow: 0 16px 44px rgba(0, 0, 0, 0.32);
         font-family: -apple-system, sans-serif;
+        overflow: hidden;
+        transform-origin: center bottom;
+        transition: transform 0.22s ease, opacity 0.22s ease;
       }
       .comment-post-preview[hidden] {
         display: none !important;
+      }
+      .comment-post-preview.is-input-focused {
+        transform: translateY(-16px) scale(0.965);
+        opacity: 0.92;
       }
       .comment-post-preview-label {
         color: #747c83;
@@ -2761,10 +2810,10 @@
       }
       .comment-post-preview-content {
         color: #d7dcdf;
-        font-size: 0.9rem;
+        font-size: 0.92rem;
         line-height: 1.45;
         display: -webkit-box;
-        -webkit-line-clamp: 3;
+        -webkit-line-clamp: 5;
         -webkit-box-orient: vertical;
         overflow: hidden;
         word-break: keep-all;
@@ -2778,10 +2827,7 @@
         touch-action: pan-y;
       }
       .comment-sheet.is-input-focused {
-        height: min(58%, 560px);
-      }
-      .comment-sheet.is-input-focused .comment-post-preview {
-        display: none;
+        height: min(62dvh, 640px);
       }
       .comment-sheet.is-input-focused .comment-list {
         min-height: 118px;
@@ -6222,6 +6268,23 @@
           rows="3"
         ></textarea>
         <p class="edit-profile-field-hint">최대 60자까지 표시됩니다.</p>
+        <p class="edit-profile-field-label">프로필 테마</p>
+        <div class="profile-theme-options" role="group" aria-label="프로필 테마">
+          <button
+            type="button"
+            class="profile-theme-option is-selected"
+            data-profile-theme-option="default"
+            data-glim-click="setProfileTheme('default')"
+            aria-pressed="true"
+          >
+            <span class="profile-theme-swatch default" aria-hidden="true"></span>
+            <span class="profile-theme-option-copy">
+              <span class="profile-theme-option-title">기본</span>
+              <span class="profile-theme-option-desc">글림의 기본 다크 톤을 사용합니다.</span>
+            </span>
+            <span class="material-symbols-outlined profile-theme-option-check">check_circle</span>
+          </button>
+        </div>
         <button
           id="editProfileSaveButton"
           class="submit-btn"
@@ -6315,6 +6378,12 @@
       data-glim-click="closeSheet('commentSheet')"
     ></div>
 
+    <div class="comment-post-preview" id="commentPostPreview" hidden>
+      <div class="comment-post-preview-label">원문</div>
+      <div class="comment-post-preview-author" id="commentPostPreviewAuthor"></div>
+      <div class="comment-post-preview-content" id="commentPostPreviewContent"></div>
+    </div>
+
     <div class="bottom-sheet comment-sheet" id="commentSheet">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
@@ -6322,11 +6391,6 @@
         <button class="close-btn" data-glim-click="closeSheet('commentSheet')">
           ✕
         </button>
-      </div>
-      <div class="comment-post-preview" id="commentPostPreview" hidden>
-        <div class="comment-post-preview-label">원문</div>
-        <div class="comment-post-preview-author" id="commentPostPreviewAuthor"></div>
-        <div class="comment-post-preview-content" id="commentPostPreviewContent"></div>
       </div>
       <div class="comment-list" id="commentList"></div>
       <div class="comment-input-area">

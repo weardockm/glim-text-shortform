@@ -175,6 +175,7 @@ let pushMessaging = null;
 let pushServiceWorkerRegistration = null;
 let pushEventListenersReady = false;
 let pendingPushRegistration = null;
+let pushRemoteStatusCheckId = 0;
 let pushOnboardingTimer = null;
 let appSplashHideTimer = null;
 let appSplashFinished = false;
@@ -3897,7 +3898,44 @@ async function getPushMessagingContext() {
   return { modules, messaging: pushMessaging };
 }
 
-function updatePushNotificationSettingsUI() {
+function setPushNotificationSettingsState({ toggle, status, help, isEnabled, statusText, helpText, helpState = "", disabled = false }) {
+  toggle.checked = isEnabled;
+  toggle.disabled = disabled;
+  status.innerText = statusText;
+  help.innerText = helpText;
+  help.dataset.state = helpState;
+}
+
+async function refreshCurrentDevicePushStatusFromServer(userId = currentUser?.id) {
+  if (!userId || Notification.permission !== "granted") return;
+  const checkId = ++pushRemoteStatusCheckId;
+  try {
+    const { data, error } = await client
+      .from("push_subscriptions")
+      .select("firebase_installation_id, enabled, updated_at")
+      .eq("user_id", userId)
+      .eq("enabled", true)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    if (checkId !== pushRemoteStatusCheckId || currentUser?.id !== userId) return;
+    if (error) {
+      reportClientDiagnostic("push-subscription-status-load", error);
+      return;
+    }
+    const activeSubscription = Array.isArray(data) ? data[0] : data;
+    const fid = activeSubscription?.firebase_installation_id;
+    if (fid) {
+      storePushFid(fid, userId);
+      updatePushNotificationSettingsUI({ verifyRemote: false });
+    }
+  } catch (error) {
+    if (checkId === pushRemoteStatusCheckId) {
+      reportClientDiagnostic("push-subscription-status-load", error);
+    }
+  }
+}
+
+function updatePushNotificationSettingsUI({ verifyRemote = true } = {}) {
   const toggle = document.getElementById("pushNotificationToggle");
   const status = document.getElementById("pushNotificationStatus");
   const help = document.getElementById("pushNotificationHelp");
@@ -3937,19 +3975,37 @@ function updatePushNotificationSettingsUI() {
     return;
   }
 
-  const isEnabled =
-    Notification.permission === "granted" && Boolean(getStoredPushFid());
-  toggle.checked = isEnabled;
-  toggle.disabled = false;
-  status.innerText = isEnabled
-    ? "켜짐 · 앱을 닫아도 알림을 받아요."
-    : Notification.permission === "default"
-      ? "꺼짐 · 스위치를 눌러 허용"
-      : "꺼짐";
-  help.innerText = isEnabled
-    ? "이 기기에만 적용됩니다."
-    : "앱을 닫아도 새 소식을 받을 수 있습니다.";
-  help.dataset.state = isEnabled ? "ready" : "";
+  const hasStoredFid = Boolean(getStoredPushFid());
+  const isEnabled = Notification.permission === "granted" && hasStoredFid;
+  if (!isEnabled && Notification.permission === "granted" && verifyRemote) {
+    setPushNotificationSettingsState({
+      toggle,
+      status,
+      help,
+      isEnabled: false,
+      disabled: true,
+      statusText: "허용됨 · 기기 등록 확인 중...",
+      helpText: "이 기기의 실제 푸시 등록 상태를 확인하고 있어요.",
+    });
+    void refreshCurrentDevicePushStatusFromServer();
+    return;
+  }
+
+  setPushNotificationSettingsState({
+    toggle,
+    status,
+    help,
+    isEnabled,
+    statusText: isEnabled
+      ? "켜짐 · 앱을 닫아도 알림을 받아요."
+      : Notification.permission === "default"
+        ? "꺼짐 · 스위치를 눌러 허용"
+        : "꺼짐 · 기기 등록이 필요합니다.",
+    helpText: isEnabled
+      ? "이 기기에만 적용됩니다."
+      : "앱을 닫아도 새 소식을 받을 수 있습니다.",
+    helpState: isEnabled ? "ready" : "",
+  });
 }
 
 async function togglePushNotifications(isEnabled) {
@@ -6055,6 +6111,9 @@ function closeSheet(id) {
   if (id === "editProfileSheet") resetEditProfileAvatarState();
   if (id === "commentSheet") {
     sheet.classList.remove("is-input-focused");
+    const preview = document.getElementById("commentPostPreview");
+    preview?.classList.remove("is-input-focused");
+    if (preview) preview.hidden = true;
     document.getElementById("commentInput")?.blur();
     currentPostIdForComment = null;
   }
@@ -6064,16 +6123,19 @@ function closeSheet(id) {
 function setupCommentInputFocusState() {
   const sheet = document.getElementById("commentSheet");
   const input = document.getElementById("commentInput");
+  const preview = document.getElementById("commentPostPreview");
   if (!sheet || !input) return;
 
   input.addEventListener("focus", () => {
     sheet.classList.add("is-input-focused");
+    preview?.classList.add("is-input-focused");
     requestAnimationFrame(() => {
       document.getElementById("commentList")?.scrollTo({ top: 0, behavior: "smooth" });
     });
   });
   input.addEventListener("blur", () => {
     sheet.classList.remove("is-input-focused");
+    preview?.classList.remove("is-input-focused");
   });
 }
 

@@ -170,9 +170,83 @@ test("shows the source post preview and focused comment sheet state", async ({
   await expect(page.locator("#commentPostPreviewAuthor")).toContainText("미리보기 작성자");
   await expect(page.locator("#commentPostPreviewContent")).toContainText("댓글 시트에서 보여줄 원문");
 
+  const layout = await page.evaluate(() => {
+    const sheet = document.getElementById("commentSheet").getBoundingClientRect();
+    const preview = document.getElementById("commentPostPreview").getBoundingClientRect();
+    return {
+      viewportHeight: window.innerHeight,
+      sheetTop: sheet.top,
+      sheetHeight: sheet.height,
+      previewBottom: preview.bottom,
+    };
+  });
+  expect(layout.sheetHeight / layout.viewportHeight).toBeGreaterThan(0.52);
+  expect(layout.sheetHeight / layout.viewportHeight).toBeLessThan(0.58);
+  expect(layout.previewBottom).toBeLessThanOrEqual(layout.sheetTop - 6);
+
   await page.locator("#commentInput").focus();
   await expect(page.locator("#commentSheet")).toHaveClass(/is-input-focused/);
+  await expect(page.locator("#commentPostPreview")).toHaveClass(/is-input-focused/);
   await expect(page.locator("#commentList")).toContainText("기존 댓글");
+});
+
+
+test("recovers enabled push status from the current user's active remote subscription", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: { permission: "granted", requestPermission: async () => "granted" },
+    });
+    Object.defineProperty(window, "PushManager", {
+      configurable: true,
+      value: function PushManager() {},
+    });
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { register: async () => ({}) },
+    });
+  });
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    const url = route.request().url();
+    if (!url.startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", {
+    timeout: 10_000,
+    waitUntil: "domcontentloaded",
+  });
+
+  await page.evaluate(async () => {
+    window.__supabaseRows.push_subscriptions = [{
+      user_id: "push-user-fixture",
+      firebase_installation_id: "remote-fid-fixture",
+      enabled: true,
+      updated_at: "2026-07-08T00:00:00Z",
+    }];
+    await window.__emitAuth({
+      user: {
+        id: "push-user-fixture",
+        email: "push@example.test",
+        user_metadata: { random_nickname: "푸시 사용자" },
+      },
+    });
+    localStorage.removeItem("glim_push_fid_push-user-fixture");
+    activateAppView("view-notification-settings");
+    updatePushNotificationSettingsUI();
+  });
+
+  await expect.poll(() => page.locator("#pushNotificationToggle").isChecked()).toBe(true);
+  await expect(page.locator("#pushNotificationStatus")).toContainText("켜짐");
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("glim_push_fid_push-user-fixture")))
+    .toBe("remote-fid-fixture");
 });
 
 
