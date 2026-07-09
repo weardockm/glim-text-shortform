@@ -59,6 +59,18 @@ function reportClientDiagnostic(context, detail = null) {
   console.warn("[glim]", diagnostic);
 }
 
+function createProfilePersistenceError(error) {
+  const persistenceError = new Error("Profile persistence failed");
+  persistenceError.name = "ProfilePersistenceError";
+  persistenceError.cause = error || null;
+  if (typeof error?.code === "string") persistenceError.code = error.code;
+  return persistenceError;
+}
+
+function isProfilePersistenceError(error) {
+  return error?.name === "ProfilePersistenceError";
+}
+
 function getTrustedMediaUrl(value) {
   try {
     const candidate = new URL(String(value || ""), window.location.href);
@@ -89,6 +101,7 @@ const likedCommentIds = new Set();
 const ENGAGEMENT_MIGRATION_STORAGE_PREFIX = "glim_engagement_migrated";
 let currentPostIdForComment = null;
 let currentCommentPostElement = null;
+let pendingCommentReplyTarget = null;
 let currentCommentSourceViewElement = null;
 let currentCommentSourcePlaceholderElement = null;
 let currentCommentSourceScrollTop = 0;
@@ -2227,7 +2240,57 @@ function getCurrentProfileData() {
   };
 }
 
-async function syncCurrentUserProfile({ preserveStoredAvatar = true } = {}) {
+function getLegacyProfilePersistenceData(profile) {
+  return {
+    id: profile.id,
+    nickname: profile.nickname,
+    custom_id: profile.custom_id,
+    avatar_url: profile.avatar_url,
+    updated_at: profile.updated_at,
+  };
+}
+
+async function persistLegacyCurrentUserProfile(profile) {
+  const legacyProfile = getLegacyProfilePersistenceData(profile);
+  const { id, ...legacyUpdate } = legacyProfile;
+  const { count, error: updateError } = await client
+    .from("profiles")
+    .update(legacyUpdate, { count: "exact" })
+    .eq("id", id);
+
+  if (updateError) return { error: updateError };
+  if (count !== 0) return { error: null };
+
+  const { error: insertError } = await client
+    .from("profiles")
+    .insert(legacyProfile);
+  return { error: insertError || null };
+}
+
+async function persistCurrentUserProfileAppearance(profile) {
+  const { error } = await client
+    .from("profiles")
+    .update({
+      bio: profile.bio,
+      theme: profile.theme,
+      updated_at: profile.updated_at,
+    })
+    .eq("id", profile.id);
+
+  if (!error) return;
+
+  if (isMissingProfileAppearanceColumnError(error)) {
+    reportClientDiagnostic("profile-appearance-columns-missing", error);
+    return;
+  }
+
+  reportClientDiagnostic("profile-appearance-sync", error);
+}
+
+async function syncCurrentUserProfile({
+  preserveStoredAvatar = true,
+  requirePersistence = false,
+} = {}) {
   const profile = getCurrentProfileData();
   if (!profile) {
     resetCurrentProfileState();
@@ -2277,21 +2340,14 @@ async function syncCurrentUserProfile({ preserveStoredAvatar = true } = {}) {
     avatar_url: profile.avatar_url,
   };
 
-  const { error } = await client.from("profiles").upsert(profile);
-  if (!error) return;
-
-  if (isMissingProfileAppearanceColumnError(error)) {
-    const legacyProfile = { ...profile };
-    delete legacyProfile.bio;
-    delete legacyProfile.theme;
-    const { error: fallbackError } = await client
-      .from("profiles")
-      .upsert(legacyProfile);
-    if (fallbackError) reportClientDiagnostic("profile-sync", fallbackError);
+  const { error } = await persistLegacyCurrentUserProfile(profile);
+  if (error) {
+    reportClientDiagnostic("profile-sync", error);
+    if (requirePersistence) throw createProfilePersistenceError(error);
     return;
   }
 
-  reportClientDiagnostic("profile-sync", error);
+  await persistCurrentUserProfileAppearance(profile);
 }
 
 async function refreshCurrentUserRole() {
@@ -3322,6 +3378,14 @@ async function saveProfile() {
   }
 
   const oldNick = getCurrentAuthorNickname();
+  const previousProfileState = {
+    user: currentUser,
+    metadata: { ...(currentUser.user_metadata || {}) },
+    nickname: currentProfileNickname,
+    customId: currentProfileCustomId,
+    bio: currentProfileBio,
+    theme: currentProfileTheme,
+  };
 
   const avatarChanged = selectedProfileAvatarFile || shouldRemoveProfileAvatar;
   let avatarUrl = getCurrentAvatarUrl();
@@ -3358,7 +3422,10 @@ async function saveProfile() {
     currentProfileBio = newBio;
     currentProfileTheme = newTheme;
 
-    await syncCurrentUserProfile({ preserveStoredAvatar: false });
+    await syncCurrentUserProfile({
+      preserveStoredAvatar: false,
+      requirePersistence: true,
+    });
 
     if (oldNick !== newNick) {
       const { error: displayNameError } = await client.rpc(
@@ -3376,6 +3443,17 @@ async function saveProfile() {
     fetchPosts();
     alert("프로필이 성공적으로 변경되었습니다.");
   } catch (error) {
+    if (isProfilePersistenceError(error)) {
+      currentUser = previousProfileState.user;
+      currentUser.user_metadata = previousProfileState.metadata;
+      currentProfileNickname = previousProfileState.nickname;
+      currentProfileCustomId = previousProfileState.customId;
+      currentProfileBio = previousProfileState.bio;
+      currentProfileTheme = previousProfileState.theme;
+      updateAuthUI();
+      alert("프로필 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      return;
+    }
     reportClientDiagnostic("avatar-upload", error);
     alert(getProfileAvatarUploadErrorMessage(error));
   } finally {
@@ -6222,13 +6300,107 @@ function setCommentSourcePost(postId) {
   });
 }
 
+function createCommentMentionChip(nickname) {
+  const cleanNickname = String(nickname || "").replace(/^@+/, "").trim();
+  if (!cleanNickname) return null;
+  const chip = document.createElement("span");
+  chip.className = "comment-mention-chip";
+  chip.contentEditable = "false";
+  chip.dataset.mentionValue = "@" + cleanNickname;
+  const label = document.createElement("span");
+  label.className = "comment-mention-label";
+  label.textContent = "@" + cleanNickname;
+  const removeButton = document.createElement("button");
+  removeButton.className = "comment-mention-remove";
+  removeButton.type = "button";
+  removeButton.setAttribute("aria-label", "답글 대상 제거");
+  removeButton.textContent = "×";
+  chip.append(label, removeButton);
+  return chip;
+}
+
+function serializeCommentInputNode(node) {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
+  if (node.nodeType !== Node.ELEMENT_NODE) return "";
+  if (node.classList?.contains("comment-mention-chip")) {
+    return node.dataset.mentionValue || node.textContent || "";
+  }
+  if (node.tagName === "BR") return "\n";
+  return Array.from(node.childNodes).map(serializeCommentInputNode).join("");
+}
+
+function clearCommentReplyTarget() {
+  pendingCommentReplyTarget = null;
+}
+
+function setCommentInputCaretAfterMention(input) {
+  const selection = window.getSelection?.();
+  if (!input || !selection) return;
+  let spacer = input.querySelector(".comment-mention-chip")?.nextSibling || null;
+  if (!spacer || spacer.nodeType !== Node.TEXT_NODE) {
+    spacer = document.createTextNode(" ");
+    input.append(spacer);
+  }
+  const range = document.createRange();
+  range.setStart(spacer, Math.min(1, spacer.textContent.length));
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function removeCommentMentionChip(input = document.getElementById("commentInput")) {
+  const chip = input?.querySelector(".comment-mention-chip");
+  if (!input || !chip) return;
+  const nextNode = chip.nextSibling;
+  chip.remove();
+  if (nextNode?.nodeType === Node.TEXT_NODE) {
+    nextNode.textContent = nextNode.textContent.replace(/^\s+/, "");
+  }
+  clearCommentReplyTarget();
+}
+
+function setCommentReplyTarget(commentId, nickname) {
+  const input = document.getElementById("commentInput");
+  const cleanNickname = String(nickname || "").replace(/^@+/, "").trim();
+  if (!input || !cleanNickname) return;
+  const chip = createCommentMentionChip(cleanNickname);
+  if (!chip) return;
+  pendingCommentReplyTarget = { commentId, nickname: cleanNickname };
+  input.replaceChildren(chip, document.createTextNode(" "));
+  input.focus();
+  setCommentInputCaretAfterMention(input);
+  requestAnimationFrame(() => {
+    input.focus();
+    setCommentInputCaretAfterMention(input);
+  });
+}
+
+function syncCommentMentionChipFromText() {
+  const input = document.getElementById("commentInput");
+  if (!input || input.querySelector(".comment-mention-chip")) return;
+  const text = input.textContent || "";
+  const match = text.match(/^@([^\s@]{3,20})(\s*)([\s\S]*)$/);
+  if (!match) return;
+  const chip = createCommentMentionChip(match[1]);
+  if (!chip) return;
+  pendingCommentReplyTarget = { commentId: null, nickname: match[1] };
+  input.replaceChildren(chip, document.createTextNode(" " + (match[3] || "")));
+  setCommentInputCaretAfterMention(input);
+}
 function getCommentInputContent() {
-  return document.getElementById("commentInput")?.textContent?.trim() || "";
+  const input = document.getElementById("commentInput");
+  if (!input) return "";
+  return Array.from(input.childNodes)
+    .map(serializeCommentInputNode)
+    .join("")
+    .replace(/ /g, " ")
+    .trim();
 }
 
 function clearCommentInputContent() {
   const input = document.getElementById("commentInput");
-  if (input) input.textContent = "";
+  if (input) input.replaceChildren();
+  clearCommentReplyTarget();
 }
 
 function openSheet(id, postId = null) {
@@ -6256,6 +6428,7 @@ function closeSheet(id) {
   if (id === "commentSheet") {
     settleCommentSheetFocus(false);
     document.getElementById("commentInput")?.blur();
+    clearCommentInputContent();
     clearCommentSourcePost();
     currentPostIdForComment = null;
   }
@@ -6431,6 +6604,15 @@ function setupCommentInputFocusState() {
       submitComment();
     }
   });
+  input.addEventListener("input", syncCommentMentionChipFromText);
+  input.addEventListener("click", (event) => {
+    const removeButton = event.target.closest?.(".comment-mention-remove");
+    if (!removeButton) return;
+    event.preventDefault();
+    event.stopPropagation();
+    removeCommentMentionChip(input);
+    input.focus();
+  });
   setupCommentSheetDragInteractions();
 }
 
@@ -6443,23 +6625,83 @@ function createCommentElement(comment, postOwnerId = null) {
   const item = document.createElement("div");
   item.className = "comment-item";
   item.innerHTML = `
-    <div class="comment-author"></div>
-    <div class="comment-text"></div>
-    <div class="comment-actions">
-      <div class="comment-action-btn" data-comment-action="like">
-        <span class="material-symbols-outlined icon-like">favorite</span>
-        <span class="action-count"></span>
+    <button class="comment-avatar" type="button" aria-label="댓글 작성자 프로필 보기">
+      <img src="image/glimmer-profile-image.png" alt="" />
+    </button>
+    <div class="comment-main">
+      <div class="comment-meta">
+        <button class="comment-author" type="button"></button>
+        <span class="comment-time"></span>
       </div>
+      <div class="comment-reply-context"></div>
+      <div class="comment-text"></div>
+      <button class="comment-reply-btn" type="button">답글 달기</button>
+    </div>
+    <div class="comment-actions">
       <div class="comment-action-btn comment-more-wrapper" data-comment-action="more">
         <span class="material-symbols-outlined">more_horiz</span>
         <div class="more-menu comment-more-menu"></div>
       </div>
+      <div class="comment-action-btn" data-comment-action="like">
+        <span class="material-symbols-outlined icon-like">favorite</span>
+        <span class="action-count"></span>
+      </div>
     </div>`;
 
-  item.querySelector(".comment-author").textContent = authorNickname;
-  item.querySelector(".comment-text").textContent = String(
-    comment.content ?? "",
-  );
+  const avatarButton = item.querySelector(".comment-avatar");
+  const avatarImage = avatarButton.querySelector("img");
+  const authorButton = item.querySelector(".comment-author");
+  const authorProfile = comment.author_profile || null;
+  const authorId = comment.user_id || authorProfile?.id || "";
+  const profileNickname = String(authorProfile?.nickname || "").trim();
+  if (profileNickname) authorNickname = profileNickname;
+
+  const commentContent = String(comment.content ?? "");
+  const replyPrefixMatch = commentContent.match(/^@([^\s@]+)\s+([\s\S]*)$/);
+  const replyTargetNickname = replyPrefixMatch ? replyPrefixMatch[1] : "";
+  const commentBody = replyPrefixMatch ? replyPrefixMatch[2] : commentContent;
+
+  authorButton.textContent = authorNickname;
+  item.querySelector(".comment-time").textContent = comment.created_at
+    ? timeForToday(comment.created_at)
+    : "";
+  if (replyTargetNickname) {
+    item.classList.add("is-reply-comment");
+    item.querySelector(".comment-reply-context").textContent = "답글 · @" + replyTargetNickname;
+  }
+  item.querySelector(".comment-text").textContent = commentBody;
+
+  const avatarUrl = String(authorProfile?.avatar_url || "").trim()
+    || "image/glimmer-profile-image.png";
+  avatarImage.src = avatarUrl;
+  avatarImage.addEventListener("error", () => {
+    if (avatarImage.dataset.defaultFallback === "true") return;
+    avatarImage.dataset.defaultFallback = "true";
+    avatarImage.src = "image/glimmer-profile-image.png";
+  });
+
+  if (authorId) {
+    const openAuthorProfile = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeSheet("commentSheet");
+      openUserProfile(authorId);
+    };
+    avatarButton.addEventListener("click", openAuthorProfile);
+    authorButton.addEventListener("click", openAuthorProfile);
+  } else {
+    avatarButton.disabled = true;
+    authorButton.disabled = true;
+  }
+
+  const replyButton = item.querySelector(".comment-reply-btn");
+  replyButton.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  replyButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    setCommentReplyTarget(comment.id, authorNickname);
+  });
 
   const hasLiked = likedCommentIds.has(comment.id);
   const likeButton = item.querySelector('[data-comment-action="like"]');
@@ -6477,14 +6719,13 @@ function createCommentElement(comment, postOwnerId = null) {
   const canDeleteComment =
     Boolean(currentUser?.id) &&
     (isOwnComment || currentUser.id === postOwnerId);
-  const menuItems = [];
-  if (!isOwnComment) {
-    menuItems.push({
+  const menuItems = [
+    {
       label: "신고",
       icon: "report",
       action: () => reportComment(comment.id),
-    });
-  }
+    },
+  ];
   if (canDeleteComment) {
     menuItems.push({
       label: "삭제",
@@ -6558,10 +6799,41 @@ async function fetchComments(postId) {
     return (list.innerHTML =
       '<div style="text-align:center; color:#555; margin-top:20px;">첫 번째로 댓글을 남겨 보세요.</div>');
 
+  const commentAuthorIds = [
+    ...new Set(visibleComments.map((comment) => comment.user_id).filter(Boolean)),
+  ];
+  const authorProfilesById = new Map();
+  if (commentAuthorIds.length > 0) {
+    const { data: authorProfiles, error: authorProfilesError } =
+      await runVisibleContentQuery(
+        () => client
+          .from("profiles")
+          .select("id, nickname, avatar_url")
+          .in("id", commentAuthorIds),
+        "comments-author-profiles-load",
+      );
+    if (authorProfilesError) {
+      reportClientDiagnostic(
+        "comments-author-profiles-load",
+        authorProfilesError,
+      );
+    } else {
+      (authorProfiles || []).forEach((profile) => {
+        authorProfilesById.set(profile.id, profile);
+      });
+    }
+  }
+
   const postOwnerId = postResult.data?.user_id || null;
   list.replaceChildren(
     ...visibleComments.map((comment) =>
-      createCommentElement(comment, postOwnerId),
+      createCommentElement(
+        {
+          ...comment,
+          author_profile: authorProfilesById.get(comment.user_id) || null,
+        },
+        postOwnerId,
+      ),
     ),
   );
   list.scrollTop = 0;
@@ -6588,22 +6860,23 @@ function deleteComment(commentId) {
 async function submitCommentDelete(commentId) {
   if (!currentUser || !currentPostIdForComment) return;
 
-  const { data, error } = await client
+  const postId = currentPostIdForComment;
+  const { count, error } = await client
     .from("comments")
-    .delete()
+    .delete({ count: "exact" })
     .eq("id", commentId)
-    .eq("post_id", currentPostIdForComment)
-    .select("id");
+    .eq("post_id", postId);
 
-  if (error || !data?.length) {
+  if (error || count === 0) {
+    if (error) reportClientDiagnostic("comment-delete", error);
     showAppAlert("댓글을 삭제하지 못했습니다. 잠시 후 다시 시도해주세요.");
     return;
   }
 
   likedCommentIds.delete(commentId);
   localStorage.removeItem(`comment_liked_${currentUser.id}_${commentId}`);
-  fetchComments(currentPostIdForComment);
-  fetchPosts();
+  fetchComments(postId);
+  // Keep the comment sheet anchored; refetching the feed replaces its source post.
 }
 
 async function toggleCommentLike(commentId, element) {

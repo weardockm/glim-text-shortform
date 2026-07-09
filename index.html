@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=107" defer></script>
+    <script src="index.js?v=113" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -2722,50 +2722,167 @@
         overflow-y: auto;
         display: flex;
         flex-direction: column;
-        gap: 10px;
-        padding-bottom: 12px;
-        margin-bottom: 10px;
+        gap: 14px;
+        padding-bottom: 16px;
+        margin-bottom: 12px;
         touch-action: pan-y;
       }
       .comment-list::-webkit-scrollbar {
         display: none;
       }
       .comment-item {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr) minmax(58px, auto);
+        column-gap: 10px;
+        align-items: flex-start;
         border-bottom: 1px solid #222;
-        padding-bottom: 10px;
+        padding: 2px 0 14px;
+      }
+      .comment-avatar {
+        display: block;
+        align-self: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        overflow: hidden;
+        background: #1b1b1b;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 0;
+        flex: 0 0 auto;
+        cursor: pointer;
+      }
+      .comment-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .comment-item.is-reply-comment {
+        position: relative;
+        grid-template-columns: 30px minmax(0, 1fr) minmax(58px, auto);
+        margin-left: 18px;
+        padding-left: 14px;
+        border-left: 0;
+      }
+      .comment-item.is-reply-comment::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 9px;
+        bottom: 16px;
+        width: 1px;
+        border-radius: 999px;
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.18),
+          rgba(255, 255, 255, 0.04)
+        );
+      }
+      .comment-item.is-reply-comment .comment-avatar {
+        width: 30px;
+        height: 30px;
+      }
+      .comment-reply-context {
+        display: none;
+        max-width: 100%;
+        color: #7f8a91;
+        padding: 0;
+        font-size: 0.68rem;
+        line-height: 1.15;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .comment-item.is-reply-comment .comment-reply-context {
+        display: block;
+      }
+      .comment-main {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+        min-width: 0;
+        padding-top: 1px;
+      }
+      .comment-meta {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        min-width: 0;
+        margin-bottom: 0;
       }
       .comment-author {
-        font-size: 0.78rem;
-        color: #888;
-        margin-bottom: 3px;
+        min-width: 0;
+        border: 0;
+        background: transparent;
+        padding: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.79rem;
+        color: #9a9a9a;
         font-family: "Noto Serif KR", serif;
         font-weight: 700;
+        cursor: pointer;
+      }
+      .comment-author:disabled,
+      .comment-avatar:disabled {
+        cursor: default;
+      }
+      .comment-time {
+        flex: 0 0 auto;
+        font-size: 0.68rem;
+        color: #666;
+        font-family: -apple-system, sans-serif;
+        line-height: 1.3;
       }
       .comment-text {
         font-size: 0.92rem;
         color: #eee;
-        line-height: 1.32;
-        margin-bottom: 7px;
+        line-height: 1.38;
+        margin-bottom: 0;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
+      .comment-reply-btn {
+        display: inline-flex;
+        align-items: center;
+        border: 0;
+        background: transparent;
+        color: #777;
+        margin-top: 0;
+        padding: 0;
+        font-size: 0.74rem;
+        line-height: 1.1;
+        font-weight: 600;
+        font-family: -apple-system, sans-serif;
+        cursor: pointer;
+      }
       .comment-actions {
         display: flex;
-        gap: 12px;
+        justify-content: flex-end;
         align-items: center;
+        gap: 8px;
+        align-self: center;
+        padding-top: 0;
+        min-width: 58px;
       }
       .comment-action-btn {
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 2px;
+        min-width: 20px;
+        min-height: 24px;
         color: #666;
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         line-height: 1;
         cursor: pointer;
         font-family: -apple-system, sans-serif;
       }
       .comment-action-btn .material-symbols-outlined {
-        font-size: 1.1rem;
+        font-size: 1.08rem;
         line-height: 1;
       }
       .comment-action-btn .action-count {
@@ -2777,13 +2894,14 @@
         position: relative;
       }
       .comment-more-wrapper > .material-symbols-outlined {
-        font-size: 1.15rem;
+        font-size: 1.14rem;
       }
       .comment-more-menu {
-        top: 22px;
+        top: calc(100% + 8px);
         bottom: auto;
-        left: -4px;
-        right: auto;
+        left: auto;
+        right: 0;
+        transform: none;
         width: 112px;
       }
       .comment-more-menu .more-menu-item {
@@ -2861,8 +2979,7 @@
         min-height: 42px;
         max-height: 88px;
         overflow-y: auto;
-        display: flex;
-        align-items: center;
+        display: block;
         background: #101417;
         border: 1px solid #30383e;
         border-radius: 999px;
@@ -2883,6 +3000,49 @@
       .comment-input:focus {
         outline: none;
         border-color: #4d5961;
+      }
+      .comment-mention-chip {
+        display: inline-flex;
+        align-items: center;
+        max-width: 100%;
+        gap: 3px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        background: rgba(255, 255, 255, 0.07);
+        color: #dce4e8;
+        padding: 2px 3px 2px 8px;
+        font-size: 0.8rem;
+        line-height: 1.1;
+        font-weight: 600;
+        white-space: nowrap;
+        vertical-align: middle;
+      }
+      .comment-mention-label {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .comment-mention-remove {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: #8e9aa1;
+        padding: 0;
+        font-size: 0.82rem;
+        line-height: 1;
+        font-weight: 700;
+        cursor: pointer;
+        transition: color 160ms ease, background-color 160ms ease;
+      }
+      .comment-mention-remove:hover,
+      .comment-mention-remove:focus-visible {
+        background: rgba(255, 255, 255, 0.08);
+        color: #f1f4f6;
       }
       .comment-submit-btn {
         background: #fff;
@@ -3794,6 +3954,29 @@
       html[data-theme="light"] .post-textarea::placeholder,
       html[data-theme="light"] .comment-input::placeholder {
         color: #a59b94;
+      }
+      html[data-theme="light"] .comment-mention-chip {
+        border-color: rgba(91, 68, 54, 0.12);
+        background: rgba(91, 68, 54, 0.07);
+        color: #5c4d44;
+      }
+      html[data-theme="light"] .comment-reply-context {
+        color: #8d7769;
+      }
+      html[data-theme="light"] .comment-mention-remove {
+        color: #8d7769;
+      }
+      html[data-theme="light"] .comment-mention-remove:hover,
+      html[data-theme="light"] .comment-mention-remove:focus-visible {
+        background: rgba(91, 68, 54, 0.1);
+        color: #4f4037;
+      }
+      html[data-theme="light"] .comment-item.is-reply-comment::before {
+        background: linear-gradient(
+          180deg,
+          rgba(91, 68, 54, 0.2),
+          rgba(91, 68, 54, 0.04)
+        );
       }
       html[data-theme="light"] .search-icon,
       html[data-theme="light"] .search-cancel-btn {
