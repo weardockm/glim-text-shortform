@@ -130,6 +130,66 @@ test("uses the RLS profile nickname for post and comment inserts", async ({
 });
 
 
+test("shows reply comments oldest first with the newest at the bottom", async ({
+  page,
+}) => {
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    const url = route.request().url();
+    if (!url.startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", {
+    timeout: 10_000,
+    waitUntil: "domcontentloaded",
+  });
+
+  await page.evaluate(() => {
+    window.__supabaseRows.comments = [
+      {
+        id: "reply-newer-fixture",
+        post_id: "reply-order-post",
+        user_id: "reply-user-new",
+        user_email: "새답글작성자",
+        content: "@원댓글작성자 나중에 단 답글",
+        created_at: "2026-07-08T00:02:00Z",
+        likes_count: 0,
+      },
+      {
+        id: "reply-older-fixture",
+        post_id: "reply-order-post",
+        user_id: "reply-user-old",
+        user_email: "첫답글작성자",
+        content: "@원댓글작성자 먼저 단 답글",
+        created_at: "2026-07-08T00:01:00Z",
+        likes_count: 0,
+      },
+      {
+        id: "plain-comment-fixture",
+        post_id: "reply-order-post",
+        user_id: "plain-user",
+        user_email: "원댓글작성자",
+        content: "원댓글",
+        created_at: "2026-07-08T00:00:00Z",
+        likes_count: 0,
+      },
+    ];
+    openSheet("commentSheet", "reply-order-post");
+  });
+
+  await expect(page.locator("#commentList .comment-item.is-reply-comment")).toHaveCount(2);
+  await expect
+    .poll(() =>
+      page.locator("#commentList .comment-item.is-reply-comment .comment-text").allTextContents(),
+    )
+    .toEqual(["먼저 단 답글", "나중에 단 답글"]);
+});
+
+
 test("keeps the second home feed post above the comment sheet", async ({
   page,
 }) => {

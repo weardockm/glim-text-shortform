@@ -6616,6 +6616,33 @@ function setupCommentInputFocusState() {
   setupCommentSheetDragInteractions();
 }
 
+function isReplyCommentContent(content) {
+  return /^@[^\s@]+\s+[\s\S]*$/.test(String(content ?? ""));
+}
+
+function getCommentCreatedAtMs(comment) {
+  const createdAtMs = new Date(comment?.created_at || 0).getTime();
+  return Number.isFinite(createdAtMs) ? createdAtMs : 0;
+}
+
+function orderCommentsForDisplay(comments) {
+  const visibleComments = Array.isArray(comments) ? comments : [];
+  const repliesByOldest = visibleComments
+    .filter((comment) => isReplyCommentContent(comment.content))
+    .sort((left, right) => {
+      const createdAtDelta =
+        getCommentCreatedAtMs(left) - getCommentCreatedAtMs(right);
+      if (createdAtDelta !== 0) return createdAtDelta;
+      return String(left.id || "").localeCompare(String(right.id || ""));
+    });
+  let replyIndex = 0;
+  return visibleComments.map((comment) =>
+    isReplyCommentContent(comment.content)
+      ? repliesByOldest[replyIndex++]
+      : comment,
+  );
+}
+
 function createCommentElement(comment, postOwnerId = null) {
   let authorNickname = String(comment.user_email || "익명");
   if (authorNickname.includes("@")) {
@@ -6825,8 +6852,9 @@ async function fetchComments(postId) {
   }
 
   const postOwnerId = postResult.data?.user_id || null;
+  const orderedComments = orderCommentsForDisplay(visibleComments);
   list.replaceChildren(
-    ...visibleComments.map((comment) =>
+    ...orderedComments.map((comment) =>
       createCommentElement(
         {
           ...comment,
