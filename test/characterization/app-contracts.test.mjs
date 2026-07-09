@@ -61,8 +61,9 @@ test("Given each supported sign-in provider, When OAuth starts, Then it returns 
   assert.ok(indexSource.includes("function getOAuthRedirectUrl()"));
   assert.ok(indexSource.includes("GLIM_PRODUCTION_ORIGIN"));
   assert.ok(indexSource.includes("AUTH_CALLBACK_PATH"));
-  for (const provider of ["google", "kakao"]) {
+  for (const provider of ["apple", "google", "kakao"]) {
     assert.ok(indexHtml.includes(`handleSocialLogin('${provider}')`));
+    assert.ok(indexSource.includes(`"handleSocialLogin('${provider}')"`));
   }
 });
 
