@@ -61,10 +61,12 @@ test("Given each supported sign-in provider, When OAuth starts, Then it returns 
   assert.ok(indexSource.includes("function getOAuthRedirectUrl()"));
   assert.ok(indexSource.includes("GLIM_PRODUCTION_ORIGIN"));
   assert.ok(indexSource.includes("AUTH_CALLBACK_PATH"));
-  for (const provider of ["apple", "google", "kakao"]) {
+  for (const provider of ["google", "kakao"]) {
     assert.ok(indexHtml.includes(`handleSocialLogin('${provider}')`));
     assert.ok(indexSource.includes(`"handleSocialLogin('${provider}')"`));
   }
+  assert.ok(!indexHtml.includes("Apple로 계속하기"));
+  assert.ok(!indexHtml.includes("handleSocialLogin('apple')"));
 });
 
 test("Given authenticated engagement, When actions run, Then server contracts own reactions and reports", () => {
