@@ -23,6 +23,9 @@ services:
         source: /community-standards
         destination: /index.html
     headers:
+      - path: /.well-known/apple-app-site-association
+        name: Content-Type
+        value: application/json
       - path: /*
         name: Content-Security-Policy
         value: "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://cdn.jsdelivr.net https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://qdnpeliqtxdglqewbvgg.supabase.co; media-src 'self' blob: https://qdnpeliqtxdglqewbvgg.supabase.co; connect-src 'self' https://qdnpeliqtxdglqewbvgg.supabase.co wss://qdnpeliqtxdglqewbvgg.supabase.co https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://www.googleapis.com; worker-src 'self'; manifest-src 'self'; upgrade-insecure-requests"
