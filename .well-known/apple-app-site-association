@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": [
+          "D2D2RN2ZUM.com.glimfactory.glim"
+        ],
+        "components": [
+          {
+            "/": "/auth/callback",
+            "comment": "Supabase OAuth callback"
+          }
+        ]
+      }
+    ]
+  }
+}

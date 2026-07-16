@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.glimfactory.glim",
+      "sha256_cert_fingerprints": [
+        "C4:B8:31:87:2A:D1:85:48:72:3E:69:07:F2:B1:E6:95:25:71:62:F4:75:74:93:68:2F:DB:1C:4F:BE:AD:DF:9D"
+      ]
+    }
+  }
+]
