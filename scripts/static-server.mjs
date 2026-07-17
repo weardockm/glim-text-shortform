@@ -75,6 +75,7 @@ function resolveRequestPath(url) {
       "/account-delete",
       "/auth/callback",
       "/support",
+      "/privacy-policy",
       "/community-standards",
     ]);
     normalized = appShellRoutes.has(requestPath)

@@ -20,6 +20,9 @@ services:
         source: /support
         destination: /index.html
       - type: rewrite
+        source: /privacy-policy
+        destination: /index.html
+      - type: rewrite
         source: /community-standards
         destination: /index.html
     headers:

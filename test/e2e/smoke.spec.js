@@ -27,6 +27,25 @@ test("serves the Korean application shell and runtime assets", async ({
   expect(logo.headers()["content-type"]).toBe("image/png");
 });
 
+test("opens the public privacy policy without signing in", async ({ page }) => {
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  const response = await page.goto("/privacy-policy", {
+    timeout: 10_000,
+    waitUntil: "domcontentloaded",
+  });
+  expect(response?.status()).toBe(200);
+  await expect(page.locator("#view-privacy-policy")).toHaveClass(/active/);
+  await expect(page.locator("#view-privacy-policy h1")).toHaveText("개인정보 처리방침");
+});
+
 test("updates the write counter for English letters and numbers", async ({
   page,
 }) => {

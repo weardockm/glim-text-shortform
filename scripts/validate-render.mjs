@@ -24,6 +24,7 @@ const requiredRewrites = [
   "/account-delete",
   "/auth/callback",
   "/support",
+  "/privacy-policy",
   "/community-standards",
 ];
 const rewriteCount = source.match(/type:\s*rewrite/g)?.length ?? 0;

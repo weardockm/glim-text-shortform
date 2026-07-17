@@ -4486,6 +4486,8 @@ function handlePublicStaticRoute() {
     openAccountDeleteView();
   } else if (window.location.pathname === "/support") {
     openSupportView();
+  } else if (window.location.pathname === "/privacy-policy") {
+    openPrivacyPolicyView();
   } else if (window.location.pathname === "/community-standards") {
     openCommunityStandardsView();
   }
