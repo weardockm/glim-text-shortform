@@ -37,11 +37,12 @@
   },
   "devDependencies": {
     "@ast-grep/cli": "0.44.0",
-    "@cyclonedx/cyclonedx-npm": "5.0.0",
-    "@playwright/test": "1.61.1",
     "@capacitor/android": "8.4.1",
     "@capacitor/cli": "8.4.1",
-    "@capacitor/ios": "8.4.1"
+    "@capacitor/ios": "8.4.1",
+    "@cyclonedx/cyclonedx-npm": "5.0.0",
+    "@playwright/test": "1.61.1",
+    "typescript": "~5.9.3"
   },
   "dependencies": {
     "@capacitor/app": "8.1.0",

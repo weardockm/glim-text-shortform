@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=116" defer></script>
+    <script src="index.js?v=117" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -4182,6 +4182,26 @@
         border-color: #dcd3cc;
         background: #fbf8f5;
         color: #312c29;
+      }
+      html[data-theme="light"] .comment-sheet {
+        border-top-color: #dcd3cc;
+        background: #fbf8f5;
+      }
+      html[data-theme="light"] .comment-sheet .sheet-title {
+        color: #312c29;
+      }
+      html[data-theme="light"] .comment-input-area {
+        background: linear-gradient(180deg, rgba(251, 248, 245, 0), #fbf8f5 20%);
+      }
+      html[data-theme="light"] .comment-input:empty::before {
+        color: #a59b94;
+      }
+      html[data-theme="light"] .comment-avatar {
+        border-color: #d9d0c9;
+        background: #ede7e2;
+      }
+      html[data-theme="light"] .comment-more-menu .more-menu-item {
+        color: #4d4540;
       }
       html[data-theme="light"] .report-reason-option {
         border-color: #ded5ce;
