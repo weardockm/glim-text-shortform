@@ -4479,6 +4479,7 @@ function closeAccountDeleteView() {
 }
 
 function handlePublicStaticRoute() {
+  const publicView = new URLSearchParams(window.location.search).get("view");
   if (window.location.pathname === AUTH_CALLBACK_PATH) {
     window.history.replaceState({}, document.title, "/");
     switchTab(currentUser ? "profile" : "home");
@@ -4486,7 +4487,8 @@ function handlePublicStaticRoute() {
     openAccountDeleteView();
   } else if (window.location.pathname === "/support") {
     openSupportView();
-  } else if (window.location.pathname === "/privacy-policy") {
+  } else if (window.location.pathname === "/privacy-policy" ||
+    publicView === "privacy-policy") {
     openPrivacyPolicyView();
   } else if (window.location.pathname === "/community-standards") {
     openCommunityStandardsView();

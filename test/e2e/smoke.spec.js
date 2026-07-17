@@ -37,7 +37,7 @@ test("opens the public privacy policy without signing in", async ({ page }) => {
     route.continue();
   });
 
-  const response = await page.goto("/privacy-policy", {
+  const response = await page.goto("/?view=privacy-policy", {
     timeout: 10_000,
     waitUntil: "domcontentloaded",
   });
