@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=115" defer></script>
+    <script src="index.js?v=116" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -54,7 +54,8 @@
         display: none;
       }
       :root {
-        --top-safe-space: env(safe-area-inset-top, 0px);
+        --native-top-safe-space: 0px;
+        --top-safe-space: max(env(safe-area-inset-top, 0px), var(--native-top-safe-space));
         --bottom-safe-space: 10px;
         --bottom-nav-height: calc(60px + var(--bottom-safe-space));
         --glim-text-empty: #888;
@@ -167,12 +168,15 @@
           animation: none;
         }
       }
+      html.native-android {
+        --native-top-safe-space: 32px;
+      }
       .header {
         position: fixed;
         top: 0;
         left: 0;
         width: 100%;
-        padding: 20px;
+        padding: calc(16px + var(--top-safe-space)) 20px 16px;
         display: flex;
         justify-content: center;
         align-items: center;
@@ -4887,9 +4891,9 @@
                 class="login-consent-link"
                 data-glim-click="openPrivacyPolicyView()"
               >
-                개인정보 처리방침
+                개인정보 처리방침에
               </button>
-              에 동의합니다.
+              동의합니다.
             </p>
           </section>
         </div>

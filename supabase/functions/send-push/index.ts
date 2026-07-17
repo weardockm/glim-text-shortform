@@ -623,7 +623,7 @@ export async function handleSendPushRequest(
           },
           body: JSON.stringify({
             message: {
-              fid: subscription.firebase_installation_id,
+              token: subscription.firebase_installation_id,
               data: {
                 title: copy.title,
                 body: copy.body,

@@ -1823,6 +1823,7 @@ async function init() {
   setupBgmAudioUnlock();
   setupBgmAppExitPause();
   setupAccountDeleteRequestForm();
+  setupNativeAndroidViewport();
   setupCommentInputFocusState();
   setupCommentSheetOutsideDismiss();
   await setupNativeDeepLinks();
@@ -3762,6 +3763,29 @@ function isPushBrowserSupported() {
   );
 }
 
+function getNativePushNotificationsPlugin() {
+  const plugin = getCapacitorPlugin("PushNotifications");
+  return isNativeRuntime() && plugin?.checkPermissions && plugin?.register
+    ? plugin
+    : null;
+}
+
+function isNativePushSupported() {
+  return Boolean(getNativePushNotificationsPlugin());
+}
+
+function isPushOnboardingSupported() {
+  if (isNativePushSupported()) return true;
+  return isRunningAsInstalledApp() && isPushConfigured() && isPushBrowserSupported();
+}
+
+function setupNativeAndroidViewport() {
+  if (window.Capacitor?.getPlatform?.() !== "android") return;
+  document.documentElement.classList.add("native-android");
+  const statusBar = getCapacitorPlugin("StatusBar");
+  void statusBar?.setOverlaysWebView?.({ overlay: false });
+}
+
 function isIOSDevice() {
   return (
     /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -3811,12 +3835,10 @@ function showPushOnboardingIfNeeded() {
   pushOnboardingTimer = null;
   if (
     !currentUser ||
-    !isRunningAsInstalledApp() ||
-    !isPushConfigured() ||
-    !isPushBrowserSupported() ||
-    Notification.permission === "denied" ||
+    !isPushOnboardingSupported() ||
+    (!isNativePushSupported() && Notification.permission === "denied") ||
     getStoredPushFid() ||
-    hasSeenPushOnboarding()
+    (!isNativePushSupported() && hasSeenPushOnboarding())
   ) {
     return;
   }
@@ -3826,7 +3848,6 @@ function showPushOnboardingIfNeeded() {
     return;
   }
 
-  markPushOnboardingSeen();
   showAppConfirm(
     "좋아요와 댓글, 새로운 팔로우 소식을 앱을 닫은 뒤에도 받아볼 수 있어요.",
     () => togglePushNotifications(true),
@@ -4061,7 +4082,8 @@ function updatePushNotificationSettingsUI({ verifyRemote = true } = {}) {
     status.innerText = "로그인 후 사용할 수 있습니다.";
     return;
   }
-  if (!isPushConfigured()) {
+  const nativePushSupported = isNativePushSupported();
+  if (!nativePushSupported && !isPushConfigured()) {
     status.innerText = "Firebase 연결이 필요합니다.";
     help.innerText = "설정 파일에 Firebase 정보와 Web Push 키를 입력해주세요.";
     help.dataset.state = "warning";
@@ -4074,13 +4096,13 @@ function updatePushNotificationSettingsUI({ verifyRemote = true } = {}) {
     help.dataset.state = "warning";
     return;
   }
-  if (!isPushBrowserSupported()) {
+  if (!nativePushSupported && !isPushBrowserSupported()) {
     status.innerText = "이 브라우저에서는 지원하지 않습니다.";
     help.innerText = "HTTPS 주소 또는 설치된 글림 앱에서 다시 확인해주세요.";
     help.dataset.state = "warning";
     return;
   }
-  if (Notification.permission === "denied") {
+  if (!nativePushSupported && Notification.permission === "denied") {
     status.innerText = "브라우저에서 알림이 차단됨";
     help.innerText = "브라우저나 휴대폰 설정에서 글림 알림을 허용해주세요.";
     help.dataset.state = "warning";
@@ -4088,8 +4110,11 @@ function updatePushNotificationSettingsUI({ verifyRemote = true } = {}) {
   }
 
   const hasStoredFid = Boolean(getStoredPushFid());
-  const isEnabled = Notification.permission === "granted" && hasStoredFid;
-  if (!isEnabled && Notification.permission === "granted" && verifyRemote) {
+  const notificationPermission = nativePushSupported
+    ? (hasStoredFid ? "granted" : "default")
+    : Notification.permission;
+  const isEnabled = notificationPermission === "granted" && hasStoredFid;
+  if (!nativePushSupported && !isEnabled && notificationPermission === "granted" && verifyRemote) {
     setPushNotificationSettingsState({
       toggle,
       status,
@@ -4110,7 +4135,7 @@ function updatePushNotificationSettingsUI({ verifyRemote = true } = {}) {
     isEnabled,
     statusText: isEnabled
       ? "켜짐 · 앱을 닫아도 알림을 받아요."
-      : Notification.permission === "default"
+      : notificationPermission === "default"
         ? "꺼짐 · 스위치를 눌러 허용"
         : "꺼짐 · 기기 등록이 필요합니다.",
     helpText: isEnabled
@@ -4118,6 +4143,50 @@ function updatePushNotificationSettingsUI({ verifyRemote = true } = {}) {
       : "앱을 닫아도 새 소식을 받을 수 있습니다.",
     helpState: isEnabled ? "ready" : "",
   });
+}
+
+async function setupNativePushEventListeners(pushPlugin) {
+  if (pushEventListenersReady) return;
+  pushEventListenersReady = true;
+  await pushPlugin.addListener("registration", async (token) => {
+    try {
+      await savePushSubscription(token.value);
+      settlePendingPushRegistration("resolve", token.value);
+    } catch (error) {
+      settlePendingPushRegistration("reject", error);
+      reportClientDiagnostic("native-push-device-save", error);
+    } finally {
+      updatePushNotificationSettingsUI();
+    }
+  });
+  await pushPlugin.addListener("registrationError", (error) => {
+    settlePendingPushRegistration("reject", new Error(error.error || "푸시 기기 등록에 실패했습니다."));
+    updatePushNotificationSettingsUI();
+  });
+  await pushPlugin.addListener("pushNotificationReceived", (notification) => {
+    showAppAlert(notification.body || "글림에 새로운 소식이 도착했습니다.");
+  });
+}
+
+async function enableNativePushNotifications() {
+  const pushPlugin = getNativePushNotificationsPlugin();
+  if (!pushPlugin) throw new Error("이 앱에서는 네이티브 푸시를 사용할 수 없습니다.");
+  let permission = await pushPlugin.checkPermissions();
+  if (permission.receive === "prompt") {
+    permission = await pushPlugin.requestPermissions();
+  }
+  if (permission.receive !== "granted") {
+    throw new Error("휴대폰 설정에서 글림 알림을 허용해주세요.");
+  }
+  await setupNativePushEventListeners(pushPlugin);
+  const registrationPromise = waitForPushRegistration();
+  try {
+    await pushPlugin.register();
+    await registrationPromise;
+  } catch (error) {
+    settlePendingPushRegistration("reject", error);
+    throw error;
+  }
 }
 
 async function togglePushNotifications(isEnabled) {
@@ -4129,6 +4198,12 @@ async function togglePushNotifications(isEnabled) {
     if (!isEnabled) {
       await disablePushNotifications();
       showAppAlert("이 기기의 푸시 알림을 껐습니다.");
+      return;
+    }
+
+    if (isNativePushSupported()) {
+      await enableNativePushNotifications();
+      markPushOnboardingSeen();
       return;
     }
 
@@ -4186,7 +4261,10 @@ async function disablePushNotifications({ silent = false } = {}) {
   const userId = currentUser?.id;
   await removePushSubscription(fid, userId);
 
-  if (pushMessaging && isPushConfigured()) {
+  const nativePushPlugin = getNativePushNotificationsPlugin();
+  if (nativePushPlugin) {
+    await nativePushPlugin.unregister();
+  } else if (pushMessaging && isPushConfigured()) {
     try {
       const modules = await loadFirebasePushModules();
       await modules.messaging.unregister(pushMessaging);
@@ -4199,6 +4277,15 @@ async function disablePushNotifications({ silent = false } = {}) {
 
 async function initializePushNotifications() {
   updatePushNotificationSettingsUI();
+  const nativePushPlugin = getNativePushNotificationsPlugin();
+  if (nativePushPlugin) {
+    if (!currentUser || !getStoredPushFid()) return;
+    const permission = await nativePushPlugin.checkPermissions();
+    if (permission.receive !== "granted") return;
+    await setupNativePushEventListeners(nativePushPlugin);
+    await nativePushPlugin.register();
+    return;
+  }
   if (
     !currentUser ||
     !isPushConfigured() ||
