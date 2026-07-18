@@ -1,10 +1,18 @@
 const SUPABASE_URL = "https://qdnpeliqtxdglqewbvgg.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_mwYlhge63nnNjL9lAFhxRw_fxRtRGvO";
-const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    flowType: "pkce",
+  },
+});
 const nativeConfirm = window.confirm.bind(window);
 const SUPABASE_STORAGE_ORIGIN = new URL(SUPABASE_URL).origin;
 const GLIM_PRODUCTION_ORIGIN = "https://glimfactory.com";
 const AUTH_CALLBACK_PATH = "/auth/callback";
+const NATIVE_AUTH_PENDING_KEY = "glim_native_auth_pending";
+const NATIVE_AUTH_PENDING_MAX_AGE_MS = 10 * 60 * 1000;
 const VISIBLE_CONTENT_MODERATION_STATUS = "approved";
 
 function selectVisibleContent(query) {
@@ -127,6 +135,7 @@ let isRefreshing = false;
 let lastNavTapTab = null;
 let lastNavTapTime = 0;
 let pullIndicatorHideTimer = null;
+const refreshPullInterruptors = new Set();
 let exploreFetchRequestId = 0;
 let exploreMoodFetchRequestId = 0;
 let exploreSearchRequestId = 0;
@@ -1827,6 +1836,7 @@ async function init() {
   setupCommentInputFocusState();
   setupCommentSheetOutsideDismiss();
   await setupNativeDeepLinks();
+  await setupNativeBackNavigation();
 
   const {
     data: { session },
@@ -2032,10 +2042,14 @@ function resetRefreshViewPosition(view, animate = true) {
   }, 400);
 }
 
-function resetAllRefreshViewPositions() {
-  ["home", "explore", "noti", "profile"].forEach((tabName) => {
-    resetRefreshViewPosition(document.getElementById(`view-${tabName}`));
-  });
+function resetAllRefreshViewPositions(animate = true) {
+  [
+    ...["home", "explore", "noti", "profile"].map((tabName) =>
+      document.getElementById(`view-${tabName}`),
+    ),
+    document.getElementById("exploreDiscoveryContent"),
+    document.getElementById("exploreSearchContent"),
+  ].forEach((target) => resetRefreshViewPosition(target, animate));
 }
 
 function forceHideRefreshIndicator() {
@@ -2044,7 +2058,8 @@ function forceHideRefreshIndicator() {
   indicator?.classList.remove("visible", "pulling", "refreshing", "complete");
   if (icon) icon.style.transform = "";
   setRefreshHeaderHidden(false);
-  resetAllRefreshViewPositions();
+  refreshPullInterruptors.forEach((interrupt) => interrupt());
+  resetAllRefreshViewPositions(false);
 }
 
 async function refreshTab(tabName) {
@@ -2126,6 +2141,7 @@ function setupPullToRefresh() {
     let isTracking = false;
     let pullAnimationFrame = null;
     let pendingPullOffset = 0;
+    let pullTarget = view;
 
     const queuePullPosition = (distance) => {
       const safeDistance = Math.max(0, distance);
@@ -2137,9 +2153,9 @@ function setupPullToRefresh() {
 
       pullAnimationFrame = window.requestAnimationFrame(() => {
         pullAnimationFrame = null;
-        view.style.transition = "none";
-        view.style.willChange = "transform";
-        view.style.transform = `translate3d(0, ${pendingPullOffset.toFixed(2)}px, 0)`;
+        pullTarget.style.transition = "none";
+        pullTarget.style.willChange = "transform";
+        pullTarget.style.transform = `translate3d(0, ${pendingPullOffset.toFixed(2)}px, 0)`;
       });
     };
 
@@ -2148,8 +2164,22 @@ function setupPullToRefresh() {
         window.cancelAnimationFrame(pullAnimationFrame);
         pullAnimationFrame = null;
       }
-      resetRefreshViewPosition(view);
+      resetRefreshViewPosition(pullTarget);
     };
+
+    const interruptPull = () => {
+      if (!isTracking && pullAnimationFrame === null) return;
+      isTracking = false;
+      pullDistance = 0;
+      pendingPullOffset = 0;
+      if (pullAnimationFrame !== null) {
+        window.cancelAnimationFrame(pullAnimationFrame);
+        pullAnimationFrame = null;
+      }
+      resetRefreshViewPosition(pullTarget, false);
+      pullTarget = view;
+    };
+    refreshPullInterruptors.add(interruptPull);
 
     view.addEventListener(
       "touchstart",
@@ -2159,6 +2189,14 @@ function setupPullToRefresh() {
         touchStartY = event.touches[0].clientY;
         pullDistance = 0;
         isTracking = true;
+        pullTarget =
+          tabName === "explore"
+            ? document.getElementById(
+                isExploreSearchOpen
+                  ? "exploreSearchContent"
+                  : "exploreDiscoveryContent",
+              ) || view
+            : view;
       },
       { passive: true },
     );
@@ -2195,6 +2233,7 @@ function setupPullToRefresh() {
         if (pullDistance >= 80) refreshTab(tabName);
         else hidePullRefreshIndicator();
         pullDistance = 0;
+        pullTarget = view;
       },
       { passive: true },
     );
@@ -2206,6 +2245,7 @@ function setupPullToRefresh() {
         pullDistance = 0;
         finishPullPosition();
         hidePullRefreshIndicator();
+        pullTarget = view;
       },
       { passive: true },
     );
@@ -3463,6 +3503,56 @@ async function saveProfile() {
   }
 }
 
+function markPendingNativeAuthAttempt(provider) {
+  try {
+    localStorage.setItem(
+      NATIVE_AUTH_PENDING_KEY,
+      JSON.stringify({ provider, startedAt: Date.now() }),
+    );
+  } catch (error) {
+    reportClientDiagnostic("native-auth-pending-write", error);
+  }
+}
+
+function clearPendingNativeAuthAttempt() {
+  try {
+    localStorage.removeItem(NATIVE_AUTH_PENDING_KEY);
+  } catch (error) {
+    reportClientDiagnostic("native-auth-pending-clear", error);
+  }
+}
+
+function hasPendingNativeAuthAttempt() {
+  let rawAttempt = "";
+  try {
+    rawAttempt = localStorage.getItem(NATIVE_AUTH_PENDING_KEY) || "";
+  } catch (error) {
+    reportClientDiagnostic("native-auth-pending-read", error);
+    return false;
+  }
+
+  try {
+    const attempt = JSON.parse(rawAttempt);
+    const age = Date.now() - Number(attempt?.startedAt);
+    return (
+      Number.isFinite(age) &&
+      age >= 0 &&
+      age <= NATIVE_AUTH_PENDING_MAX_AGE_MS &&
+      ["google", "kakao", "apple"].includes(attempt?.provider)
+    );
+  } catch (_error) {
+    return false;
+  }
+}
+
+function getNativeAuthCode(url) {
+  try {
+    return new URL(url).searchParams.get("code")?.trim() || "";
+  } catch (_error) {
+    return "";
+  }
+}
+
 async function handleSocialLogin(provider) {
   const requiresLoginConsent =
     !hasSeenUgcPolicyLoginConsent() && !hasPendingUgcPolicyAcceptanceAfterOAuth();
@@ -3471,25 +3561,38 @@ async function handleSocialLogin(provider) {
     markPendingUgcPolicyAcceptanceAfterOAuth();
   }
 
+  const nativeRuntime = isNativeRuntime();
   const options = { redirectTo: getOAuthRedirectUrl() };
-  if (isNativeRuntime()) {
+  if (nativeRuntime) {
     options.skipBrowserRedirect = true;
+    markPendingNativeAuthAttempt(provider);
   }
 
   const { data, error } = await client.auth.signInWithOAuth({
     provider: provider,
     options,
   });
-  if (!error && isNativeRuntime() && data?.url) {
-    await openNativeAuthSession(data.url);
-    return;
-  }
   if (error) {
+    if (nativeRuntime) clearPendingNativeAuthAttempt();
     const providerName =
       { apple: "Apple", google: "Google", kakao: "카카오" }[provider] ||
       provider;
     showAppAlert(`${providerName} 로그인을 시작하지 못했습니다.`);
+    return;
   }
+
+  if (nativeRuntime && data?.url) {
+    try {
+      await openNativeAuthSession(data.url);
+    } catch (openError) {
+      clearPendingNativeAuthAttempt();
+      reportClientDiagnostic("native-auth-browser-open", openError);
+      showAppAlert("로그인 창을 열지 못했습니다. 다시 시도해주세요.");
+    }
+    return;
+  }
+
+  if (nativeRuntime) clearPendingNativeAuthAttempt();
 }
 
 function getCapacitorPlugin(name) {
@@ -3536,22 +3639,10 @@ function isTrustedNativeAuthUrl(url) {
 }
 
 async function completeAuthFromUrl(url) {
-  const callbackUrl = new URL(url);
-  const hashParams = new URLSearchParams(callbackUrl.hash.slice(1));
-  const accessToken = hashParams.get("access_token");
-  const refreshToken = hashParams.get("refresh_token");
-  const authCode = callbackUrl.searchParams.get("code");
-
-  if (accessToken && refreshToken) {
-    const { error } = await client.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-    if (error) throw error;
-  } else if (authCode) {
-    const { error } = await client.auth.exchangeCodeForSession(authCode);
-    if (error) throw error;
-  }
+  const authCode = getNativeAuthCode(url);
+  if (!authCode) throw new Error("Native OAuth callback is missing its code.");
+  const { error } = await client.auth.exchangeCodeForSession(authCode);
+  if (error) throw error;
 }
 
 async function handleNativeAppUrl(url) {
@@ -3560,9 +3651,22 @@ async function handleNativeAppUrl(url) {
     return;
   }
 
+  const authCode = getNativeAuthCode(url);
+  if (!authCode || !hasPendingNativeAuthAttempt()) {
+    reportClientDiagnostic("native-auth-callback-without-pending-login");
+    return;
+  }
+
+
   try {
     await completeAuthFromUrl(url);
-    await getCapacitorPlugin("Browser")?.close?.();
+    clearPendingNativeAuthAttempt();
+    try {
+      await getCapacitorPlugin("Browser")?.close?.();
+    } catch (error) {
+      reportClientDiagnostic("native-auth-browser-close", error);
+    }
+
     window.history.replaceState({}, document.title, "/");
     const {
       data: { session },
@@ -5339,69 +5443,162 @@ function completeNoticeSwipeBack() {
   openSheet("noticeSheet");
 }
 
-function setupSwipeBackNavigation() {
-  addInteractiveSwipeBack(
-    document.getElementById("view-bgm-picker"),
-    () => "view-write",
-    closeBgmPicker,
-  );
-  addInteractiveSwipeBack(
-    document.getElementById("view-context-feed"),
-    () => contextFeedReturnViewId,
-    closeContextPostFeed,
-  );
-  addInteractiveSwipeBack(
-    document.getElementById("view-user-profile"),
-    () => userProfileReturnViewId,
-    closeUserProfile,
-  );
-  addInteractiveSwipeBack(
-    document.getElementById("view-settings"),
-    () => "view-profile",
-    closeSettingsView,
-  );
-  addInteractiveSwipeBack(
-    document.getElementById("view-account-center"),
-    () => "view-settings",
-    closeAccountCenterView,
-  );
-  addInteractiveSwipeBack(
-    document.getElementById("view-theme-settings"),
-    () => "view-settings",
-    closeThemeSettingsView,
-  );
-  addInteractiveSwipeBack(
-    document.getElementById("view-notification-settings"),
-    () => "view-settings",
-    closeNotificationSettingsView,
-  );
-  addInteractiveSwipeBack(
-    document.getElementById("view-privacy-policy"),
-    () => "view-settings",
-    closePrivacyPolicyView,
-  );
-  addInteractiveSwipeBack(
-    document.getElementById("view-terms-of-service"),
-    () => "view-settings",
-    closeTermsOfServiceView,
-  );
-  addInteractiveSwipeBack(
-    document.getElementById("view-support"),
-    () => "view-settings",
-    closeSupportView,
-  );
-  addInteractiveSwipeBack(
-    document.getElementById("view-community-standards"),
-    () => "view-settings",
-    closeCommunityStandardsView,
-  );
-  addInteractiveSwipeBack(
-    document.getElementById("view-notice-detail"),
-    () => noticeReturnViewId,
-    completeNoticeSwipeBack,
+function getAppViewBackRoutes() {
+  return [
     {
-      onStart: prepareNoticeSwipeUnderlay,
-      onCancel: cancelNoticeSwipeUnderlay,
+      viewId: "view-bgm-picker",
+      getPreviousViewId: () => "view-write",
+      onBack: closeBgmPicker,
+    },
+    {
+      viewId: "view-context-feed",
+      getPreviousViewId: () => contextFeedReturnViewId,
+      onBack: closeContextPostFeed,
+    },
+    {
+      viewId: "view-user-profile",
+      getPreviousViewId: () => userProfileReturnViewId,
+      onBack: closeUserProfile,
+    },
+    {
+      viewId: "view-settings",
+      getPreviousViewId: () => "view-profile",
+      onBack: closeSettingsView,
+    },
+    {
+      viewId: "view-account-center",
+      getPreviousViewId: () => "view-settings",
+      onBack: closeAccountCenterView,
+    },
+    {
+      viewId: "view-account-delete",
+      getPreviousViewId: () => legalReturnViewId,
+      onBack: closeAccountDeleteView,
+    },
+    {
+      viewId: "view-theme-settings",
+      getPreviousViewId: () => "view-settings",
+      onBack: closeThemeSettingsView,
+    },
+    {
+      viewId: "view-notification-settings",
+      getPreviousViewId: () => "view-settings",
+      onBack: closeNotificationSettingsView,
+    },
+    {
+      viewId: "view-privacy-policy",
+      getPreviousViewId: () => "view-settings",
+      onBack: closePrivacyPolicyView,
+    },
+    {
+      viewId: "view-terms-of-service",
+      getPreviousViewId: () => "view-settings",
+      onBack: closeTermsOfServiceView,
+    },
+    {
+      viewId: "view-support",
+      getPreviousViewId: () => "view-settings",
+      onBack: closeSupportView,
+    },
+    {
+      viewId: "view-community-standards",
+      getPreviousViewId: () => "view-settings",
+      onBack: closeCommunityStandardsView,
+    },
+    {
+      viewId: "view-notice-detail",
+      getPreviousViewId: () => noticeReturnViewId,
+      onBack: completeNoticeSwipeBack,
+      options: {
+        onStart: prepareNoticeSwipeUnderlay,
+        onCancel: cancelNoticeSwipeUnderlay,
+      },
+    },
+  ];
+}
+
+function closeTopmostOpenSheet() {
+  const sheetId = [
+    "reportSheet",
+    "moodSheet",
+    "blockedUsersSheet",
+    "followListSheet",
+    "editProfileSheet",
+    "noticeSheet",
+    "commentSheet",
+  ].find((id) => document.getElementById(id)?.classList.contains("open"));
+
+  if (!sheetId) return false;
+  closeSheet(sheetId);
+  return true;
+}
+
+function closeVisibleMoreMenu() {
+  const menus = Array.from(document.querySelectorAll(".more-menu.show"));
+  if (!menus.length) return false;
+  menus.forEach((menu) => menu.classList.remove("show"));
+  return true;
+}
+
+function handleAppBackNavigation() {
+  const appAlert = document.getElementById("appAlert");
+  if (appAlert?.classList.contains("open")) {
+    closeAppAlert(false);
+    return true;
+  }
+  if (closeVisibleMoreMenu()) return true;
+  if (closeTopmostOpenSheet()) return true;
+
+  const activeViewId = document.querySelector(".app-view.active")?.id || "";
+  const route = getAppViewBackRoutes().find(
+    ({ viewId }) => viewId === activeViewId,
+  );
+  if (route) {
+    route.onBack();
+    return true;
+  }
+
+  if (activeViewId === "view-explore" && isExploreSearchOpen) {
+    closeExploreSearch();
+    return true;
+  }
+
+  if (
+    activeViewId !== "view-home" &&
+    ["view-explore", "view-write", "view-noti", "view-profile"].includes(
+      activeViewId,
+    )
+  ) {
+    switchTab("home");
+    return true;
+  }
+
+  return false;
+}
+
+async function setupNativeBackNavigation() {
+  const appPlugin = window.Capacitor?.Plugins?.App;
+  if (!appPlugin?.addListener) return;
+
+  try {
+    await appPlugin.addListener("backButton", () => {
+      if (handleAppBackNavigation()) return;
+      appPlugin.exitApp();
+    });
+  } catch (error) {
+    reportClientDiagnostic("native-back-navigation", error);
+  }
+}
+
+function setupSwipeBackNavigation() {
+  getAppViewBackRoutes().forEach(
+    ({ viewId, getPreviousViewId, onBack, options }) => {
+      addInteractiveSwipeBack(
+        document.getElementById(viewId),
+        getPreviousViewId,
+        onBack,
+        options,
+      );
     },
   );
 }

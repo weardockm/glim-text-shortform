@@ -41,7 +41,8 @@ export async function assertAuthenticatedJourneys(page) {
   });
   for (const expected of [
     "auth:updateUser",
-    "table:profiles.upsert",
+    "table:profiles.update",
+    "table:profiles.insert",
     "rpc:sync_authored_display_name",
   ]) {
     assert.ok(profile.calls.includes(expected), `missing ${expected}`);

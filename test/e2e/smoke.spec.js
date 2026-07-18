@@ -213,6 +213,9 @@ test("keeps the second home feed post above the comment sheet", async ({
   page,
 }) => {
   await page.addInitScript(supabaseBrowserStub);
+  await page.addInitScript(() => {
+    localStorage.setItem("glim_theme_preference", "dark");
+  });
   await page.route("**/*", (route) => {
     const url = route.request().url();
     if (!url.startsWith("http://127.0.0.1:4173/")) {
@@ -752,4 +755,344 @@ test("requires policy agreement before social login and stores it after auth", a
       ),
     )
     .toBe(true);
+});
+
+
+test("routes the Android system back gesture through app navigation", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(supabaseBrowserStub);
+  await page.addInitScript(() => {
+    const listeners = {};
+    window.__nativeAppListeners = listeners;
+    window.__nativeExitCount = 0;
+    window.Capacitor = {
+      getPlatform: () => "android",
+      isNativePlatform: () => true,
+      Plugins: {
+        App: {
+          addListener: async (name, listener) => {
+            listeners[name] = listener;
+            return { remove: async () => {} };
+          },
+          getLaunchUrl: async () => undefined,
+          exitApp: async () => {
+            window.__nativeExitCount += 1;
+          },
+        },
+      },
+    };
+  });
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__nativeAppListeners.backButton)))
+    .toBe(true);
+
+  await page.evaluate(() => {
+    document.getElementById("commentSheet").classList.add("open");
+    showAppAlert("Back priority fixture");
+    window.__nativeAppListeners.backButton();
+  });
+  await expect(page.locator("#appAlert")).not.toHaveClass(/open/);
+  await expect(page.locator("#commentSheet")).toHaveClass(/open/);
+
+  await page.evaluate(() => {
+    document.getElementById("reportSheet").classList.add("open");
+    window.__nativeAppListeners.backButton();
+  });
+  await expect(page.locator("#reportSheet")).not.toHaveClass(/open/);
+  await expect(page.locator("#commentSheet")).toHaveClass(/open/);
+
+  await page.evaluate(() => {
+    window.__nativeAppListeners.backButton();
+  });
+  await expect(page.locator("#commentSheet")).not.toHaveClass(/open/);
+
+  await page.evaluate(() => {
+    const menu = document.createElement("div");
+    menu.id = "nativeBackMenuFixture";
+    menu.className = "more-menu show";
+    document.body.append(menu);
+    window.__nativeAppListeners.backButton();
+  });
+  await expect(page.locator("#nativeBackMenuFixture")).not.toHaveClass(/show/);
+
+  await page.evaluate(() => {
+    activateAppView("view-explore");
+    openExploreSearch();
+    window.__nativeAppListeners.backButton();
+  });
+  await expect(page.locator("#exploreHeader")).not.toHaveClass(/is-searching/);
+
+  await page.evaluate(() => {
+    activateAppView("view-explore");
+    openExploreSearch();
+    userProfileReturnViewId = "view-explore";
+    activateAppView("view-user-profile");
+    window.__nativeAppListeners.backButton();
+  });
+  await expect(page.locator("#view-explore")).toHaveClass(/active/);
+  await expect(page.locator("#exploreHeader")).toHaveClass(/is-searching/);
+
+  await page.evaluate(() => {
+    window.__nativeAppListeners.backButton();
+  });
+  await expect(page.locator("#exploreHeader")).not.toHaveClass(/is-searching/);
+
+  await page.evaluate(() => {
+    activateAppView("view-account-center");
+    openAccountDeleteView();
+    window.__nativeAppListeners.backButton();
+  });
+  await expect(page.locator("#view-account-center")).toHaveClass(/active/);
+  await expect
+    .poll(() => page.evaluate(() => window.__nativeExitCount))
+    .toBe(0);
+
+  await page.evaluate(() => {
+    activateAppView("view-settings");
+    window.__nativeAppListeners.backButton();
+  });
+  await expect(page.locator("#view-profile")).toHaveClass(/active/);
+
+  await page.evaluate(() => {
+    window.__nativeAppListeners.backButton();
+  });
+  await expect(page.locator("#view-home")).toHaveClass(/active/);
+
+  await page.evaluate(() => {
+    window.__nativeAppListeners.backButton();
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__nativeExitCount))
+    .toBe(1);
+});
+
+test("keeps the Explore search header fixed and refresh indicator near the top", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__authCallback)))
+    .toBe(true);
+  await page.waitForTimeout(50);
+
+  const pullState = await page.evaluate(async () => {
+    activateAppView("view-explore");
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+    const view = document.getElementById("view-explore");
+    const header = document.getElementById("exploreHeader");
+    const indicator = document.getElementById("refreshIndicator");
+    view.scrollTop = 0;
+
+    const emitTouch = (type, y) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      const touches = type === "touchcancel" ? [] : [{ clientX: 120, clientY: y }];
+      Object.defineProperty(event, "touches", { value: touches });
+      view.dispatchEvent(event);
+    };
+
+    const inspectPull = async (contentId) => {
+      const content = document.getElementById(contentId);
+      const headerTopBefore = header.getBoundingClientRect().top;
+      emitTouch("touchstart", 100);
+      emitTouch("touchmove", 190);
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      );
+      const state = {
+        headerTopBefore,
+        headerTopAfter: header.getBoundingClientRect().top,
+        indicatorTop: Number.parseFloat(getComputedStyle(indicator).top),
+        contentTransform: getComputedStyle(content).transform,
+      };
+      emitTouch("touchcancel", 190);
+      return state;
+    };
+
+    const discovery = await inspectPull("exploreDiscoveryContent");
+    openExploreSearch();
+    const search = await inspectPull("exploreSearchContent");
+    emitTouch("touchstart", 100);
+    emitTouch("touchmove", 190);
+    window.dispatchEvent(new Event("blur"));
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+    return {
+      pullStates: [discovery, search],
+      interruptedTransform: getComputedStyle(
+        document.getElementById("exploreSearchContent"),
+      ).transform,
+    };
+  });
+
+  for (const state of pullState.pullStates) {
+    expect(Math.abs(state.headerTopAfter - state.headerTopBefore)).toBeLessThan(1);
+    expect(state.contentTransform).not.toBe("none");
+    expect(state.indicatorTop).toBeGreaterThanOrEqual(10);
+    expect(state.indicatorTop).toBeLessThanOrEqual(30);
+  }
+  expect(pullState.interruptedTransform).toBe("none");
+});
+
+test("keeps native auth pending until exchange succeeds and persists the session", async ({
+  page,
+}) => {
+  await page.addInitScript(`${supabaseBrowserStub}
+(() => {
+  const originalCreateClient = window.supabase.createClient;
+  const listeners = {};
+  const storageKey = "glim-native-session-fixture";
+  window.__nativeAppListeners = listeners;
+  window.__nativeAuthOrder = [];
+  window.supabase.createClient = (url, key, options) => {
+    window.__supabaseClientOptions = options;
+    const client = originalCreateClient(url, key, options);
+    let nativeSession = JSON.parse(localStorage.getItem(storageKey) || "null");
+    client.auth.getSession = async () => ({
+      data: { session: nativeSession },
+      error: null,
+    });
+    client.auth.signInWithOAuth = async () => ({
+      data: { url: "https://accounts.example.test/oauth" },
+      error: null,
+    });
+    client.auth.exchangeCodeForSession = async (authCode) => {
+      window.__nativeAuthOrder.push("exchange-start");
+      if (authCode === "bogus") {
+        window.__nativeAuthOrder.push("exchange-error");
+        return { data: { session: null }, error: new Error("invalid code") };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      nativeSession = {
+        user: {
+          id: "native-auth-fixture",
+          email: "native@example.test",
+          user_metadata: { random_nickname: "네이티브 사용자" },
+        },
+      };
+      localStorage.setItem(storageKey, JSON.stringify(nativeSession));
+      window.__nativeAuthOrder.push("exchange-end");
+      return { data: { session: nativeSession }, error: null };
+    };
+    return client;
+  };
+  window.Capacitor = {
+    getPlatform: () => "android",
+    isNativePlatform: () => true,
+    Plugins: {
+      App: {
+        addListener: async (name, listener) => {
+          listeners[name] = listener;
+          return { remove: async () => {} };
+        },
+        getLaunchUrl: async () => undefined,
+        exitApp: async () => {},
+      },
+      Browser: {
+        open: async () => {
+          window.__nativeAuthOrder.push("browser-open");
+        },
+        close: async () => {
+          window.__nativeAuthOrder.push("browser-close");
+        },
+      },
+    },
+  };
+})();`);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.__nativeAppListeners.appUrlOpen)))
+    .toBe(true);
+
+  await page.evaluate(async () => {
+    window.__nativeAppListeners.appUrlOpen({
+      url: "https://glimfactory.com/auth/callback?code=unsolicited",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+  expect(await page.evaluate(() => window.__nativeAuthOrder)).toEqual([]);
+
+  await page.evaluate(async () => {
+    localStorage.setItem("glim_ugc_policy_login_consent_seen", "1");
+    await handleSocialLogin("google");
+    window.__nativeAppListeners.appUrlOpen({
+      url: "https://glimfactory.com/auth/callback?code=bogus",
+    });
+  });
+
+  await expect
+    .poll(() => page.evaluate(() => window.__nativeAuthOrder))
+    .toEqual(["browser-open", "exchange-start", "exchange-error"]);
+  expect(
+    await page.evaluate(() => localStorage.getItem("glim_native_auth_pending")),
+  ).not.toBeNull();
+
+  await page.evaluate(() => {
+    window.__nativeAppListeners.appUrlOpen({
+      url: "https://glimfactory.com/auth/callback?code=authorized",
+    });
+  });
+
+  await expect
+    .poll(() => page.evaluate(() => window.__nativeAuthOrder))
+    .toEqual([
+      "browser-open",
+      "exchange-start",
+      "exchange-error",
+      "exchange-start",
+      "exchange-end",
+      "browser-close",
+    ]);
+  expect(
+    await page.evaluate(() => localStorage.getItem("glim_native_auth_pending")),
+  ).toBeNull();
+  await expect
+    .poll(() => page.evaluate(() => currentUser?.id || ""))
+    .toBe("native-auth-fixture");
+  expect(
+    await page.evaluate(() => window.__supabaseClientOptions?.auth),
+  ).toMatchObject({
+    persistSession: true,
+    autoRefreshToken: true,
+    flowType: "pkce",
+  });
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect
+    .poll(() => page.evaluate(() => currentUser?.id || ""))
+    .toBe("native-auth-fixture");
+  expect(
+    await page.locator("#profileContainer").evaluate((element) => element.style.display),
+  ).toBe("block");
 });

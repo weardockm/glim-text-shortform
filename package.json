@@ -22,6 +22,7 @@
     "qa:visual-diff": "node scripts/task7-visual-diff.mjs",
     "qa:task7:cleanup": "node scripts/task7-cleanup.mjs",
     "serve:test": "node scripts/static-server.mjs --host 127.0.0.1 --port 4173",
+    "android:live": "npx cap run android --live-reload --host 127.0.0.1 --port 4173 --forwardPorts 4173:4173",
     "test:fixture:server-tree": "node scripts/static-server.mjs --host 127.0.0.1 --port 4199",
     "security:ast": "ast-grep scan --config sgconfig.yml index.js admin.js firebase-messaging-sw.js push-config.js",
     "security:secrets": "node scripts/secret-scan.mjs",

@@ -53,3 +53,18 @@ test("native packaging contract stays deterministic and store-review safe", asyn
   assert.match(packageScript, /forbiddenSegments/u);
   assert.ok(packageScript.includes('const optionalRuntimeDirectories = [".well-known"];'));
 });
+
+test("Android top-level surfaces consume the shared safe-area inset", async () => {
+  const html = await readFile("index.html", "utf8");
+
+  assert.match(
+    html,
+    /\.explore-header\s*\{[\s\S]*?padding:\s*calc\(16px \+ var\(--top-safe-space\)\) 16px 14px;/u,
+    "the explore search header must start below the Android status bar",
+  );
+  assert.match(
+    html,
+    /\.refresh-indicator\s*\{[\s\S]*?top:\s*calc\(var\(--top-safe-space\) \+ 14px\);/u,
+    "the refresh indicator must preserve its compact safe-area offset",
+  );
+});

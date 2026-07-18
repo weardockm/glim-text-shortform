@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=118" defer></script>
+    <script src="index.js?v=123" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -196,7 +196,7 @@
       }
       .refresh-indicator {
         position: fixed;
-        top: 14px;
+        top: calc(var(--top-safe-space) + 14px);
         left: 50%;
         z-index: 200;
         display: flex;
@@ -213,7 +213,7 @@
         opacity: 0;
         visibility: hidden;
         pointer-events: none;
-        transform: translate(-50%, -70px) scale(0.92);
+        transform: translate(-50%, -12px) scale(0.92);
         transition:
           opacity 0.24s ease,
           transform 0.42s cubic-bezier(0.22, 1, 0.36, 1),
@@ -725,7 +725,7 @@
         position: sticky;
         top: 0;
         z-index: 30;
-        padding: 16px 16px 14px;
+        padding: calc(16px + var(--top-safe-space)) 16px 14px;
         background: rgba(15, 12, 10, 0.94);
         border-bottom: 1px solid rgba(255, 157, 102, 0.08);
         box-shadow: 0 12px 28px rgba(8, 5, 4, 0.18);

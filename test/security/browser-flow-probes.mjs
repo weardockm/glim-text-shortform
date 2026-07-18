@@ -13,6 +13,10 @@ export async function assertAnonymousAndOAuth(page) {
   await page.click("[data-app-alert-primary]");
   await page.click("#nav-profile", { force: true });
   await page.click(".google-btn", { force: true });
+  const consentMessage = await page.locator("#appAlertMessage").textContent();
+  assert.match(consentMessage || "", /커뮤니티 기준/u);
+  await page.click("[data-app-alert-primary]");
+
   assert.equal(await page.evaluate(() => window.__oauthProvider), "google");
   await page.click(".kakao-btn", { force: true });
   assert.equal(await page.evaluate(() => window.__oauthProvider), "kakao");
