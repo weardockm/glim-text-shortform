@@ -61,10 +61,7 @@ function createProfileSyncContext({
   legacyUpdateError = null,
   legacyUpdateCount = 1,
   legacyInsertError = null,
-  appearanceUpdateError = {
-    code: "PGRST204",
-    message: "Could not find the bio column of profiles in the schema cache",
-  },
+  appearanceUpdateError = null,
 } = {}) {
   const writes = [];
   const diagnostics = [];
@@ -153,9 +150,7 @@ test("Profile sync persists legacy profile fields before optional appearance fie
   assert.equal("theme" in context.writes[0].values, false);
   assert.equal(context.writes[1].isAppearanceUpdate, true);
   assert.equal(context.writes[1].values.bio, "새 소개");
-  assert.deepEqual(context.diagnostics.map(({ contextName }) => contextName), [
-    "profile-appearance-columns-missing",
-  ]);
+  assert.deepEqual(context.diagnostics, []);
 });
 
 test("Profile sync inserts legacy profile row when no profile row was updated", async () => {
@@ -191,4 +186,26 @@ test("Profile sync rejects when required legacy profile storage fails", async ()
   assert.equal(context.writes.length, 1);
   assert.equal(context.writes[0].isAppearanceUpdate, false);
   assert.deepEqual(context.diagnostics.map(({ contextName }) => contextName), ["profile-sync"]);
+});
+
+test("Profile sync rejects when required bio storage fails", async () => {
+  const context = createProfileSyncContext({
+    appearanceUpdateError: {
+      code: "PGRST204",
+      message: "Could not find the bio column of profiles in the schema cache",
+    },
+  });
+
+  await assert.rejects(
+    vm.runInContext(
+      "syncCurrentUserProfile({ preserveStoredAvatar: false, requirePersistence: true })",
+      context,
+    ),
+    { name: "ProfilePersistenceError", code: "PGRST204" },
+  );
+  assert.equal(context.writes.length, 2);
+  assert.equal(context.writes[1].isAppearanceUpdate, true);
+  assert.deepEqual(context.diagnostics.map(({ contextName }) => contextName), [
+    "profile-appearance-columns-missing",
+  ]);
 });

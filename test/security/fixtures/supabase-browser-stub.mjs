@@ -34,6 +34,7 @@ export const supabaseBrowserStub = `
       eq(...args) { record("table", table + ".eq", args); return this; },
       neq(...args) { record("table", table + ".neq", args); return this; },
       in(...args) { record("table", table + ".in", args); return this; },
+      ilike(...args) { record("table", table + ".ilike", args); return this; },
       order(...args) { record("table", table + ".order", args); return this; },
       limit(...args) { record("table", table + ".limit", args); return this; },
       insert(rows) {

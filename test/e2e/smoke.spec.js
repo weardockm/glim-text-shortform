@@ -1096,3 +1096,180 @@ test("keeps native auth pending until exchange succeeds and persists the session
     await page.locator("#profileContainer").evaluate((element) => element.style.display),
   ).toBe("block");
 });
+
+test("keeps settings titles below the Galaxy status area", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const layout = await page.evaluate(() => {
+    document.documentElement.classList.add("native-android");
+    activateAppView("view-settings");
+
+    const topbar = document.querySelector("#view-settings .settings-page-topbar");
+    const title = document.querySelector("#view-settings .settings-page-title");
+    const rootStyle = getComputedStyle(document.documentElement);
+    const topbarRect = topbar.getBoundingClientRect();
+    const titleRect = title.getBoundingClientRect();
+
+    return {
+      isNativeAndroid: document.documentElement.classList.contains("native-android"),
+      nativeSafeSpace: Number.parseFloat(
+        rootStyle.getPropertyValue("--native-top-safe-space"),
+      ),
+      topbarHeight: topbarRect.height,
+      titleTop: titleRect.top,
+      titleBottom: titleRect.bottom,
+    };
+  });
+
+  expect(layout.isNativeAndroid).toBe(true);
+  expect(layout.nativeSafeSpace).toBe(32);
+  expect(layout.topbarHeight).toBeGreaterThanOrEqual(96);
+  expect(layout.titleTop).toBeGreaterThanOrEqual(layout.nativeSafeSpace + 8);
+  expect(layout.titleBottom).toBeLessThanOrEqual(layout.topbarHeight - 8);
+});
+test("shows Explore results while typing before Enter", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    window.__supabaseRows.profiles = [{
+      id: "live-search-user",
+      nickname: "글리머",
+      custom_id: "glimmer",
+      avatar_url: "",
+    }];
+    window.__supabaseRows.posts = [{
+      id: "live-search-post",
+      content: "글림에서 문장을 찾는 중",
+      author: "글리머",
+      user_id: "live-search-user",
+      likes_count: 3,
+      created_at: "2026-07-19T00:00:00Z",
+    }];
+    activateAppView("view-explore");
+    openExploreSearch();
+  });
+
+  await page.locator("#searchInput").focus();
+  await page.locator("#searchInput").evaluate((input) => {
+    input.value = "ㄱ";
+    input.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        data: "ㄱ",
+        inputType: "insertCompositionText",
+        isComposing: true,
+      }),
+    );
+  });
+  await page.waitForTimeout(350);
+  const composingSearchCalls = await page.evaluate(() =>
+    window.__supabaseCalls.filter(({ name }) => name.endsWith(".ilike")),
+  );
+  expect(composingSearchCalls).toHaveLength(0);
+
+  await page.locator("#searchInput").evaluate((input) => {
+    input.value = "글리";
+    input.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        data: "리",
+        inputType: "insertCompositionText",
+        isComposing: false,
+      }),
+    );
+  });
+  await expect(page.locator("#exploreSearchSummary")).toContainText(
+    "‘글리’ 검색 결과",
+    { timeout: 2_000 },
+  );
+  await expect(page.locator("#exploreUserResults")).toContainText("글리머");
+  await expect(page.locator("#explorePostResults")).toContainText(
+    "글림에서 문장을 찾는 중",
+  );
+});
+
+test("pinch zooms the profile photo with two touch pointers", async ({ page }) => {
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const result = await page.evaluate(() => {
+    const stage = document.getElementById("avatarCropStage");
+    Object.defineProperties(stage, {
+      setPointerCapture: { value: () => {}, configurable: true },
+      hasPointerCapture: { value: () => false, configurable: true },
+      releasePointerCapture: { value: () => {}, configurable: true },
+    });
+    const zoom = document.getElementById("avatarCropZoom");
+    zoom.min = "0.3";
+    zoom.max = "1.2";
+    zoom.step = "0.003";
+    zoom.value = "0.3";
+    Object.assign(avatarCropState, {
+      naturalWidth: 1000,
+      naturalHeight: 1000,
+      cropSize: 300,
+      minScale: 0.3,
+      maxScale: 1.2,
+      scale: 0.3,
+      x: 0,
+      y: 0,
+      isReady: true,
+      isDragging: false,
+      pointerId: null,
+    });
+
+    const emitPointer = (type, pointerId, clientX, clientY, isPrimary) => {
+      stage.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        pointerId,
+        pointerType: "touch",
+        clientX,
+        clientY,
+        isPrimary,
+      }));
+    };
+
+    emitPointer("pointerdown", 1, 120, 160, true);
+    emitPointer("pointerdown", 2, 220, 160, false);
+    emitPointer("pointermove", 2, 280, 160, false);
+    const scaleAfterTwoPointers = avatarCropState.scale;
+    emitPointer("pointerdown", 3, 200, 220, false);
+    emitPointer("pointerup", 3, 200, 220, false);
+    emitPointer("pointermove", 2, 320, 160, false);
+
+    return {
+      scale: avatarCropState.scale,
+      scaleAfterTwoPointers,
+      sliderValue: Number(document.getElementById("avatarCropZoom").value),
+    };
+  });
+
+  expect(result.scale).toBeGreaterThan(0.3);
+  expect(result.scale).toBeGreaterThan(result.scaleAfterTwoPointers);
+  expect(result.sliderValue).toBeCloseTo(result.scale);
+});

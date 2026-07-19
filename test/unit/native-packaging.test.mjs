@@ -32,6 +32,11 @@ test("native packaging contract stays deterministic and store-review safe", asyn
   assert.match(capacitorConfig, /appName: "글림"/u);
   assert.match(capacitorConfig, /webDir: "dist"/u);
   assert.doesNotMatch(capacitorConfig, /servers*:/u);
+  assert.match(capacitorConfig, /StatusBar:[\s\S]*style: "LIGHT"/u);
+
+  const appSource = await readFile("index.js", "utf8");
+  assert.match(appSource, /function syncNativeStatusBarTheme/u);
+  assert.match(appSource, /resolvedTheme === "dark" \? "DARK" : "LIGHT"/u);
 
   const packageScript = await readFile("scripts/package-web.mjs", "utf8");
   for (const forbiddenPath of [

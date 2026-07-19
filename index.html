@@ -3179,11 +3179,11 @@
         position: sticky;
         top: 0;
         z-index: 30;
-        min-height: 64px;
+        min-height: calc(64px + var(--top-safe-space));
         display: grid;
         grid-template-columns: 42px 1fr 42px;
         align-items: center;
-        padding: 8px 12px;
+        padding: calc(8px + var(--top-safe-space)) 12px 8px;
         border-bottom: 1px solid rgba(255, 255, 255, 0.07);
         background: rgba(8, 7, 6, 0.9);
         backdrop-filter: blur(14px);

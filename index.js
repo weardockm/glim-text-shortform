@@ -139,6 +139,8 @@ const refreshPullInterruptors = new Set();
 let exploreFetchRequestId = 0;
 let exploreMoodFetchRequestId = 0;
 let exploreSearchRequestId = 0;
+let exploreSearchInputTimer = null;
+const EXPLORE_SEARCH_INPUT_DELAY_MS = 220;
 let isExploreSearchOpen = false;
 let selectedExploreMood = "사색";
 let postTextMeasureElement = null;
@@ -241,8 +243,15 @@ const avatarCropState = {
   startClientY: 0,
   startX: 0,
   startY: 0,
+  pinchStartDistance: 0,
+  pinchStartScale: 1,
+  pinchStartCenterX: 0,
+  pinchStartCenterY: 0,
+  pinchStartX: 0,
+  pinchStartY: 0,
   isReady: false,
 };
+const avatarCropPointers = new Map();
 const contextPostCollections = new Map();
 const contextPostTitles = new Map();
 const postViewTimers = new Map();
@@ -1040,7 +1049,7 @@ function runDeclarativeAction(action, element, event) {
     "handleSocialLogin('apple')": () => handleSocialLogin("apple"),
     "handleSocialLogin('google')": () => handleSocialLogin("google"),
     "handleSocialLogin('kakao')": () => handleSocialLogin("kakao"),
-    "handleExploreSearchInput()": () => handleExploreSearchInput(),
+    "handleExploreSearchInput()": () => handleExploreSearchInput(event),
     "handlePostContentInput(event)": () => handlePostContentInput(event),
     "location.href = 'admin.html'": () =>
       window.location.assign(new URL("admin.html", window.location.href).href),
@@ -1128,7 +1137,7 @@ function setupDeclarativeEventHandlers() {
     handle(event, "data-glim-focus"),
   );
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
+    if (event.key === "Enter" && !event.isComposing) {
       const enterElement = event.target.closest?.("[data-glim-enter]");
       if (enterElement) {
         event.preventDefault();
@@ -2318,14 +2327,15 @@ async function persistCurrentUserProfileAppearance(profile) {
     })
     .eq("id", profile.id);
 
-  if (!error) return;
+  if (!error) return { error: null };
 
   if (isMissingProfileAppearanceColumnError(error)) {
     reportClientDiagnostic("profile-appearance-columns-missing", error);
-    return;
+  } else {
+    reportClientDiagnostic("profile-appearance-sync", error);
   }
 
-  reportClientDiagnostic("profile-appearance-sync", error);
+  return { error };
 }
 
 async function syncCurrentUserProfile({
@@ -2388,7 +2398,11 @@ async function syncCurrentUserProfile({
     return;
   }
 
-  await persistCurrentUserProfileAppearance(profile);
+  const { error: appearanceError } =
+    await persistCurrentUserProfileAppearance(profile);
+  if (appearanceError && requirePersistence) {
+    throw createProfilePersistenceError(appearanceError);
+  }
 }
 
 async function refreshCurrentUserRole() {
@@ -2705,6 +2719,8 @@ function closeAvatarCropper(resetInput = true) {
   avatarCropState.y = 0;
   avatarCropState.isDragging = false;
   avatarCropState.pointerId = null;
+  avatarCropState.pinchStartDistance = 0;
+  avatarCropPointers.clear();
   avatarCropState.isReady = false;
 
   if (resetInput && input) input.value = "";
@@ -2795,27 +2811,108 @@ function setAvatarCropScale(nextScale) {
   renderAvatarCropImage();
 }
 
+function getAvatarCropPointerPair() {
+  return Array.from(avatarCropPointers.values()).slice(0, 2);
+}
+
+function getAvatarCropPointerCenter(first, second, stage) {
+  const bounds = stage.getBoundingClientRect();
+  return {
+    x: (first.clientX + second.clientX) / 2 - bounds.left - bounds.width / 2,
+    y: (first.clientY + second.clientY) / 2 - bounds.top - bounds.height / 2,
+  };
+}
+
+function beginAvatarCropPinch(stage) {
+  const [first, second] = getAvatarCropPointerPair();
+  if (!first || !second) return;
+
+  const center = getAvatarCropPointerCenter(first, second, stage);
+  avatarCropState.isDragging = false;
+  avatarCropState.pointerId = null;
+  avatarCropState.pinchStartDistance = Math.hypot(
+    second.clientX - first.clientX,
+    second.clientY - first.clientY,
+  );
+  avatarCropState.pinchStartScale = avatarCropState.scale;
+  avatarCropState.pinchStartCenterX = center.x;
+  avatarCropState.pinchStartCenterY = center.y;
+  avatarCropState.pinchStartX = avatarCropState.x;
+  avatarCropState.pinchStartY = avatarCropState.y;
+}
+
 function startAvatarCropDrag(event) {
-  if (!avatarCropState.isReady || !event.isPrimary) return;
+  if (!avatarCropState.isReady) return;
 
   event.preventDefault();
+  avatarCropPointers.set(event.pointerId, {
+    clientX: event.clientX,
+    clientY: event.clientY,
+  });
+  event.currentTarget.setPointerCapture(event.pointerId);
+
+  if (avatarCropPointers.size >= 2) {
+    beginAvatarCropPinch(event.currentTarget);
+    return;
+  }
+
   avatarCropState.isDragging = true;
   avatarCropState.pointerId = event.pointerId;
   avatarCropState.startClientX = event.clientX;
   avatarCropState.startClientY = event.clientY;
   avatarCropState.startX = avatarCropState.x;
   avatarCropState.startY = avatarCropState.y;
-  event.currentTarget.setPointerCapture(event.pointerId);
 }
 
 function moveAvatarCropDrag(event) {
+  if (!avatarCropPointers.has(event.pointerId)) return;
+
+  event.preventDefault();
+  avatarCropPointers.set(event.pointerId, {
+    clientX: event.clientX,
+    clientY: event.clientY,
+  });
+
+  if (avatarCropPointers.size >= 2) {
+    const [first, second] = getAvatarCropPointerPair();
+    const startDistance = avatarCropState.pinchStartDistance;
+    if (!first || !second || !startDistance) return;
+
+    const distance = Math.hypot(
+      second.clientX - first.clientX,
+      second.clientY - first.clientY,
+    );
+    const center = getAvatarCropPointerCenter(
+      first,
+      second,
+      event.currentTarget,
+    );
+    const nextScale = clampValue(
+      avatarCropState.pinchStartScale * (distance / startDistance),
+      avatarCropState.minScale,
+      avatarCropState.maxScale,
+    );
+    const sourceX =
+      (avatarCropState.pinchStartCenterX - avatarCropState.pinchStartX) /
+      avatarCropState.pinchStartScale;
+    const sourceY =
+      (avatarCropState.pinchStartCenterY - avatarCropState.pinchStartY) /
+      avatarCropState.pinchStartScale;
+    avatarCropState.scale = nextScale;
+    avatarCropState.x = center.x - sourceX * nextScale;
+    avatarCropState.y = center.y - sourceY * nextScale;
+    clampAvatarCropOffset();
+    renderAvatarCropImage();
+    const { zoom } = getAvatarCropElements();
+    if (zoom) zoom.value = avatarCropState.scale;
+    return;
+  }
+
   if (
     !avatarCropState.isDragging ||
     avatarCropState.pointerId !== event.pointerId
   )
     return;
-
-  event.preventDefault();
   avatarCropState.x =
     avatarCropState.startX + event.clientX - avatarCropState.startClientX;
   avatarCropState.y =
@@ -2825,13 +2922,33 @@ function moveAvatarCropDrag(event) {
 }
 
 function endAvatarCropDrag(event) {
-  if (avatarCropState.pointerId !== event.pointerId) return;
+  if (!avatarCropPointers.has(event.pointerId)) return;
 
-  avatarCropState.isDragging = false;
-  avatarCropState.pointerId = null;
+  avatarCropPointers.delete(event.pointerId);
   if (event.currentTarget.hasPointerCapture(event.pointerId)) {
     event.currentTarget.releasePointerCapture(event.pointerId);
   }
+
+  avatarCropState.pinchStartDistance = 0;
+  if (avatarCropPointers.size >= 2) {
+    beginAvatarCropPinch(event.currentTarget);
+    return;
+  }
+
+  const remainingPointer = avatarCropPointers.entries().next().value;
+  if (remainingPointer) {
+    const [pointerId, point] = remainingPointer;
+    avatarCropState.isDragging = true;
+    avatarCropState.pointerId = pointerId;
+    avatarCropState.startClientX = point.clientX;
+    avatarCropState.startClientY = point.clientY;
+    avatarCropState.startX = avatarCropState.x;
+    avatarCropState.startY = avatarCropState.y;
+    return;
+  }
+
+  avatarCropState.isDragging = false;
+  avatarCropState.pointerId = null;
 }
 
 function handleAvatarCropWheel(event) {
@@ -3769,6 +3886,7 @@ function applyThemePreference(preference, { persist = true } = {}) {
       resolvedTheme === "dark" ? "#050505" : "#f6f2ee",
     );
   }
+  syncNativeStatusBarTheme(resolvedTheme);
   updateThemeSettingsUI(safePreference);
 }
 
@@ -3883,11 +4001,22 @@ function isPushOnboardingSupported() {
   return isRunningAsInstalledApp() && isPushConfigured() && isPushBrowserSupported();
 }
 
+function syncNativeStatusBarTheme(
+  resolvedTheme = document.documentElement.dataset.theme,
+) {
+  if (window.Capacitor?.getPlatform?.() !== "android") return;
+  const statusBar = getCapacitorPlugin("StatusBar");
+  void statusBar?.setStyle?.({
+    style: resolvedTheme === "dark" ? "DARK" : "LIGHT",
+  });
+}
+
 function setupNativeAndroidViewport() {
   if (window.Capacitor?.getPlatform?.() !== "android") return;
   document.documentElement.classList.add("native-android");
   const statusBar = getCapacitorPlugin("StatusBar");
   void statusBar?.setOverlaysWebView?.({ overlay: false });
+  syncNativeStatusBarTheme();
 }
 
 function isIOSDevice() {
@@ -6134,6 +6263,10 @@ function openExploreSearch() {
 }
 
 function closeExploreSearch() {
+  if (exploreSearchInputTimer) {
+    clearTimeout(exploreSearchInputTimer);
+    exploreSearchInputTimer = null;
+  }
   exploreSearchRequestId += 1;
   isExploreSearchOpen = false;
   document.getElementById("exploreHeader")?.classList.remove("is-searching");
@@ -6157,11 +6290,29 @@ async function refreshExploreCurrentContent() {
   }
 }
 
-function handleExploreSearchInput() {
+function handleExploreSearchInput(event) {
   openExploreSearch();
-  document.getElementById("exploreRecentSearches").hidden = false;
-  document.getElementById("exploreSearchResults").hidden = true;
-  renderExploreSearchHistory();
+  const query = document.getElementById("searchInput")?.value.trim() || "";
+  if (exploreSearchInputTimer) clearTimeout(exploreSearchInputTimer);
+  exploreSearchInputTimer = null;
+  exploreSearchRequestId += 1;
+
+  if (event?.isComposing) {
+    return;
+  }
+
+  if (!query) {
+    document.getElementById("exploreRecentSearches").hidden = false;
+    document.getElementById("exploreSearchResults").hidden = true;
+    renderExploreSearchHistory();
+    return;
+  }
+
+  renderExploreSearchLoading(query);
+  exploreSearchInputTimer = setTimeout(() => {
+    exploreSearchInputTimer = null;
+    void searchPosts(query, { saveHistory: false });
+  }, EXPLORE_SEARCH_INPUT_DELAY_MS);
 }
 
 function clearExploreSearchHistory() {
@@ -6276,7 +6427,11 @@ function renderExploreSearchResults(query, users, posts) {
   }
 }
 
-async function searchPosts(forcedQuery = null) {
+async function searchPosts(forcedQuery = null, { saveHistory = true } = {}) {
+  if (exploreSearchInputTimer) {
+    clearTimeout(exploreSearchInputTimer);
+    exploreSearchInputTimer = null;
+  }
   const input = document.getElementById("searchInput");
   const query = String(forcedQuery ?? input?.value ?? "").trim();
   if (!query) {
@@ -6287,7 +6442,7 @@ async function searchPosts(forcedQuery = null) {
 
   if (input) input.value = query;
   openExploreSearch();
-  saveExploreSearchHistory(query);
+  if (saveHistory) saveExploreSearchHistory(query);
   renderExploreSearchLoading(query);
   const requestId = ++exploreSearchRequestId;
   contextPostCollections.set("explore-search", []);

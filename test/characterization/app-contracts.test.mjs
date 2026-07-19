@@ -130,7 +130,7 @@ test("Given moderated content, When public feeds and comments are fetched, Then 
   );
   assert.match(
     indexSource,
-    /async function searchPosts\(forcedQuery = null\)[\s\S]*?runVisibleContentQuery\([\s\S]*?"explore-search-posts-load"/,
+    /async function searchPosts\(forcedQuery = null, \{ saveHistory = true \} = \{\}\)[\s\S]*?runVisibleContentQuery\([\s\S]*?"explore-search-posts-load"/,
   );
   assert.match(
     indexSource,

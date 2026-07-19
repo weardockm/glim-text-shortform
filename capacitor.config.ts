@@ -11,7 +11,7 @@ const config = {
     },
     StatusBar: {
       backgroundColor: "#050505",
-      style: "DARK",
+      style: "LIGHT",
       overlaysWebView: false,
     },
     PushNotifications: {
