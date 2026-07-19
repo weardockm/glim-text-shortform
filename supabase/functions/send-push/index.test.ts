@@ -420,6 +420,63 @@ Deno.test(
     assertEquals(admin.getInsertedLogs().length, 1);
   },
 );
+Deno.test(
+  "Given valid like and follow events When deliveries are logged Then both dedupe keys expire after the current minute",
+  async () => {
+    const likeCalls: FcmCall[] = [];
+    const likeAdmin = new FakeAdminClient({
+      posts: [{ id: "post-1", user_id: "target-1" }],
+      subscriptions: [{
+        id: "like-sub",
+        enabled: true,
+        firebase_installation_id: "like-fid",
+        delivery_channel: "native",
+        preferences: { likes: true },
+        user_id: "target-1",
+      }],
+    });
+    const followCalls: FcmCall[] = [];
+    const followAdmin = new FakeAdminClient({
+      follows: [{ follower_id: "user-1", following_id: "target-1" }],
+      subscriptions: [{
+        id: "follow-sub",
+        enabled: true,
+        firebase_installation_id: "follow-fid",
+        delivery_channel: "native",
+        preferences: { follows: true },
+        user_id: "target-1",
+      }],
+    });
+
+    await Promise.all([
+      handleSendPushRequest(
+        createPostRequest({
+          category: "likes",
+          postId: "post-1",
+          targetUserId: "target-1",
+        }),
+        createDependencies({ admin: likeAdmin, calls: likeCalls }),
+      ),
+      handleSendPushRequest(
+        createPostRequest({
+          category: "follows",
+          targetUserId: "target-1",
+        }),
+        createDependencies({ admin: followAdmin, calls: followCalls }),
+      ),
+    ]);
+
+    assertMatches(
+      likeAdmin.getInsertedLogs()[0]?.dedupe_key,
+      /^likes:user-1:post-1:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/,
+    );
+    assertMatches(
+      followAdmin.getInsertedLogs()[0]?.dedupe_key,
+      /^follows:user-1:target-1:\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/,
+    );
+  },
+);
+
 
 Deno.test(
   "Given a forged likes event When the actor targets a post owned by someone else Then the function denies it before FCM",
@@ -719,5 +776,13 @@ function assertEquals(actual: unknown, expected: unknown) {
   const expectedJson = JSON.stringify(expected);
   if (actualJson !== expectedJson) {
     throw new Error(`Expected ${expectedJson}, received ${actualJson}`);
+  }
+}
+
+function assertMatches(actual: unknown, expected: RegExp) {
+  if (typeof actual !== "string" || !expected.test(actual)) {
+    throw new Error(
+      `Expected ${JSON.stringify(actual)} to match ${expected.toString()}`,
+    );
   }
 }

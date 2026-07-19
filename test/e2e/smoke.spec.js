@@ -1,6 +1,52 @@
 import { expect, test } from "@playwright/test";
 import { supabaseBrowserStub } from "../security/fixtures/supabase-browser-stub.mjs";
 
+test("profile tab buttons complete their transition within 200ms", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const elapsed = await page.evaluate(async () => {
+    activateAppView("view-profile");
+    const tabScroll = document.getElementById("profileGridScroll");
+    document.getElementById("profileContainer").style.display = "block";
+    document.getElementById("view-profile").style.display = "block";
+    tabScroll.style.width = "390px";
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    if (tabScroll.clientWidth === 0) throw new Error("Profile tabs have no width");
+    const target = tabScroll.clientWidth * 2;
+    const startedAt = performance.now();
+    scrollToProfileTab(2);
+
+    return await new Promise((resolve) => {
+      const observe = (now) => {
+        if (
+          Math.abs(tabScroll.scrollLeft - target) <= 1 ||
+          now - startedAt > 1_000
+        ) {
+          resolve(now - startedAt);
+          return;
+        }
+        requestAnimationFrame(observe);
+      };
+      requestAnimationFrame(observe);
+    });
+  });
+
+  expect(elapsed).toBeGreaterThan(0);
+  expect(elapsed).toBeLessThanOrEqual(200);
+  await expect(page.locator("#tab-like")).toHaveClass(/active/);
+});
+
 test("serves the Korean application shell and runtime assets", async ({
   page,
   request,

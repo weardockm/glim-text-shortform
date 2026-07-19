@@ -455,11 +455,8 @@ function getDedupeKey(
   if (body.category === "announcements") {
     return `announcements:${body.postId || now.toISOString().slice(0, 16)}`;
   }
-  if (body.category === "comments") {
-    const minute = now.toISOString().slice(0, 16);
-    return `comments:${actorUserId}:${body.postId}:${minute}`;
-  }
-  return `${body.category}:${actorUserId}:${body.postId || body.targetUserId}`;
+  const minute = now.toISOString().slice(0, 16);
+  return `${body.category}:${actorUserId}:${body.postId || body.targetUserId}:${minute}`;
 }
 
 export async function handleSendPushRequest(

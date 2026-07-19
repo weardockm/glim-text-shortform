@@ -5209,10 +5209,10 @@ async function performAccountDeletion() {
 
 function scrollToProfileTab(index) {
   const tabScroll = document.getElementById("profileGridScroll");
-  tabScroll.scrollTo({
-    left: index * tabScroll.clientWidth,
-    behavior: "smooth",
-  });
+  animateProfileTabScroll(
+    tabScroll,
+    index,
+  );
 }
 
 function updateTabIndicator() {
@@ -8570,6 +8570,43 @@ async function openNoticeSheet() {
     return item;
   });
   list.replaceChildren(...noticeItems);
+}
+
+const PROFILE_TAB_TRANSITION_DURATION_MS = 150;
+let profileTabAnimationFrame = 0;
+
+function animateProfileTabScroll(tabScroll, index) {
+  const targetLeft = index * tabScroll.clientWidth;
+  const startLeft = tabScroll.scrollLeft;
+  cancelAnimationFrame(profileTabAnimationFrame);
+
+  if (
+    Math.abs(targetLeft - startLeft) < 1 ||
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    tabScroll.scrollLeft = targetLeft;
+    updateTabIndicator();
+    return;
+  }
+
+  const startedAt = performance.now();
+  const animate = (now) => {
+    const progress = Math.min(
+      (now - startedAt) / PROFILE_TAB_TRANSITION_DURATION_MS,
+      1,
+    );
+    const easedProgress = 1 - Math.pow(1 - progress, 3);
+    tabScroll.scrollLeft =
+      startLeft + (targetLeft - startLeft) * easedProgress;
+    if (progress < 1) {
+      profileTabAnimationFrame = requestAnimationFrame(animate);
+      return;
+    }
+    profileTabAnimationFrame = 0;
+    tabScroll.scrollLeft = targetLeft;
+    updateTabIndicator();
+  };
+  profileTabAnimationFrame = requestAnimationFrame(animate);
 }
 
 function closeNoticeDetail() {
