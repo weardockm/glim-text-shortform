@@ -9,6 +9,18 @@ const adminHtml = readFileSync(new URL("../../admin.html", import.meta.url), "ut
 const adminSource = readFileSync(new URL("../../admin.js", import.meta.url), "utf8");
 const pushConfig = readFileSync(new URL("../../push-config.js", import.meta.url), "utf8");
 
+test("native push registration replaces only Android web delivery", () => {
+  assert.match(indexSource, /delivery_channel:\s*deliveryChannel/u);
+  assert.match(
+    indexSource,
+    /savePushSubscription\(token\.value,[\s\S]*?deliveryChannel:\s*"native"/u,
+  );
+  assert.match(
+    indexSource,
+    /\.eq\("delivery_channel",\s*"web"\)[\s\S]*?\.ilike\("user_agent",\s*"%Android%"\)/u,
+  );
+});
+
 function positionOf(source, fragment) {
   const position = source.indexOf(fragment);
   assert.notEqual(position, -1, `missing contract fragment: ${fragment}`);

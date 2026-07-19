@@ -87,6 +87,7 @@ type PushDatabase = {
       };
       readonly push_subscriptions: {
         readonly Row: {
+          readonly delivery_channel: "web" | "native";
           readonly enabled: boolean;
           readonly firebase_installation_id: string;
           readonly id: string;
@@ -539,7 +540,7 @@ export async function handleSendPushRequest(
     }
 
     let subscriptionQuery = getAdminTable(admin, "push_subscriptions")
-      .select("id, firebase_installation_id")
+      .select("id, firebase_installation_id, delivery_channel")
       .eq("enabled", true)
       .contains("preferences", { [category]: true });
     if (!isBroadcast) {
@@ -637,11 +638,23 @@ export async function handleSendPushRequest(
                   }&notificationType=${encodeURIComponent(category)}`
                   : "./?tab=noti",
               },
-              webpush: {
-                headers: {
-                  Urgency: category === "announcements" ? "normal" : "high",
-                },
-              },
+              ...(subscription.delivery_channel === "native"
+                ? {
+                  notification: {
+                    title: copy.title,
+                    body: copy.body,
+                  },
+                  android: {
+                    priority: "high",
+                  },
+                }
+                : {
+                  webpush: {
+                    headers: {
+                      Urgency: category === "announcements" ? "normal" : "high",
+                    },
+                  },
+                }),
             },
           }),
         });

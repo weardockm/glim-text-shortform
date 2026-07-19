@@ -1130,6 +1130,9 @@ function setupDeclarativeEventHandlers() {
   document.addEventListener("input", (event) =>
     handle(event, "data-glim-input"),
   );
+  document.addEventListener("compositionend", (event) =>
+    handle(event, "data-glim-input"),
+  );
   document.addEventListener("change", (event) =>
     handle(event, "data-glim-change"),
   );
@@ -4132,7 +4135,11 @@ async function loadFirebasePushModules() {
   return firebasePushModulesPromise;
 }
 
-async function savePushSubscription(fid, user = currentUser) {
+async function savePushSubscription(
+  fid,
+  user = currentUser,
+  { deliveryChannel = "web" } = {},
+) {
   if (!user?.id || !fid) throw new Error("푸시 구독 정보가 없습니다.");
   const preferences = normalizeNotificationPreferences(
     user.user_metadata?.notification_preferences ||
@@ -4141,6 +4148,7 @@ async function savePushSubscription(fid, user = currentUser) {
   const { error } = await client.from("push_subscriptions").upsert(
     {
       user_id: user.id,
+      delivery_channel: deliveryChannel,
       firebase_installation_id: fid,
       preferences,
       enabled: true,
@@ -4151,6 +4159,21 @@ async function savePushSubscription(fid, user = currentUser) {
   );
   if (error) throw error;
   storePushFid(fid, user.id);
+
+  if (deliveryChannel === "native") {
+    const { error: cleanupError } = await client
+      .from("push_subscriptions")
+      .delete()
+      .eq("user_id", user.id)
+      .eq("delivery_channel", "web")
+      .ilike("user_agent", "%Android%");
+    if (cleanupError) {
+      reportClientDiagnostic(
+        "native-push-browser-subscription-cleanup",
+        cleanupError,
+      );
+    }
+  }
 }
 
 async function removePushSubscription(fid, userId = currentUser?.id) {
@@ -4276,13 +4299,16 @@ async function refreshCurrentDevicePushStatusFromServer(userId = currentUser?.id
   if (!userId || Notification.permission !== "granted") return;
   const checkId = ++pushRemoteStatusCheckId;
   try {
-    const { data, error } = await client
+    const deliveryChannel = isNativePushSupported() ? "native" : "web";
+    const subscriptionQuery = client
       .from("push_subscriptions")
       .select("firebase_installation_id, enabled, updated_at")
       .eq("user_id", userId)
       .eq("enabled", true)
+      .eq("delivery_channel", deliveryChannel)
       .order("updated_at", { ascending: false })
       .limit(1);
+    const { data, error } = await subscriptionQuery;
     if (checkId !== pushRemoteStatusCheckId || currentUser?.id !== userId) return;
     if (error) {
       reportClientDiagnostic("push-subscription-status-load", error);
@@ -4383,7 +4409,9 @@ async function setupNativePushEventListeners(pushPlugin) {
   pushEventListenersReady = true;
   await pushPlugin.addListener("registration", async (token) => {
     try {
-      await savePushSubscription(token.value);
+      await savePushSubscription(token.value, currentUser, {
+        deliveryChannel: "native",
+      });
       settlePendingPushRegistration("resolve", token.value);
     } catch (error) {
       settlePendingPushRegistration("reject", error);

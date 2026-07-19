@@ -385,6 +385,7 @@ Deno.test(
           id: "sub-1",
           enabled: true,
           firebase_installation_id: "fid-1",
+          delivery_channel: "native",
           preferences: { likes: true },
           user_id: "target-1",
         },
@@ -411,6 +412,10 @@ Deno.test(
       category: "likes",
       postId: "post-1",
       url: "./?notificationPost=post-1&notificationType=likes",
+    });
+    assertEquals(getFcmNotification(calls[0]?.body), {
+      title: "테스터",
+      body: "회원님의 글에 좋아요를 눌렀습니다.",
     });
     assertEquals(admin.getInsertedLogs().length, 1);
   },
@@ -662,6 +667,13 @@ function getFcmData(body: unknown) {
   const message = (body as { readonly message?: unknown }).message;
   if (typeof message !== "object" || message === null) return null;
   return (message as { readonly data?: unknown }).data ?? null;
+}
+
+function getFcmNotification(body: unknown) {
+  if (typeof body !== "object" || body === null) return null;
+  const message = (body as { readonly message?: unknown }).message;
+  if (typeof message !== "object" || message === null) return null;
+  return (message as { readonly notification?: unknown }).notification ?? null;
 }
 
 function createPostRequest(body: Record<string, unknown>) {

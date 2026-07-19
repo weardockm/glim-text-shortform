@@ -38,6 +38,12 @@ test("native packaging contract stays deterministic and store-review safe", asyn
   assert.match(appSource, /function syncNativeStatusBarTheme/u);
   assert.match(appSource, /resolvedTheme === "dark" \? "DARK" : "LIGHT"/u);
 
+  const androidManifest = await readFile(
+    "android/app/src/main/AndroidManifest.xml",
+    "utf8",
+  );
+  assert.match(androidManifest, /android:name="\.MainActivity"[\s\S]*?android:screenOrientation="portrait"/u);
+
   const packageScript = await readFile("scripts/package-web.mjs", "utf8");
   for (const forbiddenPath of [
     "admin.html",

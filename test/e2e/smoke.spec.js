@@ -1187,14 +1187,10 @@ test("shows Explore results while typing before Enter", async ({ page }) => {
 
   await page.locator("#searchInput").evaluate((input) => {
     input.value = "글리";
-    input.dispatchEvent(
-      new InputEvent("input", {
-        bubbles: true,
-        data: "리",
-        inputType: "insertCompositionText",
-        isComposing: false,
-      }),
-    );
+    input.dispatchEvent(new CompositionEvent("compositionend", {
+      bubbles: true,
+      data: "글리",
+    }));
   });
   await expect(page.locator("#exploreSearchSummary")).toContainText(
     "‘글리’ 검색 결과",
