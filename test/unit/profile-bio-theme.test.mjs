@@ -12,6 +12,9 @@ const defaultOnlyMigrationPath = path.resolve(
 const identityRulesMigrationPath = path.resolve(
   "supabase/migrations/20260719020000_profile_identity_rules.sql",
 );
+const profileLimitsMigrationPath = path.resolve(
+  "supabase/migrations/20260719030000_reduce_profile_identity_limits.sql",
+);
 
 test("profile bio migration extends public profile fields and default-only migration locks theme", async () => {
   const addSource = await readFile(addMigrationPath, "utf8");
@@ -70,15 +73,16 @@ test("profile identity rules keep only IDs unique and align UI with database lim
   const js = await readFile(path.resolve("index.js"), "utf8");
   const migration = await readFile(identityRulesMigrationPath, "utf8");
 
-  assert.match(html, /id="editNicknameInput"[\s\S]*?maxlength="15"/u);
-  assert.match(html, /id="editIdInput"[\s\S]*?maxlength="20"/u);
+  const limitsMigration = await readFile(profileLimitsMigrationPath, "utf8");
+  assert.match(html, /id="editNicknameInput"[\s\S]*?maxlength="8"/u);
+  assert.match(html, /id="editIdInput"[\s\S]*?maxlength="12"/u);
   assert.match(
     html,
-    /id="editNicknameInput"[\s\S]*?maxlength="15"[\s\S]*?\/>\s*<p class="edit-profile-field-hint">닉네임은 2~15자/u,
+    /id="editNicknameInput"[\s\S]*?maxlength="8"[\s\S]*?\/>\s*<p class="edit-profile-field-hint">닉네임은 2~8자/u,
   );
   assert.match(
     html,
-    /id="editIdInput"[\s\S]*?maxlength="20"[\s\S]*?\/>\s*<p class="edit-profile-field-hint">아이디는 3~20자/u,
+    /id="editIdInput"[\s\S]*?maxlength="12"[\s\S]*?\/>\s*<p class="edit-profile-field-hint">아이디는 3~12자/u,
   );
   assert.doesNotMatch(
     html,
@@ -88,12 +92,12 @@ test("profile identity rules keep only IDs unique and align UI with database lim
     html,
     /html\[data-theme="light"\] \.profile-theme-option\.is-selected[\s\S]*?color: #312c29/u,
   );
-  assert.match(js, /PROFILE_NICKNAME_MAX_LENGTH = 15/u);
+  assert.match(js, /PROFILE_NICKNAME_MAX_LENGTH = 8/u);
   assert.match(
     js,
     /error\.code === "23505" \? "이미 사용 중인 아이디입니다\."/u,
   );
-  assert.match(js, /PROFILE_ID_MAX_LENGTH = 20/u);
+  assert.match(js, /PROFILE_ID_MAX_LENGTH = 12/u);
   assert.match(js, /data-glim-touch/u);
 
   assert.match(migration, /drop index if exists public\.profiles_nickname_key/u);
@@ -101,8 +105,8 @@ test("profile identity rules keep only IDs unique and align UI with database lim
     migration,
     /create unique index if not exists profiles_custom_id_key[\s\S]*?on public\.profiles \(custom_id\)/u,
   );
-  assert.match(migration, /char_length\(new\.nickname\) > 15/u);
-  assert.match(migration, /char_length\(coalesce\(new\.custom_id, ''\)\) > 20/u);
+  assert.match(limitsMigration, /char_length\(new\.nickname\) > 8/u);
+  assert.match(limitsMigration, /char_length\(coalesce\(new\.custom_id, ''\)\) > 12/u);
   assert.match(migration, /nickname_match_count = 1/u);
 });
 

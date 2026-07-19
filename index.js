@@ -3514,7 +3514,7 @@ async function saveProfile() {
   const saveButton = document.getElementById("editProfileSaveButton");
 
   if (!newNick || getProfileTextLength(newNick) < 2 || getProfileTextLength(newNick) > PROFILE_NICKNAME_MAX_LENGTH) {
-    alert("닉네임은 2자 이상 15자 이하로 입력해주세요.");
+    alert("닉네임은 2자 이상 8자 이하로 입력해주세요.");
     return;
   }
   if (newNick === "🚨글림 운영자") {
@@ -3529,7 +3529,7 @@ async function saveProfile() {
     !validIdRegex.test(newId)
   ) {
     alert(
-      "아이디는 3자 이상 20자 이하이며, 영문/숫자/밑줄(_)/마침표(.)만 사용할 수 있습니다.",
+      "아이디는 3자 이상 12자 이하이며, 영문/숫자/밑줄(_)/마침표(.)만 사용할 수 있습니다.",
     );
     return;
   }
@@ -8571,8 +8571,8 @@ async function openNoticeSheet() {
   });
   list.replaceChildren(...noticeItems);
 }
-const PROFILE_NICKNAME_MAX_LENGTH = 15;
-const PROFILE_ID_MAX_LENGTH = 20;
+const PROFILE_NICKNAME_MAX_LENGTH = 8;
+const PROFILE_ID_MAX_LENGTH = 12;
 
 function getProfileTextLength(value) {
   return Array.from(String(value ?? "").trim()).length;
