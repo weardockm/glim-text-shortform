@@ -162,6 +162,32 @@ test("opens the public privacy policy without signing in", async ({ page }) => {
   await expect(page.locator("#view-privacy-policy h1")).toHaveText("개인정보 처리방침");
 });
 
+test("publishes child safety standards without requiring sign-in", async ({
+  page,
+}) => {
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  const response = await page.goto("/community-standards", {
+    timeout: 10_000,
+    waitUntil: "domcontentloaded",
+  });
+  expect(response?.status()).toBe(200);
+  await expect(page.locator("#view-community-standards")).toHaveClass(/active/);
+  const standards = page.locator("#child-safety-standards");
+  await expect(standards).toContainText("아동 성적 학대 및 착취(CSAE)");
+  await expect(standards).toContainText("아동 성적 학대물(CSAM)");
+  await expect(page.locator("#view-community-standards")).toContainText(
+    "글림 아동 안전 담당자",
+  );
+});
+
 test("updates the write counter for English letters and numbers", async ({
   page,
 }) => {
