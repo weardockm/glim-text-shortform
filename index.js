@@ -1837,7 +1837,7 @@ function setupConnectivityStatus() {
 }
 
 async function init() {
-  setupDeclarativeEventHandlers();
+  setupDeclarativeEventHandlers(); setupProfileTabTouchNavigation();
   setupConnectivityStatus();
   setupThemePreferences();
   setupAppAlert();
@@ -3513,8 +3513,8 @@ async function saveProfile() {
   const newTheme = "default";
   const saveButton = document.getElementById("editProfileSaveButton");
 
-  if (!newNick || newNick.length < 2 || newNick.length > 40) {
-    alert("닉네임은 2자 이상 40자 이하로 입력해주세요.");
+  if (!newNick || getProfileTextLength(newNick) < 2 || getProfileTextLength(newNick) > PROFILE_NICKNAME_MAX_LENGTH) {
+    alert("닉네임은 2자 이상 15자 이하로 입력해주세요.");
     return;
   }
   if (newNick === "🚨글림 운영자") {
@@ -3525,11 +3525,11 @@ async function saveProfile() {
   if (
     !newId ||
     newId.length < 3 ||
-    newId.length > 40 ||
+    newId.length > PROFILE_ID_MAX_LENGTH ||
     !validIdRegex.test(newId)
   ) {
     alert(
-      "아이디는 3자 이상 40자 이하이며, 영문/숫자/밑줄(_)/마침표(.)만 사용할 수 있습니다.",
+      "아이디는 3자 이상 20자 이하이며, 영문/숫자/밑줄(_)/마침표(.)만 사용할 수 있습니다.",
     );
     return;
   }
@@ -3612,7 +3612,7 @@ async function saveProfile() {
       currentProfileBio = previousProfileState.bio;
       currentProfileTheme = previousProfileState.theme;
       updateAuthUI();
-      alert("프로필 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
+      alert(error.code === "23505" ? "이미 사용 중인 아이디입니다." : "프로필 저장에 실패했습니다. 잠시 후 다시 시도해주세요.");
       return;
     }
     reportClientDiagnostic("avatar-upload", error);
@@ -8571,8 +8571,24 @@ async function openNoticeSheet() {
   });
   list.replaceChildren(...noticeItems);
 }
+const PROFILE_NICKNAME_MAX_LENGTH = 15;
+const PROFILE_ID_MAX_LENGTH = 20;
 
-const PROFILE_TAB_TRANSITION_DURATION_MS = 150;
+function getProfileTextLength(value) {
+  return Array.from(String(value ?? "").trim()).length;
+}
+
+function setupProfileTabTouchNavigation() {
+  document.addEventListener("pointerdown", (event) => {
+    if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+    const tab = event.target.closest?.("[data-glim-touch]");
+    if (!tab) return;
+    runDeclarativeAction(tab.dataset.glimTouch, tab, event);
+  }, { passive: true });
+}
+
+
+const PROFILE_TAB_TRANSITION_DURATION_MS = 90;
 let profileTabAnimationFrame = 0;
 
 function animateProfileTabScroll(tabScroll, index) {

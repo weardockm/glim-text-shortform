@@ -4147,6 +4147,19 @@
       html[data-theme="light"] .p-tab {
         color: #9b918a;
       }
+      html[data-theme="light"] .profile-theme-option {
+        border-color: #d8cec6;
+        background: #fffdfa;
+        color: #312c29;
+      }
+      html[data-theme="light"] .profile-theme-option.is-selected {
+        border-color: #cda98f;
+        background: #f4ebe3;
+        color: #312c29;
+      }
+      html[data-theme="light"] .profile-theme-option-desc {
+        color: #716861;
+      }
       html[data-theme="light"] .p-tab.active {
         color: #2e2926;
       }
@@ -4972,13 +4985,13 @@
 
         <div class="profile-tabs-container">
           <div class="profile-tabs-indicator" id="tabIndicator"></div>
-          <div class="p-tab active" id="tab-my" data-glim-click="scrollToProfileTab(0)">
+          <div class="p-tab active" id="tab-my" data-glim-touch="scrollToProfileTab(0)" data-glim-click="scrollToProfileTab(0)">
             <span class="material-symbols-outlined">grid_on</span>
           </div>
-          <div class="p-tab" id="tab-bookmark" data-glim-click="scrollToProfileTab(1)">
+          <div class="p-tab" id="tab-bookmark" data-glim-touch="scrollToProfileTab(1)" data-glim-click="scrollToProfileTab(1)">
             <span class="material-symbols-outlined">bookmark</span>
           </div>
-          <div class="p-tab" id="tab-like" data-glim-click="scrollToProfileTab(2)">
+          <div class="p-tab" id="tab-like" data-glim-touch="scrollToProfileTab(2)" data-glim-click="scrollToProfileTab(2)">
             <span class="material-symbols-outlined">favorite</span>
           </div>
         </div>
@@ -6461,6 +6474,7 @@
           placeholder="새 닉네임"
           maxlength="15"
         />
+        <p class="edit-profile-field-hint">닉네임은 2~15자까지 입력할 수 있습니다.</p>
         <p
           style="
             color: #888;
@@ -6478,6 +6492,7 @@
           placeholder="영문, 숫자, 밑줄(_) 3자 이상"
           maxlength="20"
         />
+        <p class="edit-profile-field-hint">아이디는 3~20자이며 다른 사용자와 중복될 수 없습니다.</p>
         <p class="edit-profile-field-label">상태 메시지(소개글)</p>
         <textarea
           id="editBioInput"

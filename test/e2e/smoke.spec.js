@@ -47,6 +47,76 @@ test("profile tab buttons complete their transition within 200ms", async ({
   await expect(page.locator("#tab-like")).toHaveClass(/active/);
 });
 
+test("touching a profile tab starts navigation before the click event", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(async () => {
+    document.getElementById("appSplash").style.display = "none";
+    activateAppView("view-profile");
+    document.getElementById("profileContainer").style.display = "block";
+    document.getElementById("view-profile").style.display = "block";
+    const tabScroll = document.getElementById("profileGridScroll");
+    tabScroll.style.width = "390px";
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    document.getElementById("tab-like").dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        isPrimary: true,
+        pointerId: 1,
+        pointerType: "touch",
+      }),
+    );
+  });
+
+  await expect
+    .poll(() => page.locator("#profileGridScroll").evaluate((node) => node.scrollLeft))
+    .toBeGreaterThan(0);
+});
+
+test("light mode keeps the selected default profile theme label readable", async ({
+  page,
+}) => {
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const colors = await page.evaluate(() => {
+    document.documentElement.dataset.theme = "light";
+    document.getElementById("appSplash").style.display = "none";
+    openSheet("editProfileSheet");
+    setSelectedProfileTheme("default");
+    const option = document.querySelector(".profile-theme-option.is-selected");
+    const title = option.querySelector(".profile-theme-option-title");
+    const description = option.querySelector(".profile-theme-option-desc");
+    return {
+      background: getComputedStyle(option).backgroundColor,
+      description: getComputedStyle(description).color,
+      title: getComputedStyle(title).color,
+    };
+  });
+
+  expect(colors).toEqual({
+    background: "rgb(244, 235, 227)",
+    description: "rgb(113, 104, 97)",
+    title: "rgb(49, 44, 41)",
+  });
+});
+
 test("serves the Korean application shell and runtime assets", async ({
   page,
   request,
