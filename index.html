@@ -39,7 +39,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=125" defer></script>
+    <script src="index.js?v=126" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -55,8 +55,13 @@
       }
       :root {
         --native-top-safe-space: 0px;
+        --native-bottom-safe-space: 0px;
         --top-safe-space: max(env(safe-area-inset-top, 0px), var(--native-top-safe-space));
-        --bottom-safe-space: 10px;
+        --bottom-safe-space: max(
+          10px,
+          env(safe-area-inset-bottom, 0px),
+          var(--native-bottom-safe-space)
+        );
         --bottom-nav-height: calc(60px + var(--bottom-safe-space));
         --glim-text-empty: #888;
       }

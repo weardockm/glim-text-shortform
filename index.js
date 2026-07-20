@@ -3869,7 +3869,9 @@ async function setupNativeDeepLinks() {
       }
     });
     await app.addListener?.("appStateChange", (event) => {
-      if (event?.isActive) recoverNativeAuthSessionAfterReturn();
+      if (!event?.isActive) return;
+      recoverNativeAuthSessionAfterReturn();
+      void syncNativeBottomSafeSpace();
     });
     await getCapacitorPlugin("Browser")?.addListener?.("browserFinished", () => {
       recoverNativeAuthSessionAfterReturn();
@@ -4077,12 +4079,33 @@ function syncNativeStatusBarTheme(
   });
 }
 
+async function syncNativeBottomSafeSpace() {
+  if (window.Capacitor?.getPlatform?.() !== "android") return;
+  const insets = getCapacitorPlugin("GlimInsets");
+  if (!insets?.getNavigationBarInset) return;
+
+  try {
+    const result = await insets.getNavigationBarInset();
+    const bottom = Number(result?.bottom);
+    if (!Number.isFinite(bottom) || bottom < 0) return;
+    document.documentElement.style.setProperty(
+      "--native-bottom-safe-space",
+      `${bottom}px`,
+    );
+  } catch (error) {
+    reportClientDiagnostic("native-navigation-bar-inset", error);
+  }
+}
+
 function setupNativeAndroidViewport() {
   if (window.Capacitor?.getPlatform?.() !== "android") return;
   document.documentElement.classList.add("native-android");
   const statusBar = getCapacitorPlugin("StatusBar");
   void statusBar?.setOverlaysWebView?.({ overlay: false });
   syncNativeStatusBarTheme();
+  void syncNativeBottomSafeSpace();
+  window.addEventListener("resize", syncNativeBottomSafeSpace);
+  window.visualViewport?.addEventListener("resize", syncNativeBottomSafeSpace);
 }
 
 function isIOSDevice() {

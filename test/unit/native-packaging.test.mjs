@@ -65,6 +65,34 @@ test("native packaging contract stays deterministic and store-review safe", asyn
   assert.ok(packageScript.includes('const optionalRuntimeDirectories = [".well-known"];'));
 });
 
+test("Android exposes the real navigation bar inset to the bottom navigation", async () => {
+  const html = await readFile("index.html", "utf8");
+  const appSource = await readFile("index.js", "utf8");
+  const activitySource = await readFile(
+    "android/app/src/main/java/com/glimfactory/glim/MainActivity.java",
+    "utf8",
+  );
+  const pluginSource = await readFile(
+    "android/app/src/main/java/com/glimfactory/glim/GlimInsetsPlugin.java",
+    "utf8",
+  );
+
+  assert.match(
+    html,
+    /--bottom-safe-space:\s*max\([\s\S]*?env\(safe-area-inset-bottom, 0px\)[\s\S]*?var\(--native-bottom-safe-space\)/u,
+  );
+  assert.match(appSource, /getCapacitorPlugin\("GlimInsets"\)/u);
+  assert.match(appSource, /--native-bottom-safe-space/u);
+  assert.match(activitySource, /registerPlugin\(GlimInsetsPlugin\.class\)/u);
+  assert.ok(
+    activitySource.indexOf("registerPlugin(GlimInsetsPlugin.class)") <
+      activitySource.indexOf("super.onCreate(savedInstanceState)"),
+    "custom plugins must be registered before Capacitor initializes the bridge",
+  );
+  assert.match(pluginSource, /WindowInsetsCompat\.Type\.navigationBars\(\)/u);
+  assert.match(pluginSource, /result\.put\("bottom"/u);
+});
+
 test("Android top-level surfaces consume the shared safe-area inset", async () => {
   const html = await readFile("index.html", "utf8");
 

@@ -1289,6 +1289,64 @@ test("keeps native auth pending and recovers a completed session when a tablet r
     .toContain("browser-close");
 });
 
+test("keeps bottom navigation controls above Android three-button navigation", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(supabaseBrowserStub);
+  await page.addInitScript(() => {
+    window.Capacitor = {
+      getPlatform: () => "android",
+      isNativePlatform: () => true,
+      Plugins: {
+        GlimInsets: {
+          getNavigationBarInset: async () => ({ bottom: 48 }),
+        },
+        StatusBar: {
+          setOverlaysWebView: async () => {},
+          setStyle: async () => {},
+        },
+      },
+    };
+  });
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--native-bottom-safe-space",
+          ),
+        ),
+      ),
+    )
+    .toBe(48);
+  const layout = await page.evaluate(() => {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const navItemRect = document
+      .querySelector(".bottom-nav .nav-item")
+      .getBoundingClientRect();
+    return {
+      nativeBottomSafeSpace: Number.parseFloat(
+        rootStyle.getPropertyValue("--native-bottom-safe-space"),
+      ),
+      navItemBottom: navItemRect.bottom,
+      viewportHeight: window.innerHeight,
+    };
+  });
+
+  expect(layout.nativeBottomSafeSpace).toBe(48);
+  expect(layout.navItemBottom).toBeLessThanOrEqual(layout.viewportHeight - 48);
+});
+
 test("keeps settings titles below the Galaxy status area", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(supabaseBrowserStub);
