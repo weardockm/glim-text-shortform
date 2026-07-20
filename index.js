@@ -1876,24 +1876,30 @@ async function init() {
   handlePublicStaticRoute();
   schedulePushOnboarding();
 
-  client.auth.onAuthStateChange(async (_event, session) => {
-    currentUser = session?.user || null;
-    resetCurrentProfileState();
-    if (currentUser && !currentUser.user_metadata?.random_nickname) {
-      const newNick = generateRandomNickname();
-      await client.auth.updateUser({ data: { random_nickname: newNick } });
-      currentUser.user_metadata.random_nickname = newNick;
-    }
-    await syncCurrentUserProfile();
-    await refreshCurrentUserRole();
-    await loadBlockedUsersState();
-    await loadEngagementState();
-    updateAuthUI();
-    await promptForUgcPolicyAcceptanceAfterSignIn();
-    initializePushNotifications().catch((error) => {
-      reportClientDiagnostic("push-init-auth-change", error);
-    });
-    schedulePushOnboarding();
+  client.auth.onAuthStateChange((_event, session) => {
+    window.setTimeout(async () => {
+      try {
+        currentUser = session?.user || null;
+        resetCurrentProfileState();
+        if (currentUser && !currentUser.user_metadata?.random_nickname) {
+          const newNick = generateRandomNickname();
+          await client.auth.updateUser({ data: { random_nickname: newNick } });
+          currentUser.user_metadata.random_nickname = newNick;
+        }
+        await syncCurrentUserProfile();
+        await refreshCurrentUserRole();
+        await loadBlockedUsersState();
+        await loadEngagementState();
+        updateAuthUI();
+        await promptForUgcPolicyAcceptanceAfterSignIn();
+        initializePushNotifications().catch((error) => {
+          reportClientDiagnostic("push-init-auth-change", error);
+        });
+        schedulePushOnboarding();
+      } catch (error) {
+        reportClientDiagnostic("auth-state-change", error);
+      }
+    }, 0);
   });
 
   [
@@ -3761,8 +3767,12 @@ function isTrustedNativeAuthUrl(url) {
 async function completeAuthFromUrl(url) {
   const authCode = getNativeAuthCode(url);
   if (!authCode) throw new Error("Native OAuth callback is missing its code.");
-  const { error } = await client.auth.exchangeCodeForSession(authCode);
+  const { data, error } = await client.auth.exchangeCodeForSession(authCode);
   if (error) throw error;
+  if (!data?.session?.user) {
+    throw new Error("Native OAuth callback did not return a session.");
+  }
+  return data.session;
 }
 
 async function handleNativeAppUrl(url) {
@@ -3779,7 +3789,7 @@ async function handleNativeAppUrl(url) {
 
 
   try {
-    await completeAuthFromUrl(url);
+    const session = await completeAuthFromUrl(url);
     clearPendingNativeAuthAttempt();
     try {
       await getCapacitorPlugin("Browser")?.close?.();
@@ -3788,10 +3798,7 @@ async function handleNativeAppUrl(url) {
     }
 
     window.history.replaceState({}, document.title, "/");
-    const {
-      data: { session },
-    } = await client.auth.getSession();
-    currentUser = session?.user || null;
+    currentUser = session.user;
     updateAuthUI();
     await promptForUgcPolicyAcceptanceAfterSignIn();
     switchTab("profile");

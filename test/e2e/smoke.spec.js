@@ -1112,6 +1112,15 @@ test("keeps native auth pending until exchange succeeds and persists the session
   window.supabase.createClient = (url, key, options) => {
     window.__supabaseClientOptions = options;
     const client = originalCreateClient(url, key, options);
+    const originalUpdateUser = client.auth.updateUser;
+    let authEventActive = false;
+    client.auth.updateUser = async (...args) => {
+      if (authEventActive) {
+        window.__nativeAuthOrder.push("auth-lock-deadlock");
+        return new Promise(() => {});
+      }
+      return originalUpdateUser(...args);
+    };
     let nativeSession = JSON.parse(localStorage.getItem(storageKey) || "null");
     client.auth.getSession = async () => ({
       data: { session: nativeSession },
@@ -1132,10 +1141,13 @@ test("keeps native auth pending until exchange succeeds and persists the session
         user: {
           id: "native-auth-fixture",
           email: "native@example.test",
-          user_metadata: { random_nickname: "네이티브 사용자" },
+          user_metadata: {},
         },
       };
       localStorage.setItem(storageKey, JSON.stringify(nativeSession));
+      authEventActive = true;
+      await window.__authCallback("SIGNED_IN", nativeSession);
+      authEventActive = false;
       window.__nativeAuthOrder.push("exchange-end");
       return { data: { session: nativeSession }, error: null };
     };
