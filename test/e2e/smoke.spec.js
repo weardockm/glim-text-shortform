@@ -1099,7 +1099,7 @@ test("keeps the Explore search header fixed and refresh indicator near the top",
   expect(pullState.interruptedTransform).toBe("none");
 });
 
-test("keeps native auth pending until exchange succeeds and persists the session", async ({
+test("keeps native auth pending and recovers a completed session when a tablet resumes", async ({
   page,
 }) => {
   await page.addInitScript(`${supabaseBrowserStub}
@@ -1122,6 +1122,14 @@ test("keeps native auth pending until exchange succeeds and persists the session
       return originalUpdateUser(...args);
     };
     let nativeSession = JSON.parse(localStorage.getItem(storageKey) || "null");
+    window.__setNativeSession = (session) => {
+      nativeSession = session;
+      if (session) {
+        localStorage.setItem(storageKey, JSON.stringify(session));
+      } else {
+        localStorage.removeItem(storageKey);
+      }
+    };
     client.auth.getSession = async () => ({
       data: { session: nativeSession },
       error: null,
@@ -1249,6 +1257,36 @@ test("keeps native auth pending until exchange succeeds and persists the session
   expect(
     await page.locator("#profileContainer").evaluate((element) => element.style.display),
   ).toBe("block");
+
+  await page.evaluate(async () => {
+    window.__setNativeSession(null);
+    currentUser = null;
+    updateAuthUI();
+    localStorage.setItem("glim_ugc_policy_login_consent_seen", "1");
+    await handleSocialLogin("google");
+    window.__setNativeSession({
+      user: {
+        id: "tablet-resume-fixture",
+        email: "tablet@example.test",
+        user_metadata: { random_nickname: "태블릿 사용자" },
+      },
+    });
+    const listener = window.__nativeAppListeners.appStateChange;
+    if (typeof listener !== "function") {
+      throw new Error("Native auth session recovery listener is missing");
+    }
+    listener({ isActive: true });
+  });
+
+  await expect
+    .poll(() => page.evaluate(() => currentUser?.id || ""))
+    .toBe("tablet-resume-fixture");
+  expect(
+    await page.evaluate(() => localStorage.getItem("glim_native_auth_pending")),
+  ).toBeNull();
+  await expect
+    .poll(() => page.evaluate(() => window.__nativeAuthOrder))
+    .toContain("browser-close");
 });
 
 test("keeps settings titles below the Galaxy status area", async ({ page }) => {

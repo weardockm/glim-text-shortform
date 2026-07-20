@@ -13,6 +13,8 @@ const GLIM_PRODUCTION_ORIGIN = "https://glimfactory.com";
 const AUTH_CALLBACK_PATH = "/auth/callback";
 const NATIVE_AUTH_PENDING_KEY = "glim_native_auth_pending";
 const NATIVE_AUTH_PENDING_MAX_AGE_MS = 10 * 60 * 1000;
+const NATIVE_AUTH_RECOVERY_ATTEMPTS = 4;
+const NATIVE_AUTH_RECOVERY_DELAY_MS = 250;
 const VISIBLE_CONTENT_MODERATION_STATUS = "approved";
 
 function selectVisibleContent(query) {
@@ -100,6 +102,8 @@ let bgmSyncFrame = null;
 let isWaitingForBgmGesture = false;
 let previewingBgmUrl = "";
 let currentUser = null;
+let nativeAuthFinalizationPromise = null;
+let nativeAuthRecoveryPromise = null;
 let currentUserIsModerator = false;
 const blockedUserIds = new Set();
 const blockedUserNicknames = new Set();
@@ -3775,6 +3779,63 @@ async function completeAuthFromUrl(url) {
   return data.session;
 }
 
+async function finalizeNativeAuthSession(session) {
+  if (!session?.user) return false;
+  if (nativeAuthFinalizationPromise) return nativeAuthFinalizationPromise;
+
+  nativeAuthFinalizationPromise = (async () => {
+    clearPendingNativeAuthAttempt();
+    try {
+      await getCapacitorPlugin("Browser")?.close?.();
+    } catch (error) {
+      reportClientDiagnostic("native-auth-browser-close", error);
+    }
+
+    window.history.replaceState({}, document.title, "/");
+    currentUser = session.user;
+    updateAuthUI();
+    await promptForUgcPolicyAcceptanceAfterSignIn();
+    switchTab("profile");
+    return true;
+  })();
+
+  try {
+    return await nativeAuthFinalizationPromise;
+  } finally {
+    nativeAuthFinalizationPromise = null;
+  }
+}
+
+async function recoverNativeAuthSessionAfterReturn() {
+  if (!isNativeRuntime() || !hasPendingNativeAuthAttempt()) return false;
+  if (nativeAuthRecoveryPromise) return nativeAuthRecoveryPromise;
+
+  nativeAuthRecoveryPromise = (async () => {
+    for (let attempt = 0; attempt < NATIVE_AUTH_RECOVERY_ATTEMPTS; attempt += 1) {
+      const { data, error } = await client.auth.getSession();
+      if (error) throw error;
+      if (data?.session?.user) {
+        return finalizeNativeAuthSession(data.session);
+      }
+      if (attempt < NATIVE_AUTH_RECOVERY_ATTEMPTS - 1) {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, NATIVE_AUTH_RECOVERY_DELAY_MS),
+        );
+      }
+    }
+    return false;
+  })();
+
+  try {
+    return await nativeAuthRecoveryPromise;
+  } catch (error) {
+    reportClientDiagnostic("native-auth-resume-recovery", error);
+    return false;
+  } finally {
+    nativeAuthRecoveryPromise = null;
+  }
+}
+
 async function handleNativeAppUrl(url) {
   if (!isTrustedNativeAuthUrl(url)) {
     reportClientDiagnostic("native-deep-link-rejected");
@@ -3790,18 +3851,7 @@ async function handleNativeAppUrl(url) {
 
   try {
     const session = await completeAuthFromUrl(url);
-    clearPendingNativeAuthAttempt();
-    try {
-      await getCapacitorPlugin("Browser")?.close?.();
-    } catch (error) {
-      reportClientDiagnostic("native-auth-browser-close", error);
-    }
-
-    window.history.replaceState({}, document.title, "/");
-    currentUser = session.user;
-    updateAuthUI();
-    await promptForUgcPolicyAcceptanceAfterSignIn();
-    switchTab("profile");
+    await finalizeNativeAuthSession(session);
   } catch (error) {
     reportClientDiagnostic("native-auth-callback", error);
     showAppAlert("로그인을 완료하지 못했습니다. 다시 시도해주세요.");
@@ -3817,6 +3867,12 @@ async function setupNativeDeepLinks() {
       if (event?.url) {
         handleNativeAppUrl(event.url);
       }
+    });
+    await app.addListener?.("appStateChange", (event) => {
+      if (event?.isActive) recoverNativeAuthSessionAfterReturn();
+    });
+    await getCapacitorPlugin("Browser")?.addListener?.("browserFinished", () => {
+      recoverNativeAuthSessionAfterReturn();
     });
     const launch = await app.getLaunchUrl?.();
     if (launch?.url) {
