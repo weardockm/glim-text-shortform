@@ -12,9 +12,9 @@ const cases = [
   },
   {
     id: "unsafe-dom-location-source",
-    command: process.execPath,
+    command: process.platform === "win32" ? process.execPath : astGrep,
     args: [
-      astGrep,
+      ...(process.platform === "win32" ? [astGrep] : []),
       "scan",
       "--config",
       "sgconfig.yml",
