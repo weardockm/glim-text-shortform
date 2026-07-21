@@ -5,12 +5,10 @@
   const isGlimPage = currentUrl.origin === "https://glimfactory.com";
   const isNativeStart =
     isGlimPage &&
-    currentUrl.pathname === "/auth/callback" &&
+    currentUrl.pathname === "/" &&
     currentUrl.searchParams.has("native_oauth");
   const isAuthCallback =
-    isGlimPage &&
-    currentUrl.pathname === "/auth/callback" &&
-    !isNativeStart;
+    isGlimPage && currentUrl.pathname === "/auth/callback";
 
   if (isGlimPage && !isNativeStart && !isAuthCallback) {
     window.sessionStorage.removeItem(NATIVE_AUTH_MARKER);

@@ -16,6 +16,7 @@ function runNode(...args) {
 
 test("native OAuth callback is bound to verified web links", async () => {
   const manifest = await readFile("android/app/src/main/AndroidManifest.xml", "utf8");
+  const appSource = await readFile("index.js", "utf8");
   assert.match(manifest, /android:autoVerify="true"/u);
   assert.match(manifest, /android:scheme="https"/u);
   assert.match(manifest, /android:host="glimfactory\.com"/u);
@@ -30,6 +31,15 @@ test("native OAuth callback is bound to verified web links", async () => {
   assert.match(manifest, /android:scheme="glim"/u);
   assert.match(manifest, /android:host="auth"/u);
   assert.match(manifest, /android:path="\/callback"/u);
+  assert.match(
+    appSource,
+    /new URL\("\/", GLIM_PRODUCTION_ORIGIN\)/u,
+    "the OAuth start wrapper must stay outside the Android App Link callback path",
+  );
+  assert.doesNotMatch(
+    appSource,
+    /new URL\(AUTH_CALLBACK_PATH, GLIM_PRODUCTION_ORIGIN\)/u,
+  );
 });
 
 test("native OAuth browser fallback returns the callback code to the installed app", async () => {
@@ -56,7 +66,7 @@ test("native OAuth browser fallback returns the callback code to the installed a
     });
 
   runBridge(
-    "https://glimfactory.com/auth/callback?native_oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize%3Fprovider%3Dkakao",
+    "https://glimfactory.com/?native_oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize%3Fprovider%3Dkakao",
   );
   assert.equal(
     redirectedUrls.pop(),
@@ -75,13 +85,13 @@ test("native OAuth browser fallback returns the callback code to the installed a
   assert.deepEqual(redirectedUrls, []);
 
   runBridge(
-    "https://glimfactory.com/auth/callback?native_oauth=https%3A%2F%2Fevil.example%2Fsteal",
+    "https://glimfactory.com/?native_oauth=https%3A%2F%2Fevil.example%2Fsteal",
   );
   assert.deepEqual(redirectedUrls, []);
   assert.equal(storage.size, 0);
 
   runBridge(
-    "https://glimfactory.com/auth/callback?native_oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
+    "https://glimfactory.com/?native_oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
   );
   runBridge("https://glimfactory.com/");
   redirectedUrls.length = 0;
@@ -90,7 +100,7 @@ test("native OAuth browser fallback returns the callback code to the installed a
   assert.equal(storage.size, 0);
 
   runBridge(
-    "https://glimfactory.com/auth/callback?native_oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
+    "https://glimfactory.com/?native_oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
   );
   redirectedUrls.length = 0;
   runBridge("https://glimfactory.com/auth/callback?error=access_denied");
@@ -98,7 +108,7 @@ test("native OAuth browser fallback returns the callback code to the installed a
   assert.equal(storage.size, 0);
 
   runBridge(
-    "https://glimfactory.com/auth/callback?native_oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
+    "https://glimfactory.com/?native_oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
   );
   redirectedUrls.length = 0;
   now += 10 * 60 * 1000 + 1;

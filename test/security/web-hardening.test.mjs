@@ -199,9 +199,9 @@ test("Offline startup and data failures have an explicit recovery state", () => 
 
 test("Static asset cache versions advance together after hardening", () => {
   assert.match(indexHtml, /theme-bootstrap\.js\?v=1/);
-  assert.match(indexHtml, /native-auth-bridge\.js\?v=2/);
+  assert.match(indexHtml, /native-auth-bridge\.js\?v=3/);
   assert.match(indexHtml, /push-config\.js\?v=3/);
-  assert.match(indexHtml, /index\.js\?v=128/);
+  assert.match(indexHtml, /index\.js\?v=129/);
   assert.match(adminHtml, /admin\.js\?v=9/);
   assert.match(workerSource, /push-config\.js\?v=3/);
 });

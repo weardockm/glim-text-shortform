@@ -1224,7 +1224,7 @@ test("keeps native auth pending and recovers a completed session when a tablet r
     "https://glimfactory.com/auth/callback",
   );
   expect(await page.evaluate(() => window.__nativeBrowserUrl)).toBe(
-    "https://glimfactory.com/auth/callback?native_oauth=https%3A%2F%2Faccounts.example.test%2Foauth",
+    "https://glimfactory.com/?native_oauth=https%3A%2F%2Faccounts.example.test%2Foauth",
   );
   expect(
     await page.evaluate(() => localStorage.getItem("glim_native_auth_pending")),
