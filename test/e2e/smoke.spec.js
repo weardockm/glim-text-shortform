@@ -290,6 +290,124 @@ test("uses the RLS profile nickname for post and comment inserts", async ({
   expect(inserts.comments.at(-1)).toMatchObject({ user_email: "DB작성자" });
 });
 
+test("profile save keeps the submitted ID and bio when USER_UPDATED fires", async ({
+  page,
+}) => {
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect.poll(() => page.evaluate(() => Boolean(window.__authCallback))).toBe(true);
+
+  const result = await page.evaluate(async () => {
+    window.__ugcAccepted = true;
+    window.__supabaseRows.profiles = [{
+      id: "fixture-user",
+      nickname: "기존이름",
+      custom_id: "old.id",
+      avatar_url: "",
+      bio: "",
+      theme: "default",
+      updated_at: "2026-07-21T00:00:00Z",
+    }];
+    await window.__emitAuth({
+      user: {
+        id: "fixture-user",
+        email: "fixture@example.test",
+        user_metadata: { random_nickname: "기존이름", custom_id: "old.id" },
+      },
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+
+    window.__supabaseCalls.length = 0;
+    window.__emitUserUpdatedOnUpdate = true;
+    window.__profileUpdateDelayMs = 25;
+    document.getElementById("editNicknameInput").value = "새이름";
+    document.getElementById("editIdInput").value = "new.id";
+    document.getElementById("editBioInput").value = "새 소개";
+
+    await saveProfile();
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+
+    const updates = window.__supabaseCalls
+      .filter((call) => call.boundary === "table" && call.name === "profiles.update")
+      .map((call) => call.detail);
+    return {
+      legacyUpdates: updates.filter((values) => "custom_id" in values),
+      appearanceUpdates: updates.filter((values) => "bio" in values),
+      profileId: document.getElementById("profileId").textContent,
+      profileBio: document.getElementById("profileBio").textContent,
+    };
+  });
+
+  expect(result.legacyUpdates.at(-1)?.custom_id).toBe("new.id");
+  expect(result.appearanceUpdates.at(-1)?.bio).toBe("새 소개");
+  expect(result.profileId).toBe("@new.id");
+  expect(result.profileBio).toBe("새 소개");
+});
+
+test("profile save does not restore a user after SIGNED_OUT", async ({ page }) => {
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect.poll(() => page.evaluate(() => Boolean(window.__authCallback))).toBe(true);
+
+  const result = await page.evaluate(async () => {
+    window.__ugcAccepted = true;
+    window.__supabaseRows.profiles = [{
+      id: "fixture-user",
+      nickname: "기존이름",
+      custom_id: "old.id",
+      avatar_url: "",
+      bio: "",
+      theme: "default",
+      updated_at: "2026-07-21T00:00:00Z",
+    }];
+    await window.__emitAuth({
+      user: {
+        id: "fixture-user",
+        email: "fixture@example.test",
+        user_metadata: { random_nickname: "기존이름", custom_id: "old.id" },
+      },
+    });
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+
+    window.__supabaseCalls.length = 0;
+    window.__authUpdateDelayMs = 25;
+    document.getElementById("editNicknameInput").value = "새이름";
+    document.getElementById("editIdInput").value = "new.id";
+    document.getElementById("editBioInput").value = "새 소개";
+
+    const savePromise = saveProfile();
+    window.setTimeout(() => window.__emitAuth(null, "SIGNED_OUT"), 5);
+    await savePromise;
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+
+    const authUpdatesBeforeRetry = window.__supabaseCalls
+      .filter((call) => call.boundary === "auth" && call.name === "updateUser").length;
+    await saveProfile();
+    const authUpdatesAfterRetry = window.__supabaseCalls
+      .filter((call) => call.boundary === "auth" && call.name === "updateUser").length;
+    return { authUpdatesBeforeRetry, authUpdatesAfterRetry };
+  });
+
+  expect(result.authUpdatesBeforeRetry).toBe(1);
+  expect(result.authUpdatesAfterRetry).toBe(1);
+});
+
 
 test("shows reply comments oldest first with the newest at the bottom", async ({
   page,

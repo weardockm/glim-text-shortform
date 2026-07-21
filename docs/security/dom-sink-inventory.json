@@ -11,273 +11,273 @@
   "sinks": [
     {
       "file": "index.js",
-      "line": 799,
+      "line": 800,
       "classification": "constant",
       "owner": "admin reports",
       "rationale": "Static empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 1466,
+      "line": 1467,
       "classification": "constant",
       "owner": "admin notices",
       "rationale": "Static error text only."
     },
     {
       "file": "index.js",
-      "line": 3214,
+      "line": 3218,
       "classification": "constant",
       "owner": "admin notices",
       "rationale": "Static empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 3219,
+      "line": 3223,
       "classification": "safe",
       "owner": "BGM picker",
       "rationale": "Allowlisted track data is escaped before interpolation."
     },
     {
       "file": "index.js",
-      "line": 3258,
+      "line": 3262,
       "classification": "safe",
       "owner": "mood picker",
       "rationale": "Frozen application options are escaped before interpolation."
     },
     {
       "file": "index.js",
-      "line": 3420,
+      "line": 3424,
       "classification": "constant",
       "owner": "viewed profile",
       "rationale": "Static error-state markup only."
     },
     {
       "file": "index.js",
-      "line": 3430,
+      "line": 3434,
       "classification": "constant",
       "owner": "viewed profile",
       "rationale": "Static empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 3439,
+      "line": 3443,
       "classification": "constant",
       "owner": "viewed profile",
       "rationale": "Static loading-state markup only."
     },
     {
       "file": "index.js",
-      "line": 3449,
+      "line": 3453,
       "classification": "safe",
       "owner": "follow list",
       "rationale": "Title is constrained by the followers/following branch."
     },
     {
       "file": "index.js",
-      "line": 5181,
+      "line": 5194,
       "classification": "constant",
       "owner": "follow list",
       "rationale": "Static error-state markup only."
     },
     {
       "file": "index.js",
-      "line": 5186,
+      "line": 5199,
       "classification": "safe",
       "owner": "follow list",
       "rationale": "Title is constrained by the followers/following branch."
     },
     {
       "file": "index.js",
-      "line": 5196,
+      "line": 5209,
       "classification": "constant",
       "owner": "follow list",
       "rationale": "Static error-state markup only."
     },
     {
       "file": "index.js",
-      "line": 5365,
+      "line": 5378,
       "classification": "constant",
       "owner": "blocked users",
       "rationale": "Static loading-state markup only."
     },
     {
       "file": "index.js",
-      "line": 5375,
+      "line": 5388,
       "classification": "constant",
       "owner": "blocked users",
       "rationale": "Static empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 5380,
+      "line": 5393,
       "classification": "constant",
       "owner": "blocked users",
       "rationale": "Static error-state markup only."
     },
     {
       "file": "index.js",
-      "line": 5398,
+      "line": 5411,
       "classification": "constant",
       "owner": "profile grid",
       "rationale": "Static loading-state markup only."
     },
     {
       "file": "index.js",
-      "line": 5401,
+      "line": 5414,
       "classification": "constant",
       "owner": "profile grid",
       "rationale": "Static bookmark empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 5426,
+      "line": 5439,
       "classification": "constant",
       "owner": "profile grid",
       "rationale": "Static likes empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 5939,
+      "line": 5952,
       "classification": "constant",
       "owner": "profile grid",
       "rationale": "Static error-state markup only."
     },
     {
       "file": "index.js",
-      "line": 6348,
+      "line": 6361,
       "classification": "constant",
       "owner": "profile grid",
       "rationale": "Static empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 6530,
+      "line": 6543,
       "classification": "constant",
       "owner": "post renderer",
       "rationale": "Static shell; post fields are assigned with textContent."
     },
     {
       "file": "index.js",
-      "line": 6532,
+      "line": 6545,
       "classification": "constant",
       "owner": "home feed",
       "rationale": "Empty string clears the feed."
     },
     {
       "file": "index.js",
-      "line": 6550,
+      "line": 6563,
       "classification": "constant",
       "owner": "explore history",
       "rationale": "Static empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 6563,
+      "line": 6576,
       "classification": "constant",
       "owner": "explore search",
       "rationale": "Static user loading-state markup only."
     },
     {
       "file": "index.js",
-      "line": 6573,
+      "line": 6586,
       "classification": "constant",
       "owner": "explore search",
       "rationale": "Static post loading-state markup only."
     },
     {
       "file": "index.js",
-      "line": 6654,
+      "line": 6667,
       "classification": "constant",
       "owner": "explore search",
       "rationale": "Static no-results markup only."
     },
     {
       "file": "index.js",
-      "line": 7245,
+      "line": 7258,
       "classification": "constant",
       "owner": "explore search",
       "rationale": "Static user empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 7388,
+      "line": 7401,
       "classification": "constant",
       "owner": "explore search",
       "rationale": "Static post empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 7411,
+      "line": 7424,
       "classification": "constant",
       "owner": "explore search",
       "rationale": "Static error-state markup only."
     },
     {
       "file": "index.js",
-      "line": 7417,
+      "line": 7430,
       "classification": "constant",
       "owner": "comment renderer",
       "rationale": "Static shell; comment fields are assigned with textContent."
     },
     {
       "file": "index.js",
-      "line": 7945,
+      "line": 7958,
       "classification": "constant",
       "owner": "comments",
       "rationale": "Static loading-state markup only."
     },
     {
       "file": "index.js",
-      "line": 7953,
+      "line": 7966,
       "classification": "constant",
       "owner": "comments",
       "rationale": "Static error text only."
     },
     {
       "file": "index.js",
-      "line": 7980,
+      "line": 7993,
       "classification": "constant",
       "owner": "comments",
       "rationale": "Static empty-state markup only."
     },
     {
       "file": "index.js",
-      "line": 8015,
+      "line": 8028,
       "classification": "safe",
       "owner": "notifications",
       "rationale": "State renderer escapes all interpolated parameters."
     },
     {
       "file": "index.js",
-      "line": 8021,
+      "line": 8034,
       "classification": "safe",
       "owner": "notifications",
       "rationale": "State renderer escapes all interpolated parameters."
     },
     {
       "file": "index.js",
-      "line": 8027,
+      "line": 8040,
       "classification": "safe",
       "owner": "notifications",
       "rationale": "State renderer escapes all interpolated parameters."
     },
     {
       "file": "index.js",
-      "line": 8637,
+      "line": 8650,
       "classification": "safe",
       "owner": "notifications",
       "rationale": "State renderer escapes all interpolated parameters."
     },
     {
       "file": "index.js",
-      "line": 8651,
+      "line": 8664,
       "classification": "safe",
       "owner": "notifications",
       "rationale": "State renderer escapes all interpolated parameters."
     },
     {
       "file": "index.js",
-      "line": 8654,
+      "line": 8667,
       "classification": "safe",
       "owner": "notifications",
       "rationale": "External notification fields are escaped before interpolation."

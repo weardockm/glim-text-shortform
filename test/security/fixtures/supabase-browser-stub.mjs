@@ -21,9 +21,12 @@ export const supabaseBrowserStub = `
   window.__supabaseCalls = [];
   window.__oauthProvider = "";
   window.__authCallback = null;
-  window.__emitAuth = async (session) => {
+  window.__emitUserUpdatedOnUpdate = false;
+  window.__authUpdateDelayMs = 0;
+  window.__profileUpdateDelayMs = 0;
+  window.__emitAuth = async (session, event = "SIGNED_IN") => {
     if (!window.__authCallback) throw new Error("auth callback is not registered");
-    return window.__authCallback("SIGNED_IN", session);
+    return window.__authCallback(event, session);
   };
   const record = (boundary, name, detail = null) => {
     window.__supabaseCalls.push({ boundary, name, detail });
@@ -63,7 +66,12 @@ export const supabaseBrowserStub = `
       },
       then(resolve) {
         const data = window.__supabaseRows[table] || [];
-        resolve({ data, error: null, count: data.length });
+        const result = { data, error: null, count: data.length };
+        if (table === "profiles" && window.__profileUpdateDelayMs > 0) {
+          window.setTimeout(() => resolve(result), window.__profileUpdateDelayMs);
+          return;
+        }
+        resolve(result);
       },
     };
     return builder;
@@ -79,7 +87,10 @@ export const supabaseBrowserStub = `
       }),
       updateUser: async ({ data }) => {
         record("auth", "updateUser", data);
-        return {
+        if (window.__authUpdateDelayMs > 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, window.__authUpdateDelayMs));
+        }
+        const result = {
           data: {
             user: {
               id: "fixture-user",
@@ -89,6 +100,10 @@ export const supabaseBrowserStub = `
           },
           error: null,
         };
+        if (window.__emitUserUpdatedOnUpdate && window.__authCallback) {
+          window.__authCallback("USER_UPDATED", { user: result.data.user });
+        }
+        return result;
       },
       signInWithOAuth: async ({ provider }) => {
         window.__oauthProvider = provider;

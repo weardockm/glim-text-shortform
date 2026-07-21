@@ -159,6 +159,7 @@ let currentProfileNickname = "";
 let currentProfileCustomId = "";
 let currentProfileBio = "";
 let currentProfileTheme = "default";
+let savingProfileUserId = null;
 let selectedProfileTheme = "default";
 const AVATAR_CROP_OUTPUT_SIZE = 512;
 const MAX_AVATAR_SOURCE_SIZE = 15 * 1024 * 1024;
@@ -1881,7 +1882,10 @@ async function init() {
   handlePublicStaticRoute();
   schedulePushOnboarding();
 
-  client.auth.onAuthStateChange((_event, session) => {
+  client.auth.onAuthStateChange((event, session) => {
+    const sessionUserId = session?.user?.id || null;
+    if (event === "USER_UPDATED" && sessionUserId === savingProfileUserId) return;
+    if (savingProfileUserId) savingProfileUserId = null;
     window.setTimeout(async () => {
       try {
         currentUser = session?.user || null;
@@ -3550,6 +3554,7 @@ async function saveProfile() {
   }
 
   const oldNick = getCurrentAuthorNickname();
+  const savingUserId = currentUser.id;
   const previousProfileState = {
     user: currentUser,
     metadata: { ...(currentUser.user_metadata || {}) },
@@ -3564,6 +3569,7 @@ async function saveProfile() {
 
   saveButton.disabled = true;
   saveButton.innerText = "저장 중...";
+  savingProfileUserId = savingUserId;
 
   try {
     if (selectedProfileAvatarFile) {
@@ -3571,6 +3577,8 @@ async function saveProfile() {
     } else if (shouldRemoveProfileAvatar) {
       avatarUrl = DEFAULT_PROFILE_AVATAR_URL;
     }
+
+    if (savingProfileUserId !== savingUserId || currentUser?.id !== savingUserId) return;
 
     const userData = { random_nickname: newNick, custom_id: newId };
     if (avatarChanged) userData.avatar_url = avatarUrl;
@@ -3581,6 +3589,8 @@ async function saveProfile() {
       alert("프로필 업데이트 중 오류가 발생했습니다.");
       return;
     }
+
+    if (savingProfileUserId !== savingUserId || currentUser?.id !== savingUserId) return;
 
     currentUser = data.user || currentUser;
     currentUser.user_metadata = {
@@ -3598,6 +3608,8 @@ async function saveProfile() {
       preserveStoredAvatar: false,
       requirePersistence: true,
     });
+
+    if (savingProfileUserId !== savingUserId || currentUser?.id !== savingUserId) return;
 
     if (oldNick !== newNick) {
       const { error: displayNameError } = await client.rpc(
@@ -3629,6 +3641,7 @@ async function saveProfile() {
     reportClientDiagnostic("avatar-upload", error);
     alert(getProfileAvatarUploadErrorMessage(error));
   } finally {
+    if (savingProfileUserId === savingUserId) savingProfileUserId = null;
     saveButton.disabled = false;
     saveButton.innerText = "저장하기";
   }
