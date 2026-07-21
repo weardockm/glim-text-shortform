@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import vm from "node:vm";
 
 function runNode(...args) {
   return spawnSync(process.execPath, args, {
@@ -26,6 +27,87 @@ test("native OAuth callback is bound to verified web links", async () => {
 
   const xcodeProject = await readFile("ios/App/App.xcodeproj/project.pbxproj", "utf8");
   assert.match(xcodeProject, /CODE_SIGN_ENTITLEMENTS = App\/App\.entitlements;/u);
+  assert.match(manifest, /android:scheme="glim"/u);
+  assert.match(manifest, /android:host="auth"/u);
+  assert.match(manifest, /android:path="\/callback"/u);
+
+  const renderBlueprint = await readFile("render.yaml", "utf8");
+  assert.ok(renderBlueprint.includes("source: /auth/native-start"));
+});
+
+test("native OAuth browser fallback returns the callback code to the installed app", async () => {
+  const bridgeSource = await readFile("native-auth-bridge.js", "utf8");
+  const redirectedUrls = [];
+  const storage = new Map();
+  let now = 1_000_000;
+  const sessionStorage = {
+    getItem: (key) => storage.get(key) || null,
+    setItem: (key, value) => storage.set(key, value),
+    removeItem: (key) => storage.delete(key),
+  };
+  const runBridge = (href) =>
+    vm.runInNewContext(bridgeSource, {
+      URL,
+      Date: { now: () => now },
+      window: {
+        sessionStorage,
+        location: {
+          href,
+          replace: (url) => redirectedUrls.push(url),
+        },
+      },
+    });
+
+  runBridge(
+    "https://glimfactory.com/auth/native-start?oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize%3Fprovider%3Dkakao",
+  );
+  assert.equal(
+    redirectedUrls.pop(),
+    "https://qdnpeliqtxdglqewbvgg.supabase.co/auth/v1/authorize?provider=kakao",
+  );
+
+  runBridge(
+    "https://glimfactory.com/auth/callback?code=remote-tablet-code",
+  );
+  assert.deepEqual(redirectedUrls, [
+    "glim://auth/callback?code=remote-tablet-code",
+  ]);
+
+  redirectedUrls.length = 0;
+  runBridge("https://glimfactory.com/auth/callback?code=web-login-code");
+  assert.deepEqual(redirectedUrls, []);
+
+  runBridge(
+    "https://glimfactory.com/auth/native-start?oauth=https%3A%2F%2Fevil.example%2Fsteal",
+  );
+  assert.deepEqual(redirectedUrls, []);
+  assert.equal(storage.size, 0);
+
+  runBridge(
+    "https://glimfactory.com/auth/native-start?oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
+  );
+  runBridge("https://glimfactory.com/");
+  redirectedUrls.length = 0;
+  runBridge("https://glimfactory.com/auth/callback?code=web-after-cancel");
+  assert.deepEqual(redirectedUrls, []);
+  assert.equal(storage.size, 0);
+
+  runBridge(
+    "https://glimfactory.com/auth/native-start?oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
+  );
+  redirectedUrls.length = 0;
+  runBridge("https://glimfactory.com/auth/callback?error=access_denied");
+  assert.deepEqual(redirectedUrls, []);
+  assert.equal(storage.size, 0);
+
+  runBridge(
+    "https://glimfactory.com/auth/native-start?oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
+  );
+  redirectedUrls.length = 0;
+  now += 10 * 60 * 1000 + 1;
+  runBridge("https://glimfactory.com/auth/callback?code=expired-code");
+  assert.deepEqual(redirectedUrls, []);
+  assert.equal(storage.size, 0);
 });
 
 test("production Android links recognize only the Play-signed build", async () => {

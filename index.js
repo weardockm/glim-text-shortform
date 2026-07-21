@@ -11,6 +11,7 @@ const nativeConfirm = window.confirm.bind(window);
 const SUPABASE_STORAGE_ORIGIN = new URL(SUPABASE_URL).origin;
 const GLIM_PRODUCTION_ORIGIN = "https://glimfactory.com";
 const AUTH_CALLBACK_PATH = "/auth/callback";
+const NATIVE_AUTH_CALLBACK_PATH = "/callback";
 const NATIVE_AUTH_PENDING_KEY = "glim_native_auth_pending";
 const NATIVE_AUTH_PENDING_MAX_AGE_MS = 10 * 60 * 1000;
 const NATIVE_AUTH_RECOVERY_ATTEMPTS = 4;
@@ -3748,20 +3749,26 @@ function getOAuthRedirectUrl() {
 }
 
 async function openNativeAuthSession(url) {
+  const nativeStartUrl = new URL("/auth/native-start", GLIM_PRODUCTION_ORIGIN);
+  nativeStartUrl.searchParams.set("oauth", url);
+
   const browser = getCapacitorPlugin("Browser");
   if (browser?.open) {
-    await browser.open({ url });
+    await browser.open({ url: nativeStartUrl.href });
     return;
   }
-  window.location.href = url;
+  window.location.href = nativeStartUrl.href;
 }
 
 function isTrustedNativeAuthUrl(url) {
   try {
     const candidate = new URL(url);
     return (
-      candidate.origin === GLIM_PRODUCTION_ORIGIN &&
-      candidate.pathname === AUTH_CALLBACK_PATH
+      (candidate.origin === GLIM_PRODUCTION_ORIGIN &&
+        candidate.pathname === AUTH_CALLBACK_PATH) ||
+      (candidate.protocol === "glim:" &&
+        candidate.hostname === "auth" &&
+        candidate.pathname === NATIVE_AUTH_CALLBACK_PATH)
     );
   } catch (_error) {
     return false;

@@ -1,5 +1,7 @@
 package com.glimfactory.glim;
 
+import android.os.Build;
+import android.util.DisplayMetrics;
 import android.view.View;
 
 import androidx.core.graphics.Insets;
@@ -25,12 +27,43 @@ public class GlimInsetsPlugin extends Plugin {
             Insets navigationBars = windowInsets.getInsets(
                 WindowInsetsCompat.Type.navigationBars()
             );
-            bottomPixels = navigationBars.bottom;
+            int[] webViewLocation = new int[2];
+            webView.getLocationOnScreen(webViewLocation);
+            int webViewBottom = webViewLocation[1] + webView.getHeight();
+            int windowBottom = getWindowBottomPixels();
+            bottomPixels = calculateBottomOverlap(
+                webViewBottom,
+                windowBottom,
+                navigationBars.bottom
+            );
         }
 
         float density = webView.getResources().getDisplayMetrics().density;
         JSObject result = new JSObject();
         result.put("bottom", Math.round(bottomPixels / density));
         call.resolve(result);
+    }
+
+    private int getWindowBottomPixels() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return getActivity()
+                .getWindowManager()
+                .getCurrentWindowMetrics()
+                .getBounds()
+                .bottom;
+        }
+
+        DisplayMetrics metrics = new DisplayMetrics();
+        getActivity().getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
+        return metrics.heightPixels;
+    }
+
+    static int calculateBottomOverlap(
+        int webViewBottom,
+        int windowBottom,
+        int navigationInsetBottom
+    ) {
+        int navigationBarTop = windowBottom - navigationInsetBottom;
+        return Math.max(0, Math.min(navigationInsetBottom, webViewBottom - navigationBarTop));
     }
 }

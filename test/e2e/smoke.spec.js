@@ -1134,10 +1134,13 @@ test("keeps native auth pending and recovers a completed session when a tablet r
       data: { session: nativeSession },
       error: null,
     });
-    client.auth.signInWithOAuth = async () => ({
-      data: { url: "https://accounts.example.test/oauth" },
-      error: null,
-    });
+    client.auth.signInWithOAuth = async ({ options: oauthOptions }) => {
+      window.__nativeOAuthOptions = oauthOptions;
+      return {
+        data: { url: "https://accounts.example.test/oauth" },
+        error: null,
+      };
+    };
     client.auth.exchangeCodeForSession = async (authCode) => {
       window.__nativeAuthOrder.push("exchange-start");
       if (authCode === "bogus") {
@@ -1174,7 +1177,8 @@ test("keeps native auth pending and recovers a completed session when a tablet r
         exitApp: async () => {},
       },
       Browser: {
-        open: async () => {
+        open: async ({ url }) => {
+          window.__nativeBrowserUrl = url;
           window.__nativeAuthOrder.push("browser-open");
         },
         close: async () => {
@@ -1216,13 +1220,19 @@ test("keeps native auth pending and recovers a completed session when a tablet r
   await expect
     .poll(() => page.evaluate(() => window.__nativeAuthOrder))
     .toEqual(["browser-open", "exchange-start", "exchange-error"]);
+  expect(await page.evaluate(() => window.__nativeOAuthOptions?.redirectTo)).toBe(
+    "https://glimfactory.com/auth/callback",
+  );
+  expect(await page.evaluate(() => window.__nativeBrowserUrl)).toBe(
+    "https://glimfactory.com/auth/native-start?oauth=https%3A%2F%2Faccounts.example.test%2Foauth",
+  );
   expect(
     await page.evaluate(() => localStorage.getItem("glim_native_auth_pending")),
   ).not.toBeNull();
 
   await page.evaluate(() => {
     window.__nativeAppListeners.appUrlOpen({
-      url: "https://glimfactory.com/auth/callback?code=authorized",
+      url: "glim://auth/callback?code=authorized",
     });
   });
 
@@ -1345,6 +1355,29 @@ test("keeps bottom navigation controls above Android three-button navigation", a
 
   expect(layout.nativeBottomSafeSpace).toBe(48);
   expect(layout.navItemBottom).toBeLessThanOrEqual(layout.viewportHeight - 48);
+
+  await page.setViewportSize({ width: 800, height: 1280 });
+  await page.evaluate(async () => {
+    window.Capacitor.Plugins.GlimInsets.getNavigationBarInset = async () => ({
+      bottom: 0,
+    });
+    await syncNativeBottomSafeSpace();
+  });
+  const tabletLayout = await page.evaluate(() => {
+    const rootStyle = getComputedStyle(document.documentElement);
+    const navRect = document.querySelector(".bottom-nav").getBoundingClientRect();
+    return {
+      nativeBottomSafeSpace: Number.parseFloat(
+        rootStyle.getPropertyValue("--native-bottom-safe-space"),
+      ),
+      navHeight: navRect.height,
+      navBottom: window.innerHeight - navRect.bottom,
+    };
+  });
+
+  expect(tabletLayout.nativeBottomSafeSpace).toBe(0);
+  expect(tabletLayout.navHeight).toBe(70);
+  expect(Math.abs(tabletLayout.navBottom)).toBeLessThan(1);
 });
 
 test("keeps settings titles below the Galaxy status area", async ({ page }) => {

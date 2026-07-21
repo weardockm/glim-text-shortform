@@ -101,6 +101,7 @@ test("syntax checker records every browser script", () => {
     "index.js",
     "admin.js",
     "firebase-messaging-sw.js",
+    "native-auth-bridge.js",
     "push-config.js",
     "theme-bootstrap.js",
   ]) {

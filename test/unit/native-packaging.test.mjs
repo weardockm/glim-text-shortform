@@ -61,6 +61,7 @@ test("native packaging contract stays deterministic and store-review safe", asyn
       `${forbiddenPath} must not be in the runtime allowlist`,
     );
   }
+  assert.match(packageScript, /"native-auth-bridge.js"/u);
   assert.match(packageScript, /forbiddenSegments/u);
   assert.ok(packageScript.includes('const optionalRuntimeDirectories = [".well-known"];'));
 });

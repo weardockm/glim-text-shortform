@@ -7,6 +7,7 @@ const runtimeFiles = [
   "index.html",
   "index.js",
   "manifest.json",
+  "native-auth-bridge.js",
   "push-config.js",
   "theme-bootstrap.js",
 ];
