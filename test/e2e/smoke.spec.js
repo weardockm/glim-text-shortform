@@ -1213,6 +1213,23 @@ test("keeps native auth pending and recovers a completed session when a tablet r
     localStorage.setItem("glim_ugc_policy_login_consent_seen", "1");
     await handleSocialLogin("google");
     window.__nativeAppListeners.appUrlOpen({
+      url: "glim://auth/callback?error=access_denied",
+    });
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__nativeAuthOrder))
+    .toEqual(["browser-open", "browser-close"]);
+  expect(
+    await page.evaluate(() => localStorage.getItem("glim_native_auth_pending")),
+  ).toBeNull();
+  await page.evaluate(() => {
+    window.__nativeAuthOrder.length = 0;
+  });
+
+  await page.evaluate(async () => {
+    localStorage.setItem("glim_ugc_policy_login_consent_seen", "1");
+    await handleSocialLogin("google");
+    window.__nativeAppListeners.appUrlOpen({
       url: "https://glimfactory.com/auth/callback?code=bogus",
     });
   });
@@ -1221,10 +1238,10 @@ test("keeps native auth pending and recovers a completed session when a tablet r
     .poll(() => page.evaluate(() => window.__nativeAuthOrder))
     .toEqual(["browser-open", "exchange-start", "exchange-error"]);
   expect(await page.evaluate(() => window.__nativeOAuthOptions?.redirectTo)).toBe(
-    "https://glimfactory.com/auth/callback",
+    "glim://auth/callback",
   );
   expect(await page.evaluate(() => window.__nativeBrowserUrl)).toBe(
-    "https://glimfactory.com/?native_oauth=https%3A%2F%2Faccounts.example.test%2Foauth",
+    "https://accounts.example.test/oauth",
   );
   expect(
     await page.evaluate(() => localStorage.getItem("glim_native_auth_pending")),

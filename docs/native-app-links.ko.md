@@ -1,6 +1,6 @@
 # 글림 네이티브 OAuth/App Links 설정
 
-이 문서는 `com.glimfactory.glim` 네이티브 앱이 `https://glimfactory.com/auth/callback`으로 돌아오는 Supabase OAuth 콜백을 안전하게 받기 위한 운영 절차입니다.
+이 문서는 `com.glimfactory.glim` 네이티브 앱이 `glim://auth/callback`으로 직접 돌아오는 Supabase OAuth 콜백과 웹용 `https://glimfactory.com/auth/callback`을 안전하게 운영하기 위한 절차입니다.
 
 ## 필요한 값
 
@@ -37,11 +37,12 @@ GLIM_ANDROID_SHA256_CERT_FINGERPRINTS=PLAY_SHA256,DEBUG_SHA256 npm run native:as
 Supabase Auth Redirect URLs에 아래 URL이 있어야 합니다.
 
 ```text
+glim://auth/callback
 https://glimfactory.com/auth/callback
 ```
 
 ## 네이티브 프로젝트 계약
 
-- Android: `android/app/src/main/AndroidManifest.xml`에 `android:autoVerify="true"` App Link intent-filter가 있어야 합니다.
-- iOS: `ios/App/App/App.entitlements`에 `applinks:glimfactory.com` Associated Domain이 있어야 합니다.
+- Android: `android/app/src/main/AndroidManifest.xml`에 `glim://auth/callback` intent-filter와 `android:autoVerify="true"` App Link intent-filter가 있어야 합니다.
+- iOS: `ios/App/App/Info.plist`에 `glim` URL scheme이, `ios/App/App/App.entitlements`에 `applinks:glimfactory.com` Associated Domain이 있어야 합니다.
 - Capacitor runtime은 production `server.url`을 쓰지 않고 `dist/` local assets를 사용해야 합니다.

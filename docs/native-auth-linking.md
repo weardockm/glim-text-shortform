@@ -1,8 +1,9 @@
 # Native auth and verified links
 
-Glim native auth returns through the verified HTTPS callback below. Add this exact URL to Supabase Auth redirect allowlists and to each OAuth provider configuration where a callback URL is required.
+Glim native auth opens the Supabase authorization URL directly and returns through the app URL scheme. Web auth and verified-link fallback continue to use the HTTPS callback. Add both URLs to the Supabase Auth redirect allowlist. OAuth provider consoles still use the Supabase provider callback URL.
 
-- Production callback: https://glimfactory.com/auth/callback
+- Native callback: glim://auth/callback
+- Web and verified-link callback: https://glimfactory.com/auth/callback
 - Android package: com.glimfactory.glim
 - iOS bundle ID: com.glimfactory.glim
 
@@ -16,9 +17,10 @@ iOS needs the Associated Domains capability with applinks:glimfactory.com and a 
 
 ## Supabase redirect allowlist
 
-Required production URL:
+Required production URLs:
 
 ```text
+glim://auth/callback
 https://glimfactory.com/auth/callback
 ```
 

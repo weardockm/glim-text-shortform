@@ -16,7 +16,6 @@ function runNode(...args) {
 
 test("native OAuth callback is bound to verified web links", async () => {
   const manifest = await readFile("android/app/src/main/AndroidManifest.xml", "utf8");
-  const appSource = await readFile("index.js", "utf8");
   assert.match(manifest, /android:autoVerify="true"/u);
   assert.match(manifest, /android:scheme="https"/u);
   assert.match(manifest, /android:host="glimfactory\.com"/u);
@@ -28,18 +27,20 @@ test("native OAuth callback is bound to verified web links", async () => {
 
   const xcodeProject = await readFile("ios/App/App.xcodeproj/project.pbxproj", "utf8");
   assert.match(xcodeProject, /CODE_SIGN_ENTITLEMENTS = App\/App\.entitlements;/u);
+  const infoPlist = await readFile("ios/App/App/Info.plist", "utf8");
+  assert.match(infoPlist, /CFBundleURLSchemes/u);
+  assert.equal(infoPlist.includes("<string>glim</string>"), true);
+
   assert.match(manifest, /android:scheme="glim"/u);
   assert.match(manifest, /android:host="auth"/u);
   assert.match(manifest, /android:path="\/callback"/u);
-  assert.match(
-    appSource,
-    /new URL\("\/", GLIM_PRODUCTION_ORIGIN\)/u,
-    "the OAuth start wrapper must stay outside the Android App Link callback path",
-  );
-  assert.doesNotMatch(
-    appSource,
-    /new URL\(AUTH_CALLBACK_PATH, GLIM_PRODUCTION_ORIGIN\)/u,
-  );
+});
+
+test("native OAuth opens Supabase directly and returns through the app scheme", async () => {
+  const appSource = await readFile("index.js", "utf8");
+  assert.equal(appSource.includes('return "glim://auth/callback";'), true);
+  assert.equal(appSource.includes("browser.open({ url })"), true);
+  assert.equal(appSource.includes("native_oauth"), false);
 });
 
 test("native OAuth browser fallback returns the callback code to the installed app", async () => {

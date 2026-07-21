@@ -3683,6 +3683,21 @@ function getNativeAuthCode(url) {
     return "";
   }
 }
+function hasNativeAuthError(url) {
+  try {
+    const candidate = new URL(url);
+    const fragment = candidate.hash.startsWith("#")
+      ? candidate.hash.slice(1)
+      : candidate.hash;
+    const fragmentParams = new URLSearchParams(fragment);
+    return [candidate.searchParams, fragmentParams].some(
+      (params) => params.has("error") || params.has("error_code"),
+    );
+  } catch (_error) {
+    return false;
+  }
+}
+
 
 async function handleSocialLogin(provider) {
   const requiresLoginConsent =
@@ -3740,7 +3755,7 @@ function isNativeRuntime() {
 
 function getOAuthRedirectUrl() {
   if (isNativeRuntime()) {
-    return `${GLIM_PRODUCTION_ORIGIN}${AUTH_CALLBACK_PATH}`;
+    return "glim://auth/callback";
   }
   if (window.location.origin === GLIM_PRODUCTION_ORIGIN) {
     return `${GLIM_PRODUCTION_ORIGIN}${AUTH_CALLBACK_PATH}`;
@@ -3749,15 +3764,12 @@ function getOAuthRedirectUrl() {
 }
 
 async function openNativeAuthSession(url) {
-  const nativeStartUrl = new URL("/", GLIM_PRODUCTION_ORIGIN);
-  nativeStartUrl.searchParams.set("native_oauth", url);
-
   const browser = getCapacitorPlugin("Browser");
   if (browser?.open) {
-    await browser.open({ url: nativeStartUrl.href });
+    await browser.open({ url });
     return;
   }
-  window.location.href = nativeStartUrl.href;
+  window.location.href = url;
 }
 
 function isTrustedNativeAuthUrl(url) {
@@ -3849,12 +3861,27 @@ async function handleNativeAppUrl(url) {
     return;
   }
 
-  const authCode = getNativeAuthCode(url);
-  if (!authCode || !hasPendingNativeAuthAttempt()) {
+  if (!hasPendingNativeAuthAttempt()) {
     reportClientDiagnostic("native-auth-callback-without-pending-login");
     return;
   }
 
+  if (hasNativeAuthError(url)) {
+    clearPendingNativeAuthAttempt();
+    try {
+      await getCapacitorPlugin("Browser")?.close?.();
+    } catch (error) {
+      reportClientDiagnostic("native-auth-browser-close", error);
+    }
+    showAppAlert("로그인이 취소되었습니다.");
+    return;
+  }
+
+  const authCode = getNativeAuthCode(url);
+  if (!authCode) {
+    reportClientDiagnostic("native-auth-callback-without-code");
+    return;
+  }
 
   try {
     const session = await completeAuthFromUrl(url);
