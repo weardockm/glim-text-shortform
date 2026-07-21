@@ -30,9 +30,6 @@ test("native OAuth callback is bound to verified web links", async () => {
   assert.match(manifest, /android:scheme="glim"/u);
   assert.match(manifest, /android:host="auth"/u);
   assert.match(manifest, /android:path="\/callback"/u);
-
-  const renderBlueprint = await readFile("render.yaml", "utf8");
-  assert.ok(renderBlueprint.includes("source: /auth/native-start"));
 });
 
 test("native OAuth browser fallback returns the callback code to the installed app", async () => {
@@ -59,7 +56,7 @@ test("native OAuth browser fallback returns the callback code to the installed a
     });
 
   runBridge(
-    "https://glimfactory.com/auth/native-start?oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize%3Fprovider%3Dkakao",
+    "https://glimfactory.com/auth/callback?native_oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize%3Fprovider%3Dkakao",
   );
   assert.equal(
     redirectedUrls.pop(),
@@ -78,13 +75,13 @@ test("native OAuth browser fallback returns the callback code to the installed a
   assert.deepEqual(redirectedUrls, []);
 
   runBridge(
-    "https://glimfactory.com/auth/native-start?oauth=https%3A%2F%2Fevil.example%2Fsteal",
+    "https://glimfactory.com/auth/callback?native_oauth=https%3A%2F%2Fevil.example%2Fsteal",
   );
   assert.deepEqual(redirectedUrls, []);
   assert.equal(storage.size, 0);
 
   runBridge(
-    "https://glimfactory.com/auth/native-start?oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
+    "https://glimfactory.com/auth/callback?native_oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
   );
   runBridge("https://glimfactory.com/");
   redirectedUrls.length = 0;
@@ -93,7 +90,7 @@ test("native OAuth browser fallback returns the callback code to the installed a
   assert.equal(storage.size, 0);
 
   runBridge(
-    "https://glimfactory.com/auth/native-start?oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
+    "https://glimfactory.com/auth/callback?native_oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
   );
   redirectedUrls.length = 0;
   runBridge("https://glimfactory.com/auth/callback?error=access_denied");
@@ -101,7 +98,7 @@ test("native OAuth browser fallback returns the callback code to the installed a
   assert.equal(storage.size, 0);
 
   runBridge(
-    "https://glimfactory.com/auth/native-start?oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
+    "https://glimfactory.com/auth/callback?native_oauth=https%3A%2F%2Fqdnpeliqtxdglqewbvgg.supabase.co%2Fauth%2Fv1%2Fauthorize",
   );
   redirectedUrls.length = 0;
   now += 10 * 60 * 1000 + 1;

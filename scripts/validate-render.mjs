@@ -23,7 +23,6 @@ if (missing.length > 0) {
 const requiredRewrites = [
   "/account-delete",
   "/auth/callback",
-  "/auth/native-start",
   "/support",
   "/privacy-policy",
   "/community-standards",

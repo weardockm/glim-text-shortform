@@ -3749,8 +3749,8 @@ function getOAuthRedirectUrl() {
 }
 
 async function openNativeAuthSession(url) {
-  const nativeStartUrl = new URL("/auth/native-start", GLIM_PRODUCTION_ORIGIN);
-  nativeStartUrl.searchParams.set("oauth", url);
+  const nativeStartUrl = new URL(AUTH_CALLBACK_PATH, GLIM_PRODUCTION_ORIGIN);
+  nativeStartUrl.searchParams.set("native_oauth", url);
 
   const browser = getCapacitorPlugin("Browser");
   if (browser?.open) {

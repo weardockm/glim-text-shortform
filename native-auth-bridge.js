@@ -4,9 +4,13 @@
   const currentUrl = new URL(window.location.href);
   const isGlimPage = currentUrl.origin === "https://glimfactory.com";
   const isNativeStart =
-    isGlimPage && currentUrl.pathname === "/auth/native-start";
+    isGlimPage &&
+    currentUrl.pathname === "/auth/callback" &&
+    currentUrl.searchParams.has("native_oauth");
   const isAuthCallback =
-    isGlimPage && currentUrl.pathname === "/auth/callback";
+    isGlimPage &&
+    currentUrl.pathname === "/auth/callback" &&
+    !isNativeStart;
 
   if (isGlimPage && !isNativeStart && !isAuthCallback) {
     window.sessionStorage.removeItem(NATIVE_AUTH_MARKER);
@@ -15,7 +19,7 @@
 
   if (isNativeStart) {
     try {
-      const oauthUrl = new URL(currentUrl.searchParams.get("oauth") || "");
+      const oauthUrl = new URL(currentUrl.searchParams.get("native_oauth") || "");
       const isTrustedOAuthUrl =
         oauthUrl.origin === "https://qdnpeliqtxdglqewbvgg.supabase.co" &&
         oauthUrl.pathname === "/auth/v1/authorize";

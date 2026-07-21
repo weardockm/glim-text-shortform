@@ -17,9 +17,6 @@ services:
         source: /auth/callback
         destination: /index.html
       - type: rewrite
-        source: /auth/native-start
-        destination: /index.html
-      - type: rewrite
         source: /support
         destination: /index.html
       - type: rewrite
