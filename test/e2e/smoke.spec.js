@@ -1248,9 +1248,30 @@ test("keeps native auth pending and recovers a completed session when a tablet r
   ).not.toBeNull();
 
   await page.evaluate(() => {
-    window.__nativeAppListeners.appUrlOpen({
-      url: "glim://auth/callback?code=authorized",
-    });
+    const StandardURL = window.URL;
+    window.URL = class AndroidWebViewURL extends StandardURL {
+      constructor(value, base) {
+        const parsed = new StandardURL(value, base);
+        if (!String(value).startsWith("glim://")) return parsed;
+        return new Proxy(parsed, {
+          get(target, property) {
+            if (property === "hostname") return "";
+            if (property === "pathname") {
+              return `//${target.hostname}${target.pathname}`;
+            }
+            const result = Reflect.get(target, property, target);
+            return typeof result === "function" ? result.bind(target) : result;
+          },
+        });
+      }
+    };
+    try {
+      window.__nativeAppListeners.appUrlOpen({
+        url: "glim://auth/callback?code=authorized",
+      });
+    } finally {
+      window.URL = StandardURL;
+    }
   });
 
   await expect

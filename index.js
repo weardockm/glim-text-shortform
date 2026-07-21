@@ -3779,8 +3779,8 @@ function isTrustedNativeAuthUrl(url) {
       (candidate.origin === GLIM_PRODUCTION_ORIGIN &&
         candidate.pathname === AUTH_CALLBACK_PATH) ||
       (candidate.protocol === "glim:" &&
-        candidate.hostname === "auth" &&
-        candidate.pathname === NATIVE_AUTH_CALLBACK_PATH)
+        String(url).split(/[?#]/, 1)[0] ===
+          `glim://auth${NATIVE_AUTH_CALLBACK_PATH}`)
     );
   } catch (_error) {
     return false;
