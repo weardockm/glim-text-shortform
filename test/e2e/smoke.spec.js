@@ -1755,3 +1755,62 @@ test("pinch zooms the profile photo with two touch pointers", async ({ page }) =
   expect(result.scale).toBeGreaterThan(result.scaleAfterTwoPointers);
   expect(result.sliderValue).toBeCloseTo(result.scale);
 });
+
+test("mobile BGM picker filters uploaded tracks by category", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(supabaseBrowserStub);
+  await page.route("**/*", (route) => {
+    if (!route.request().url().startsWith("http://127.0.0.1:4173/")) {
+      route.abort();
+      return;
+    }
+    route.continue();
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => {
+    document.getElementById("appSplash").style.display = "none";
+    replaceBgmTracks([
+      {
+        url: "https://qdnpeliqtxdglqewbvgg.supabase.co/storage/v1/object/public/bgm/calm.mp3",
+        title: "고요한 새벽",
+        artist: "GLIM",
+        category: "잔잔한",
+      },
+      {
+        url: "https://qdnpeliqtxdglqewbvgg.supabase.co/storage/v1/object/public/bgm/bright.mp3",
+        title: "빛나는 아침",
+        artist: "GLIM",
+        category: "신나는",
+      },
+    ]);
+    activateAppView("view-bgm-picker");
+    renderBgmPicker();
+  });
+
+  const categories = page.locator("#bgmPickerCategories");
+  await expect(categories.getByRole("button")).toHaveCount(6);
+  await expect(categories.getByRole("button", { name: "전체" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.locator("#bgmPickerList")).toContainText("고요한 새벽");
+  await expect(page.locator("#bgmPickerList")).toContainText("빛나는 아침");
+
+  await categories.getByRole("button", { name: "신나는" }).click();
+  await expect(categories.getByRole("button", { name: "신나는" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.locator("#bgmPickerList")).toContainText("빛나는 아침");
+  await expect(page.locator("#bgmPickerList")).not.toContainText("고요한 새벽");
+
+  await categories.getByRole("button", { name: "집중" }).click();
+  await expect(page.locator("#bgmPickerList")).toContainText("음악 없이 고요하게");
+  await expect(page.locator("#bgmPickerList .bgm-picker-option")).toHaveCount(1);
+
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+});

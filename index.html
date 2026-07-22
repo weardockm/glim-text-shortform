@@ -40,7 +40,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=136" defer></script>
+    <script src="index.js?v=137" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -1596,11 +1596,49 @@
         font-size: 0.72rem;
         line-height: 1.2;
       }
+      .bgm-picker-categories {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding: 12px 18px 0;
+        scrollbar-width: none;
+        scroll-snap-type: x proximity;
+      }
+      .bgm-picker-categories::-webkit-scrollbar {
+        display: none;
+      }
+      .bgm-picker-category-btn {
+        flex: 0 0 auto;
+        min-height: 36px;
+        padding: 8px 14px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        background: rgba(16, 16, 16, 0.88);
+        color: #aaa;
+        font-size: 0.82rem;
+        font-weight: 650;
+        font-family: -apple-system, sans-serif;
+        cursor: pointer;
+        scroll-snap-align: start;
+        transition:
+          border-color 0.18s ease,
+          background 0.18s ease,
+          color 0.18s ease,
+          transform 0.18s ease;
+      }
+      .bgm-picker-category-btn:active {
+        transform: scale(0.96);
+      }
+      .bgm-picker-category-btn.is-selected {
+        border-color: rgba(255, 255, 255, 0.24);
+        background: #191919;
+        color: #fff;
+      }
       .bgm-picker-list {
         display: flex;
         flex-direction: column;
         gap: 10px;
-        padding: 16px 18px 30px;
+        padding: 12px 18px 30px;
       }
       .bgm-picker-option {
         width: 100%;
@@ -4111,6 +4149,11 @@
       html[data-theme="light"] .bgm-picker-option-title {
         color: #39322e;
       }
+      html[data-theme="light"] .bgm-picker-category-btn {
+        border-color: #dfd6d0;
+        background: #fffdfa;
+        color: #655c56;
+      }
       html[data-theme="light"] .bgm-picker-subtitle,
       html[data-theme="light"] .bgm-picker-option-artist {
         color: #655c56;
@@ -4126,6 +4169,11 @@
       html[data-theme="light"] .bgm-picker-option.is-selected {
         border-color: #cda58d;
         background: #fff8f3;
+      }
+      html[data-theme="light"] .bgm-picker-category-btn.is-selected {
+        border-color: #cda58d;
+        background: #fff8f3;
+        color: #39322e;
       }
       html[data-theme="light"] .bgm-picker-view {
         background: #f6f2ee;
@@ -4829,6 +4877,12 @@
           <div class="bgm-picker-subtitle">GLIM AUDIO</div>
         </div>
       </div>
+      <div
+        class="bgm-picker-categories"
+        id="bgmPickerCategories"
+        role="group"
+        aria-label="BGM 카테고리"
+      ></div>
       <div class="bgm-picker-list" id="bgmPickerList"></div>
     </div>
 

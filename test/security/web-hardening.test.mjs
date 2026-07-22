@@ -201,7 +201,7 @@ test("Static asset cache versions advance together after hardening", () => {
   assert.match(indexHtml, /theme-bootstrap\.js\?v=1/);
   assert.match(indexHtml, /native-auth-bridge\.js\?v=3/);
   assert.match(indexHtml, /push-config\.js\?v=3/);
-  assert.match(indexHtml, /index\.js\?v=136/);
-  assert.match(adminHtml, /admin\.js\?v=11/);
+  assert.match(indexHtml, /index\.js\?v=137/);
+  assert.match(adminHtml, /admin\.js\?v=12/);
   assert.match(workerSource, /push-config\.js\?v=3/);
 });

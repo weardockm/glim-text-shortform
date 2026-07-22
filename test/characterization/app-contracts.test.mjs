@@ -178,8 +178,14 @@ test("Given the BGM catalog changes remotely, When the picker opens, Then tracks
     /async function openBgmPicker\(\)[\s\S]*?renderBgmPicker\(\)[\s\S]*?await loadBgmTracks\(\)/u,
   );
   assert.match(adminHtml, /id="adminBgmForm"/u);
+  assert.match(adminHtml, /id="adminBgmCategory"/u);
   assert.match(adminSource, /client\.storage\.from\("bgm"\)\.upload/u);
-  assert.match(adminSource, /client\s*\.from\("bgm_tracks"\)\.insert/u);
+  assert.match(
+    adminSource,
+    /client\s*\.from\("bgm_tracks"\)\.insert\(\{[\s\S]*?category,/u,
+  );
+  assert.match(indexSource, /dataset\.glimClick = "select-bgm-category"/u);
+  assert.match(indexSource, /track\.category === selectedBgmCategory/u);
 });
 
 test("Given notification delivery, When a target is selected, Then category and post identifiers cross the boundary explicitly", () => {

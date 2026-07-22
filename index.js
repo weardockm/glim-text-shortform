@@ -490,19 +490,29 @@ function markPostAsSeen(postId) {
   }
 }
 // BGM 제목/아티스트 기본 표시 정보. Supabase에 bgm_title/bgm_artist가 있으면 그 값이 우선됩니다.
+const BGM_CATEGORIES = Object.freeze([
+  "잔잔한",
+  "감성",
+  "신나는",
+  "몽환적인",
+  "집중",
+]);
 const DEFAULT_BGM_TRACKS = Object.freeze([
   {
     url: "https://qdnpeliqtxdglqewbvgg.supabase.co/storage/v1/object/public/bgm/Paper%20Cup%20Piano.mp3",
     title: "Paper Cup Piano",
     artist: "GLIM",
+    category: "잔잔한",
   },
   {
     url: "https://qdnpeliqtxdglqewbvgg.supabase.co/storage/v1/object/public/bgm/Paper%20Boat%20After%20Rain.mp3",
     title: "Paper boat After Rain",
     artist: "GLIM",
+    category: "잔잔한",
   },
 ]);
 let bgmTracks = [...DEFAULT_BGM_TRACKS];
+let selectedBgmCategory = "전체";
 const MOOD_OPTIONS = [
   {
     value: "사색",
@@ -746,6 +756,11 @@ function getBgmDisplayName(bgmUrl) {
   }
 }
 
+function normalizeBgmCategory(value) {
+  const category = String(value || "").trim();
+  return BGM_CATEGORIES.includes(category) ? category : "잔잔한";
+}
+
 function normalizeBgmCatalogTrack(row) {
   const storagePath = String(row?.storage_path || "").trim();
   const title = String(row?.title || "").trim();
@@ -754,7 +769,7 @@ function normalizeBgmCatalogTrack(row) {
 
   const { data } = client.storage.from("bgm").getPublicUrl(storagePath);
   const url = getTrustedMediaUrl(data?.publicUrl);
-  return url ? { url, title, artist } : null;
+  return url ? { url, title, artist, category: normalizeBgmCategory(row?.category) } : null;
 }
 
 function replaceBgmTracks(tracks) {
@@ -768,7 +783,7 @@ async function loadBgmTracks() {
   bgmTracksLoadPromise = (async () => {
     const { data, error } = await client
       .from("bgm_tracks")
-      .select("storage_path, title, artist, sort_order, is_active")
+      .select("storage_path, title, artist, category, sort_order, is_active")
       .eq("is_active", true)
       .order("sort_order", { ascending: true })
       .order("title", { ascending: true });
@@ -826,10 +841,37 @@ function updateSelectedBgmLabel() {
   label.textContent = getBgmTrackLabel(getBgmTrackByUrl(input.value));
 }
 
+function selectBgmCategory(category) {
+  selectedBgmCategory =
+    category === "전체" ? "전체" : normalizeBgmCategory(category);
+  stopBgmPreview();
+  renderBgmPicker();
+}
+
 function renderBgmPicker() {
   const list = document.getElementById("bgmPickerList");
+  const categoryList = document.getElementById("bgmPickerCategories");
   const selectedUrl = document.getElementById("postBgm")?.value || "";
-  if (!list) return;
+  if (!list || !categoryList) return;
+
+  categoryList.replaceChildren(
+    ...["전체", ...BGM_CATEGORIES].map((category) => {
+      const button = document.createElement("button");
+      const isSelected = selectedBgmCategory === category;
+      button.type = "button";
+      button.className = `bgm-picker-category-btn${isSelected ? " is-selected" : ""}`;
+      button.setAttribute("aria-pressed", String(isSelected));
+      button.dataset.bgmCategory = category;
+      button.dataset.glimClick = "select-bgm-category";
+      button.textContent = category;
+      return button;
+    }),
+  );
+
+  const visibleTracks =
+    selectedBgmCategory === "전체"
+      ? bgmTracks
+      : bgmTracks.filter((track) => track.category === selectedBgmCategory);
 
   const options = [
     {
@@ -837,7 +879,7 @@ function renderBgmPicker() {
       title: "음악 없이 고요하게",
       artist: "",
     },
-    ...bgmTracks,
+    ...visibleTracks,
   ];
 
   list.innerHTML = options
@@ -1155,6 +1197,7 @@ function runDeclarativeAction(action, element, event) {
   };
   const dynamicActions = {
     "toggle-bgm-preview": () => toggleBgmPreview(element.dataset.bgmUrl),
+    "select-bgm-category": () => selectBgmCategory(element.dataset.bgmCategory),
     "select-post-bgm": () => selectPostBgm(element.dataset.bgmUrl),
     "select-post-mood": () => selectPostMood(element.dataset.moodValue),
     "open-notification-target": () => openNotificationTarget(element),

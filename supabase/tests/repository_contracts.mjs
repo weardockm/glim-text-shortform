@@ -358,6 +358,32 @@ requirePattern(
   "BGM moderator listing is authenticated-only",
 );
 
+const bgmCategoriesMigration = requireFile(
+  "migrations/20260723013000_bgm_categories.sql",
+);
+requirePattern(
+  bgmCategoriesMigration,
+  /add column if not exists category text not null default '잔잔한'/i,
+  "BGM catalog categories default existing tracks safely",
+);
+for (const category of ["잔잔한", "감성", "신나는", "몽환적인", "집중"]) {
+  requirePattern(
+    bgmCategoriesMigration,
+    new RegExp(`category in \\([^)]*'${category}'`, "i"),
+    `BGM category constraint allows ${category}`,
+  );
+}
+requirePattern(
+  bgmCategoriesMigration,
+  /returns table \([\s\S]*?category text[\s\S]*?track\.category/i,
+  "moderator BGM listing returns each track category",
+);
+requirePattern(
+  bgmCategoriesMigration,
+  /revoke all[\s\S]*?list_bgm_tracks_for_moderation\(\)[\s\S]*?from public, anon/i,
+  "categorized BGM moderator listing remains unavailable to anon",
+);
+
 requireFile("seed.sql");
 const baselineGuide = requireFile("BASELINE.md");
 requirePattern(

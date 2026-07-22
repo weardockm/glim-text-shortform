@@ -3,6 +3,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_mwYlhge63nnNjL9lAFhxRw_fxRtRGvO";
 const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const BGM_MAX_FILE_SIZE = 20 * 1024 * 1024;
 const BGM_ALLOWED_FILE_TYPE = "audio/mpeg";
+const BGM_CATEGORIES = new Set(["잔잔한", "감성", "신나는", "몽환적인", "집중"]);
 function reportAdminDiagnostic(context, detail = null) {
   const diagnostic = { context };
   if (detail && typeof detail === "object") {
@@ -108,10 +109,13 @@ function createBgmTrackCard(track) {
   const title = document.createElement("div");
   title.className = "bgm-track-title";
   title.textContent = String(track.title || "제목 없음");
+  const category = document.createElement("span");
+  category.className = "bgm-track-category";
+  category.textContent = BGM_CATEGORIES.has(track.category) ? track.category : "잔잔한";
   const artist = document.createElement("div");
   artist.className = "bgm-track-artist";
   artist.textContent = String(track.artist || "아티스트 미상");
-  info.append(title, artist);
+  info.append(title, category, artist);
 
   const statusButton = document.createElement("button");
   statusButton.type = "button";
@@ -160,9 +164,10 @@ async function submitBgmTrack() {
   const submitButton = document.getElementById("adminBgmSubmit");
   const title = document.getElementById("adminBgmTrackTitle").value.trim();
   const artist = document.getElementById("adminBgmArtist").value.trim();
+  const category = document.getElementById("adminBgmCategory").value;
   const file = document.getElementById("adminBgmFile").files?.[0];
-  if (!title || !artist || !file) {
-    alert("곡 제목, 아티스트, MP3 파일을 모두 입력해주세요.");
+  if (!title || !artist || !BGM_CATEGORIES.has(category) || !file) {
+    alert("곡 제목, 아티스트, 카테고리, MP3 파일을 모두 입력해주세요.");
     return;
   }
   if (file.type !== BGM_ALLOWED_FILE_TYPE || !file.name.toLowerCase().endsWith(".mp3")) {
@@ -188,6 +193,7 @@ async function submitBgmTrack() {
       storage_path: storagePath,
       title,
       artist,
+      category,
     });
     if (catalogError) {
       await client.storage.from("bgm").remove([storagePath]);

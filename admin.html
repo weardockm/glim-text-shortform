@@ -16,7 +16,7 @@
       integrity="sha384-DjOvX/sJLsmbMrw4wTvf6l3kiGBjdxyOO6X2MTFwOOXGkjN/mE08BoDzrpaaIjil"
       crossorigin="anonymous"
     ></script>
-    <script src="admin.js?v=11" defer></script>
+    <script src="admin.js?v=12" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -291,6 +291,13 @@
         word-break: keep-all;
         overflow-wrap: break-word;
       }
+      .bgm-admin-label {
+        display: block;
+        color: #aaa;
+        font-size: 0.8rem;
+        font-weight: 700;
+        margin: 4px 0 8px;
+      }
       .bgm-admin-field {
         width: 100%;
         min-height: 48px;
@@ -335,10 +342,21 @@
         font-weight: 700;
         overflow-wrap: anywhere;
       }
+      .bgm-track-category {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 4px 8px;
+        border: 1px solid #444;
+        border-radius: 999px;
+        background: #1a1a1a;
+        color: #ddd;
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
       .bgm-track-artist {
         color: #888;
         font-size: 0.8rem;
-        margin-top: 4px;
+        margin-top: 6px;
         overflow-wrap: anywhere;
       }
       .bgm-status-btn {
@@ -391,6 +409,15 @@
             aria-label="아티스트"
             required
           />
+          <label class="bgm-admin-label" for="adminBgmCategory">카테고리</label>
+          <select id="adminBgmCategory" class="bgm-admin-field" required>
+            <option value="" selected disabled>카테고리 선택</option>
+            <option value="잔잔한">잔잔한</option>
+            <option value="감성">감성</option>
+            <option value="신나는">신나는</option>
+            <option value="몽환적인">몽환적인</option>
+            <option value="집중">집중</option>
+          </select>
           <input
             type="file"
             id="adminBgmFile"
