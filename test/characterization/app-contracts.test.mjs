@@ -41,10 +41,11 @@ test("Given an anonymous startup, When init runs, Then session and read state lo
   );
   const orderedCalls = [
     "client.auth.getSession()",
-    "await syncCurrentUserProfile()",
+    "await ensureCurrentUserProfileReady()",
     "await loadBlockedUsersState()",
     "await loadEngagementState()",
     "updateAuthUI()",
+    "await bgmCatalogPromise",
     "await fetchPosts()",
     "await handleNotificationDeepLink()",
   ];
@@ -167,6 +168,18 @@ test("Given moderator review, When admin source renders reports, Then SLA appeal
   assert.match(adminSource, /격리\/보존/);
   assert.match(adminSource, /"quarantine_content"/);
   assert.match(adminHtml, /\.report-review-meta/);
+});
+
+test("Given the BGM catalog changes remotely, When the picker opens, Then tracks refresh without a new app bundle", () => {
+  assert.match(indexSource, /client\s*\.from\("bgm_tracks"\)/u);
+  assert.match(indexSource, /async function loadBgmTracks/u);
+  assert.match(
+    indexSource,
+    /async function openBgmPicker\(\)[\s\S]*?renderBgmPicker\(\)[\s\S]*?await loadBgmTracks\(\)/u,
+  );
+  assert.match(adminHtml, /id="adminBgmForm"/u);
+  assert.match(adminSource, /client\.storage\.from\("bgm"\)\.upload/u);
+  assert.match(adminSource, /client\s*\.from\("bgm_tracks"\)\.insert/u);
 });
 
 test("Given notification delivery, When a target is selected, Then category and post identifiers cross the boundary explicitly", () => {

@@ -105,6 +105,8 @@ let previewingBgmUrl = "";
 let currentUser = null;
 let nativeAuthFinalizationPromise = null;
 let nativeAuthRecoveryPromise = null;
+let currentUserProfileReadinessPromise = null;
+let currentUserProfileReadinessUserId = null;
 let currentUserIsModerator = false;
 const blockedUserIds = new Set();
 const blockedUserNicknames = new Set();
@@ -144,8 +146,6 @@ const refreshPullInterruptors = new Set();
 let exploreFetchRequestId = 0;
 let exploreMoodFetchRequestId = 0;
 let exploreSearchRequestId = 0;
-let exploreSearchInputTimer = null;
-const EXPLORE_SEARCH_INPUT_DELAY_MS = 220;
 let isExploreSearchOpen = false;
 let selectedExploreMood = "사색";
 let postTextMeasureElement = null;
@@ -490,7 +490,7 @@ function markPostAsSeen(postId) {
   }
 }
 // BGM 제목/아티스트 기본 표시 정보. Supabase에 bgm_title/bgm_artist가 있으면 그 값이 우선됩니다.
-const BGM_TRACKS = [
+const DEFAULT_BGM_TRACKS = Object.freeze([
   {
     url: "https://qdnpeliqtxdglqewbvgg.supabase.co/storage/v1/object/public/bgm/Paper%20Cup%20Piano.mp3",
     title: "Paper Cup Piano",
@@ -501,7 +501,8 @@ const BGM_TRACKS = [
     title: "Paper boat After Rain",
     artist: "GLIM",
   },
-];
+]);
+let bgmTracks = [...DEFAULT_BGM_TRACKS];
 const MOOD_OPTIONS = [
   {
     value: "사색",
@@ -534,9 +535,8 @@ const MOOD_OPTIONS = [
     icon: "local_cafe",
   },
 ];
-const BGM_TRACKS_BY_URL = new Map(
-  BGM_TRACKS.map((track) => [track.url, track]),
-);
+const BGM_TRACKS_BY_URL = new Map(bgmTracks.map((track) => [track.url, track]));
+let bgmTracksLoadPromise = null;
 const MOOD_OPTIONS_BY_VALUE = new Map(
   MOOD_OPTIONS.map((mood) => [mood.value, mood]),
 );
@@ -746,6 +746,49 @@ function getBgmDisplayName(bgmUrl) {
   }
 }
 
+function normalizeBgmCatalogTrack(row) {
+  const storagePath = String(row?.storage_path || "").trim();
+  const title = String(row?.title || "").trim();
+  const artist = String(row?.artist || "").trim();
+  if (!storagePath || !title || !artist) return null;
+
+  const { data } = client.storage.from("bgm").getPublicUrl(storagePath);
+  const url = getTrustedMediaUrl(data?.publicUrl);
+  return url ? { url, title, artist } : null;
+}
+
+function replaceBgmTracks(tracks) {
+  bgmTracks = tracks;
+  BGM_TRACKS_BY_URL.clear();
+  tracks.forEach((track) => BGM_TRACKS_BY_URL.set(track.url, track));
+}
+
+async function loadBgmTracks() {
+  if (bgmTracksLoadPromise) return bgmTracksLoadPromise;
+  bgmTracksLoadPromise = (async () => {
+    const { data, error } = await client
+      .from("bgm_tracks")
+      .select("storage_path, title, artist, sort_order, is_active")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("title", { ascending: true });
+    if (error) {
+      reportClientDiagnostic("bgm-catalog-load", error);
+      return bgmTracks;
+    }
+    replaceBgmTracks((data || []).map(normalizeBgmCatalogTrack).filter(Boolean));
+    return bgmTracks;
+  })();
+  try {
+    return await bgmTracksLoadPromise;
+  } catch (error) {
+    reportClientDiagnostic("bgm-catalog-load", error);
+    return bgmTracks;
+  } finally {
+    bgmTracksLoadPromise = null;
+  }
+}
+
 function getBgmTrackInfo(post) {
   const fallbackTitle = getBgmDisplayName(post.bgm_url);
   const knownTrack = BGM_TRACKS_BY_URL.get(post.bgm_url);
@@ -794,7 +837,7 @@ function renderBgmPicker() {
       title: "음악 없이 고요하게",
       artist: "",
     },
-    ...BGM_TRACKS,
+    ...bgmTracks,
   ];
 
   list.innerHTML = options
@@ -885,9 +928,11 @@ function setupBgmPicker() {
   renderBgmPicker();
 }
 
-function openBgmPicker() {
+async function openBgmPicker() {
   renderBgmPicker();
   activateAppView("view-bgm-picker");
+  await loadBgmTracks();
+  if (getActiveViewId() === "view-bgm-picker") renderBgmPicker();
 }
 
 function closeBgmPicker() {
@@ -1849,6 +1894,7 @@ async function init() {
   setupAppAlert();
   setupBgmAudioUnlock();
   setupBgmAppExitPause();
+  const bgmCatalogPromise = loadBgmTracks();
   setupAccountDeleteRequestForm();
   setupNativeAndroidViewport();
   setupCommentInputFocusState();
@@ -1862,14 +1908,8 @@ async function init() {
   currentUser = session?.user || null;
   if (!currentUser) resetCurrentProfileState();
 
-  if (currentUser && !currentUser.user_metadata?.random_nickname) {
-    const newNick = generateRandomNickname();
-    await client.auth.updateUser({ data: { random_nickname: newNick } });
-    currentUser.user_metadata.random_nickname = newNick;
-  }
-
   await acceptPendingUgcPolicyAfterAuth();
-  await syncCurrentUserProfile();
+  await ensureCurrentUserProfileReady();
   await refreshCurrentUserRole();
   await loadBlockedUsersState();
   await loadEngagementState();
@@ -1877,6 +1917,7 @@ async function init() {
   initializePushNotifications().catch((error) => {
     reportClientDiagnostic("push-init", error);
   });
+  await bgmCatalogPromise;
   await fetchPosts();
   await handleNotificationDeepLink();
   handlePublicStaticRoute();
@@ -1890,12 +1931,7 @@ async function init() {
       try {
         currentUser = session?.user || null;
         resetCurrentProfileState();
-        if (currentUser && !currentUser.user_metadata?.random_nickname) {
-          const newNick = generateRandomNickname();
-          await client.auth.updateUser({ data: { random_nickname: newNick } });
-          currentUser.user_metadata.random_nickname = newNick;
-        }
-        await syncCurrentUserProfile();
+        await ensureCurrentUserProfileReady();
         await refreshCurrentUserRole();
         await loadBlockedUsersState();
         await loadEngagementState();
@@ -2420,6 +2456,43 @@ async function syncCurrentUserProfile({
     await persistCurrentUserProfileAppearance(profile);
   if (appearanceError && requirePersistence) {
     throw createProfilePersistenceError(appearanceError);
+  }
+}
+
+async function ensureCurrentUserProfileReady() {
+  const userId = currentUser?.id || null;
+  if (!userId) return;
+  if (
+    currentUserProfileReadinessPromise &&
+    currentUserProfileReadinessUserId === userId
+  ) {
+    return currentUserProfileReadinessPromise;
+  }
+
+  const readinessPromise = (async () => {
+    if (!currentUser.user_metadata?.random_nickname) {
+      const newNick = generateRandomNickname();
+      const { error } = await client.auth.updateUser({
+        data: { random_nickname: newNick },
+      });
+      if (error) throw error;
+      currentUser.user_metadata = {
+        ...currentUser.user_metadata,
+        random_nickname: newNick,
+      };
+    }
+    await syncCurrentUserProfile({ requirePersistence: true });
+  })();
+
+  currentUserProfileReadinessUserId = userId;
+  currentUserProfileReadinessPromise = readinessPromise;
+  try {
+    await readinessPromise;
+  } finally {
+    if (currentUserProfileReadinessPromise === readinessPromise) {
+      currentUserProfileReadinessPromise = null;
+      currentUserProfileReadinessUserId = null;
+    }
   }
 }
 
@@ -3817,6 +3890,9 @@ async function finalizeNativeAuthSession(session) {
 
   nativeAuthFinalizationPromise = (async () => {
     clearPendingNativeAuthAttempt();
+    currentUser = session.user;
+    resetCurrentProfileState();
+    await ensureCurrentUserProfileReady();
     try {
       await getCapacitorPlugin("Browser")?.close?.();
     } catch (error) {
@@ -3824,7 +3900,6 @@ async function finalizeNativeAuthSession(session) {
     }
 
     window.history.replaceState({}, document.title, "/");
-    currentUser = session.user;
     updateAuthUI();
     await promptForUgcPolicyAcceptanceAfterSignIn();
     switchTab("profile");
@@ -6424,10 +6499,6 @@ function openExploreSearch() {
 }
 
 function closeExploreSearch() {
-  if (exploreSearchInputTimer) {
-    clearTimeout(exploreSearchInputTimer);
-    exploreSearchInputTimer = null;
-  }
   exploreSearchRequestId += 1;
   isExploreSearchOpen = false;
   document.getElementById("exploreHeader")?.classList.remove("is-searching");
@@ -6454,13 +6525,7 @@ async function refreshExploreCurrentContent() {
 function handleExploreSearchInput(event) {
   openExploreSearch();
   const query = document.getElementById("searchInput")?.value.trim() || "";
-  if (exploreSearchInputTimer) clearTimeout(exploreSearchInputTimer);
-  exploreSearchInputTimer = null;
   exploreSearchRequestId += 1;
-
-  if (event?.isComposing) {
-    return;
-  }
 
   if (!query) {
     document.getElementById("exploreRecentSearches").hidden = false;
@@ -6470,10 +6535,7 @@ function handleExploreSearchInput(event) {
   }
 
   renderExploreSearchLoading(query);
-  exploreSearchInputTimer = setTimeout(() => {
-    exploreSearchInputTimer = null;
-    void searchPosts(query, { saveHistory: false });
-  }, EXPLORE_SEARCH_INPUT_DELAY_MS);
+  void searchPosts(query, { saveHistory: false });
 }
 
 function clearExploreSearchHistory() {
@@ -6570,10 +6632,15 @@ function renderExploreSearchResults(query, users, posts) {
   emptyAll.hidden = true;
   userGroup.hidden = false;
   postGroup.hidden = false;
+  if (posts.length && !users.length) {
+    userGroup.before(postGroup);
+  } else {
+    postGroup.before(userGroup);
+  }
   if (users.length) {
     userList.replaceChildren(...users.map(createExploreUserResult));
   } else {
-    userList.innerHTML = '<div class="explore-search-state">유저 없음</div>';
+    userList.innerHTML = '<div class="explore-search-state">유저 검색 결과 없음</div>';
   }
   if (posts.length) {
     contextPostCollections.set("explore-search", posts);
@@ -6584,15 +6651,11 @@ function renderExploreSearchResults(query, users, posts) {
   } else {
     contextPostCollections.set("explore-search", []);
     postList.innerHTML =
-      '<div class="explore-search-state">게시물 없음</div>';
+      '<div class="explore-search-state">게시물 검색 결과 없음</div>';
   }
 }
 
 async function searchPosts(forcedQuery = null, { saveHistory = true } = {}) {
-  if (exploreSearchInputTimer) {
-    clearTimeout(exploreSearchInputTimer);
-    exploreSearchInputTimer = null;
-  }
   const input = document.getElementById("searchInput");
   const query = String(forcedQuery ?? input?.value ?? "").trim();
   if (!query) {
@@ -6609,7 +6672,23 @@ async function searchPosts(forcedQuery = null, { saveHistory = true } = {}) {
   contextPostCollections.set("explore-search", []);
 
   const profileFields = "id, nickname, custom_id, avatar_url";
-  const [nicknameResult, customIdResult, postResult] = await Promise.all([
+  const [
+    nicknamePrefixResult,
+    customIdPrefixResult,
+    nicknameResult,
+    customIdResult,
+    postResult,
+  ] = await Promise.all([
+    client
+      .from("profiles")
+      .select(profileFields)
+      .ilike("nickname", `${query}%`)
+      .limit(10),
+    client
+      .from("profiles")
+      .select(profileFields)
+      .ilike("custom_id", `${query}%`)
+      .limit(10),
     client
       .from("profiles")
       .select(profileFields)
@@ -6635,7 +6714,12 @@ async function searchPosts(forcedQuery = null, { saveHistory = true } = {}) {
   if (requestId !== exploreSearchRequestId) return;
 
   const usersById = new Map();
-  [...(nicknameResult.data || []), ...(customIdResult.data || [])].forEach(
+  [
+    ...(nicknamePrefixResult.data || []),
+    ...(customIdPrefixResult.data || []),
+    ...(nicknameResult.data || []),
+    ...(customIdResult.data || []),
+  ].forEach(
     (profile) => {
       if (!blockedUserIds.has(profile.id)) usersById.set(profile.id, profile);
     },
@@ -6653,6 +6737,8 @@ async function searchPosts(forcedQuery = null, { saveHistory = true } = {}) {
   const posts = filterBlockedPosts(postResult.data || []);
 
   if (
+    nicknamePrefixResult.error &&
+    customIdPrefixResult.error &&
     nicknameResult.error &&
     customIdResult.error &&
     postResult.error

@@ -287,6 +287,77 @@ forbidPattern(
   "bgm bucket cannot expose client writes",
 );
 
+const bgmCatalogMigration = requireFile(
+  "migrations/20260723010000_bgm_catalog.sql",
+);
+requirePattern(
+  bgmCatalogMigration,
+  /create table if not exists public\.bgm_tracks/i,
+  "dynamic BGM catalog table",
+);
+requirePattern(
+  bgmCatalogMigration,
+  /create policy "Active BGM tracks are publicly readable"[\s\S]*?for select[\s\S]*?to anon, authenticated/i,
+  "active BGM catalog is publicly readable",
+);
+for (const operation of ["insert", "update", "delete"]) {
+  requirePattern(
+    bgmCatalogMigration,
+    new RegExp(
+      `create policy "Moderators can ${operation} BGM tracks"[\\s\\S]*?` +
+        `${operation === "insert" ? "with check" : "using"}\\s*\\(\\(select public\\.is_moderator\\(\\)\\)\\)`,
+      "i",
+    ),
+    `only moderators can ${operation} BGM catalog rows`,
+  );
+}
+for (const operation of ["upload", "update", "delete"]) {
+  requirePattern(
+    bgmCatalogMigration,
+    new RegExp(
+      `create policy "Moderators can ${operation} bgm"[\\s\\S]*?` +
+        `bucket_id = 'bgm'[\\s\\S]*?public\\.is_moderator\\(\\)`,
+      "i",
+    ),
+    `only moderators can ${operation} BGM objects`,
+  );
+}
+for (const storagePath of [
+  "Paper Cup Piano.mp3",
+  "Paper Boat After Rain.mp3",
+]) {
+  requirePattern(
+    bgmCatalogMigration,
+    new RegExp(storagePath.replaceAll(".", "\\."), "i"),
+    `BGM catalog seeds ${storagePath}`,
+  );
+}
+
+const bgmPublicReadFix = requireFile(
+  "migrations/20260723012000_fix_bgm_catalog_public_read.sql",
+);
+requireExactPolicyClause(
+  bgmPublicReadFix,
+  "Active BGM tracks are publicly readable",
+  "using",
+  "is_active",
+);
+requirePattern(
+  bgmPublicReadFix,
+  /create or replace function public\.list_bgm_tracks_for_moderation\(\)/i,
+  "moderator-only BGM catalog listing RPC",
+);
+requirePattern(
+  bgmPublicReadFix,
+  /revoke all[\s\S]*?list_bgm_tracks_for_moderation\(\)[\s\S]*?from public, anon/i,
+  "BGM moderator listing is unavailable to anon",
+);
+requirePattern(
+  bgmPublicReadFix,
+  /grant execute[\s\S]*?list_bgm_tracks_for_moderation\(\)[\s\S]*?to authenticated, service_role/i,
+  "BGM moderator listing is authenticated-only",
+);
+
 requireFile("seed.sql");
 const baselineGuide = requireFile("BASELINE.md");
 requirePattern(

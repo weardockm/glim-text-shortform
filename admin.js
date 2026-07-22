@@ -1,6 +1,8 @@
 const SUPABASE_URL = "https://qdnpeliqtxdglqewbvgg.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_mwYlhge63nnNjL9lAFhxRw_fxRtRGvO";
 const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const BGM_MAX_FILE_SIZE = 20 * 1024 * 1024;
+const BGM_ALLOWED_FILE_TYPE = "audio/mpeg";
 function reportAdminDiagnostic(context, detail = null) {
   const diagnostic = { context };
   if (detail && typeof detail === "object") {
@@ -29,6 +31,10 @@ function setupAdminEventHandlers() {
         code: action ? "unknown" : "missing",
       });
     }
+  });
+  document.getElementById("adminBgmForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void submitBgmTrack();
   });
 }
 const REPORT_REASON_LABELS = Object.freeze({
@@ -88,8 +94,115 @@ async function initAdmin() {
     return;
   }
 
-  fetchAdminReports();
-  fetchAdminNotices();
+  await Promise.all([
+    fetchAdminReports(),
+    fetchAdminNotices(),
+    fetchAdminBgmTracks(),
+  ]);
+}
+
+function createBgmTrackCard(track) {
+  const card = document.createElement("div");
+  card.className = "bgm-track-card";
+  const info = document.createElement("div");
+  const title = document.createElement("div");
+  title.className = "bgm-track-title";
+  title.textContent = String(track.title || "제목 없음");
+  const artist = document.createElement("div");
+  artist.className = "bgm-track-artist";
+  artist.textContent = String(track.artist || "아티스트 미상");
+  info.append(title, artist);
+
+  const statusButton = document.createElement("button");
+  statusButton.type = "button";
+  statusButton.className = `bgm-status-btn${track.is_active ? "" : " is-inactive"}`;
+  statusButton.textContent = track.is_active ? "공개 중" : "숨김";
+  statusButton.setAttribute(
+    "aria-label",
+    `${title.textContent} ${track.is_active ? "숨기기" : "공개하기"}`,
+  );
+  statusButton.addEventListener("click", () => {
+    void setBgmTrackActive(track.id, !track.is_active);
+  });
+  card.append(info, statusButton);
+  return card;
+}
+
+async function fetchAdminBgmTracks() {
+  const container = document.getElementById("adminBgmList");
+  const { data, error } = await client.rpc("list_bgm_tracks_for_moderation");
+  if (error) {
+    reportAdminDiagnostic("bgm-catalog-load", error);
+    container.textContent = "음악 목록을 불러오지 못했습니다.";
+    return;
+  }
+  if (!data?.length) {
+    container.textContent = "등록된 음악이 없습니다.";
+    return;
+  }
+  container.replaceChildren(...data.map(createBgmTrackCard));
+}
+
+async function setBgmTrackActive(trackId, isActive) {
+  const { error } = await client
+    .from("bgm_tracks")
+    .update({ is_active: isActive })
+    .eq("id", trackId);
+  if (error) {
+    alert("음악 공개 상태를 변경하지 못했습니다: " + error.message);
+    return;
+  }
+  await fetchAdminBgmTracks();
+}
+
+async function submitBgmTrack() {
+  const form = document.getElementById("adminBgmForm");
+  const submitButton = document.getElementById("adminBgmSubmit");
+  const title = document.getElementById("adminBgmTrackTitle").value.trim();
+  const artist = document.getElementById("adminBgmArtist").value.trim();
+  const file = document.getElementById("adminBgmFile").files?.[0];
+  if (!title || !artist || !file) {
+    alert("곡 제목, 아티스트, MP3 파일을 모두 입력해주세요.");
+    return;
+  }
+  if (file.type !== BGM_ALLOWED_FILE_TYPE || !file.name.toLowerCase().endsWith(".mp3")) {
+    alert("MP3 파일만 등록할 수 있습니다.");
+    return;
+  }
+  if (file.size > BGM_MAX_FILE_SIZE) {
+    alert("음악 파일은 20MB 이하만 등록할 수 있습니다.");
+    return;
+  }
+
+  const storagePath = `${crypto.randomUUID()}.mp3`;
+  submitButton.disabled = true;
+  submitButton.textContent = "등록 중...";
+  try {
+    const { error: uploadError } = await client.storage.from("bgm").upload(
+      storagePath,
+      file,
+      { contentType: BGM_ALLOWED_FILE_TYPE, upsert: false },
+    );
+    if (uploadError) throw uploadError;
+    const { error: catalogError } = await client.from("bgm_tracks").insert({
+      storage_path: storagePath,
+      title,
+      artist,
+    });
+    if (catalogError) {
+      await client.storage.from("bgm").remove([storagePath]);
+      throw catalogError;
+    }
+    form.reset();
+    await fetchAdminBgmTracks();
+    alert("음악이 등록되었습니다. 앱의 음악 선택 목록에 바로 표시됩니다.");
+  } catch (error) {
+    reportAdminDiagnostic("bgm-catalog-create", error);
+    alert("음악을 등록하지 못했습니다: " + (error?.message || "알 수 없는 오류"));
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = "음악 등록하기";
+  }
 }
 
 async function fetchAdminReports() {

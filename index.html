@@ -40,7 +40,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=133" defer></script>
+    <script src="index.js?v=136" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -320,7 +320,6 @@
       }
       .app-view.active {
         display: block;
-        animation: fadeIn 0.3s ease;
       }
       .app-view.swipe-back-underlay {
         position: fixed;
@@ -369,7 +368,7 @@
       }
       .context-feed-controls {
         position: fixed;
-        top: 16px;
+        top: calc(var(--top-safe-space) + 16px);
         left: 14px;
         right: 14px;
         z-index: 45;
@@ -673,8 +672,14 @@
         display: flex;
         flex-direction: column;
         align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 0;
+        border: 0;
+        background: transparent;
         color: #555;
         cursor: pointer;
+        font: inherit;
         transition: color 0.3s;
         width: 20%;
       }
@@ -683,13 +688,17 @@
       }
       .nav-icon {
         font-size: 1.6rem;
-        margin-bottom: 2px;
       }
       .nav-text {
-        font-size: 0.65rem;
-        font-family: -apple-system, sans-serif;
-        font-weight: 300;
-        letter-spacing: 0.5px;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+        border: 0;
       }
       .nav-item.write-btn {
         color: #fff;
@@ -807,7 +816,8 @@
         font-family: -apple-system, sans-serif;
       }
       .explore-search-content[hidden],
-      .explore-search-section[hidden] {
+      .explore-search-section[hidden],
+      .explore-search-empty-all[hidden] {
         display: none !important;
       }
       .explore-search-section-header {
@@ -1549,7 +1559,7 @@
         display: flex;
         align-items: center;
         gap: 12px;
-        padding: 15px 18px 13px;
+        padding: calc(15px + var(--top-safe-space)) 18px 13px;
         background: rgba(5, 5, 5, 0.86);
         border-bottom: 1px solid rgba(255, 255, 255, 0.07);
         backdrop-filter: blur(16px);
@@ -4101,6 +4111,10 @@
       html[data-theme="light"] .bgm-picker-option-title {
         color: #39322e;
       }
+      html[data-theme="light"] .bgm-picker-subtitle,
+      html[data-theme="light"] .bgm-picker-option-artist {
+        color: #655c56;
+      }
       html[data-theme="light"] .write-bgm-add-icon,
       html[data-theme="light"] .write-mood-icon,
       html[data-theme="light"] .mood-option-icon {
@@ -6438,30 +6452,56 @@
     </div>
 
     <nav class="bottom-nav">
-      <div class="nav-item active" id="nav-home" data-glim-click="handleNavTap('home')">
+      <button
+        type="button"
+        class="nav-item active"
+        id="nav-home"
+        aria-label="홈"
+        data-glim-click="handleNavTap('home')"
+      >
         <span class="material-symbols-outlined nav-icon">home</span
         ><span class="nav-text">홈</span>
-      </div>
-      <div class="nav-item" id="nav-explore" data-glim-click="handleNavTap('explore')">
+      </button>
+      <button
+        type="button"
+        class="nav-item"
+        id="nav-explore"
+        aria-label="탐색"
+        data-glim-click="handleNavTap('explore')"
+      >
         <span class="material-symbols-outlined nav-icon">search</span
         ><span class="nav-text">탐색</span>
-      </div>
-      <div
+      </button>
+      <button
+        type="button"
         class="nav-item write-btn"
         id="nav-write"
+        aria-label="글쓰기"
         data-glim-click="switchTab('write')"
       >
         <span class="material-symbols-outlined nav-icon">add_circle</span
         ><span class="nav-text">글쓰기</span>
-      </div>
-      <div class="nav-item" id="nav-noti" data-glim-click="handleNavTap('noti')">
+      </button>
+      <button
+        type="button"
+        class="nav-item"
+        id="nav-noti"
+        aria-label="알림"
+        data-glim-click="handleNavTap('noti')"
+      >
         <span class="material-symbols-outlined nav-icon">notifications</span
         ><span class="nav-text">알림</span>
-      </div>
-      <div class="nav-item" id="nav-profile" data-glim-click="handleNavTap('profile')">
+      </button>
+      <button
+        type="button"
+        class="nav-item"
+        id="nav-profile"
+        aria-label="프로필"
+        data-glim-click="handleNavTap('profile')"
+      >
         <span class="material-symbols-outlined nav-icon">person</span
         ><span class="nav-text">프로필</span>
-      </div>
+      </button>
     </nav>
 
     <div

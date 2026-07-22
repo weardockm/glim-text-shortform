@@ -43,6 +43,25 @@ test("native OAuth opens Supabase directly and returns through the app scheme", 
   assert.equal(appSource.includes("native_oauth"), false);
 });
 
+test("native login waits for profile readiness before exposing authenticated UI", async () => {
+  const appSource = await readFile("index.js", "utf8");
+  const finalizerStart = appSource.indexOf("async function finalizeNativeAuthSession");
+  const finalizerEnd = appSource.indexOf("async function recoverNativeAuthSessionAfterReturn");
+  const finalizerSource = appSource.slice(finalizerStart, finalizerEnd);
+  const profileReadyIndex = finalizerSource.indexOf(
+    "await ensureCurrentUserProfileReady()",
+  );
+  const authUiIndex = finalizerSource.indexOf("updateAuthUI()");
+
+  assert.notEqual(finalizerStart, -1);
+  assert.notEqual(profileReadyIndex, -1);
+  assert.notEqual(authUiIndex, -1);
+  assert.ok(
+    profileReadyIndex < authUiIndex,
+    "authenticated UI must remain hidden until the required profile row is ready",
+  );
+});
+
 test("native OAuth browser fallback returns the callback code to the installed app", async () => {
   const bridgeSource = await readFile("native-auth-bridge.js", "utf8");
   const redirectedUrls = [];

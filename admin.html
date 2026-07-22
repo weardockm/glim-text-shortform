@@ -16,7 +16,7 @@
       integrity="sha384-DjOvX/sJLsmbMrw4wTvf6l3kiGBjdxyOO6X2MTFwOOXGkjN/mE08BoDzrpaaIjil"
       crossorigin="anonymous"
     ></script>
-    <script src="admin.js?v=9" defer></script>
+    <script src="admin.js?v=11" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -37,7 +37,7 @@
         margin: 0 auto;
       }
       .admin-badge {
-        background: #ff3b30;
+        background: #b42318;
         color: #fff;
         font-size: 0.85rem;
         padding: 6px 12px;
@@ -271,6 +271,90 @@
         outline: none;
         border-color: #666;
       }
+      .bgm-admin-section {
+        background: #111;
+        border: 1px solid #333;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 40px;
+      }
+      .section-title {
+        color: #fff;
+        font-size: 1.2rem;
+        margin-bottom: 16px;
+      }
+      .bgm-admin-description {
+        color: #aaa;
+        font-size: 0.85rem;
+        line-height: 1.5;
+        margin-bottom: 16px;
+        word-break: keep-all;
+        overflow-wrap: break-word;
+      }
+      .bgm-admin-field {
+        width: 100%;
+        min-height: 48px;
+        background: #050505;
+        border: 1px solid #444;
+        border-radius: 8px;
+        color: #fff;
+        padding: 12px;
+        font-size: 1rem;
+        margin-bottom: 12px;
+      }
+      .bgm-admin-field:focus {
+        outline: none;
+        border-color: #666;
+      }
+      .bgm-admin-field::file-selector-button {
+        margin-right: 12px;
+        border: 0;
+        border-radius: 6px;
+        background: #222;
+        color: #fff;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+      .bgm-track-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 20px;
+      }
+      .bgm-track-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px;
+        border: 1px solid #2d2d2d;
+        border-radius: 12px;
+        background: #0a0a0a;
+      }
+      .bgm-track-title {
+        color: #f0f0f0;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+      }
+      .bgm-track-artist {
+        color: #888;
+        font-size: 0.8rem;
+        margin-top: 4px;
+        overflow-wrap: anywhere;
+      }
+      .bgm-status-btn {
+        flex: 0 0 auto;
+        min-height: 36px;
+        padding: 8px 12px;
+        border: 1px solid #444;
+        border-radius: 8px;
+        background: #1a1a1a;
+        color: #f0f0f0;
+        cursor: pointer;
+        font-weight: 700;
+      }
+      .bgm-status-btn.is-inactive {
+        color: #888;
+      }
     </style>
   </head>
   <body>
@@ -280,6 +364,49 @@
       <button class="back-btn" data-admin-click="go-home">
         ← 일반 서비스로 돌아가기
       </button>
+
+      <section class="bgm-admin-section" aria-labelledby="adminBgmTitle">
+        <h2 id="adminBgmTitle" class="section-title">BGM 관리</h2>
+        <p class="bgm-admin-description">
+          MP3 파일과 곡 정보를 등록하면 앱의 음악 선택 목록에 바로 반영됩니다.
+        </p>
+        <form id="adminBgmForm">
+          <input
+            type="text"
+            id="adminBgmTrackTitle"
+            class="bgm-admin-field"
+            maxlength="120"
+            autocomplete="off"
+            placeholder="곡 제목"
+            aria-label="곡 제목"
+            required
+          />
+          <input
+            type="text"
+            id="adminBgmArtist"
+            class="bgm-admin-field"
+            maxlength="120"
+            autocomplete="off"
+            placeholder="아티스트"
+            aria-label="아티스트"
+            required
+          />
+          <input
+            type="file"
+            id="adminBgmFile"
+            class="bgm-admin-field"
+            accept="audio/mpeg,.mp3"
+            aria-label="MP3 파일"
+            required
+          />
+          <button type="submit" id="adminBgmSubmit" class="submit-notice-btn">
+            음악 등록하기
+          </button>
+        </form>
+        <div id="adminBgmList" class="bgm-track-list" aria-live="polite">
+          <div class="coming-soon">음악 목록을 불러오는 중...</div>
+        </div>
+      </section>
 
       <div class="notice-section">
         <h2 style="color: #fff; font-size: 1.2rem; margin-bottom: 15px">

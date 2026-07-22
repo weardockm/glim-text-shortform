@@ -108,3 +108,38 @@ test("Android top-level surfaces consume the shared safe-area inset", async () =
     "the refresh indicator must preserve its compact safe-area offset",
   );
 });
+
+test("mobile navigation stays icon-only, inset-safe, and flicker-free", async () => {
+  const html = await readFile("index.html", "utf8");
+
+  assert.match(
+    html,
+    /\.context-feed-controls\s*\{[\s\S]*?top:\s*calc\(var\(--top-safe-space\) \+ 16px\);/u,
+    "focused post controls must render below the Android status bar",
+  );
+  assert.match(
+    html,
+    /\.bgm-picker-topbar\s*\{[\s\S]*?padding:\s*calc\(15px \+ var\(--top-safe-space\)\) 18px 13px;/u,
+    "focused picker headers must render below the Android status bar",
+  );
+  assert.match(
+    html,
+    /\.nav-text\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?clip-path:\s*inset\(50%\);/u,
+    "bottom-navigation labels must remain accessible without being visible",
+  );
+  for (const label of ["홈", "탐색", "글쓰기", "알림", "프로필"]) {
+    assert.match(
+      html,
+      new RegExp(
+        `<button[^>]*class="nav-item[^"]*"[^>]*aria-label="${label}"`,
+        "u",
+      ),
+      `${label} navigation item must retain an accessible name`,
+    );
+  }
+  assert.doesNotMatch(
+    html,
+    /\.app-view\.active\s*\{[^}]*animation:\s*fadeIn/u,
+    "returning views must not fade from a blank frame",
+  );
+});

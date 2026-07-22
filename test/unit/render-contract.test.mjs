@@ -19,3 +19,11 @@ test("Render blueprint preserves the buildless canonical-domain contract", async
     /source:\s*\/privacy-policy\s*\n\s*destination:\s*\/index\.html/u,
   );
 });
+
+test("Explore hides the all-empty state when results exist in Android WebView", async () => {
+  const source = await readFile(path.resolve("index.html"), "utf8");
+  assert.match(
+    source,
+    /\.explore-search-empty-all\[hidden\][^{]*\{[^}]*display:\s*none\s*!important;/u,
+  );
+});

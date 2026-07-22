@@ -1575,7 +1575,7 @@ test("keeps settings titles below the Galaxy status area", async ({ page }) => {
   expect(layout.titleTop).toBeGreaterThanOrEqual(layout.nativeSafeSpace + 8);
   expect(layout.titleBottom).toBeLessThanOrEqual(layout.topbarHeight - 8);
 });
-test("shows Explore results while typing before Enter", async ({ page }) => {
+test("shows Explore results and empty counterpart sections while typing before Enter", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(supabaseBrowserStub);
   await page.route("**/*", (route) => {
@@ -1588,57 +1588,104 @@ test("shows Explore results while typing before Enter", async ({ page }) => {
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.evaluate(() => {
-    window.__supabaseRows.profiles = [{
-      id: "live-search-user",
-      nickname: "글리머",
-      custom_id: "glimmer",
-      avatar_url: "",
-    }];
-    window.__supabaseRows.posts = [{
-      id: "live-search-post",
-      content: "글림에서 문장을 찾는 중",
-      author: "글리머",
-      user_id: "live-search-user",
-      likes_count: 3,
-      created_at: "2026-07-19T00:00:00Z",
-    }];
+    window.__supabaseRows.profiles = [
+      ...Array.from({ length: 10 }, (_, index) => ({
+        id: `contains-search-user-${index}`,
+        nickname: `한글사용자${index}`,
+        custom_id: `hangul${index}`,
+        avatar_url: "",
+      })),
+      {
+        id: "live-search-user",
+        nickname: "글리머1",
+        custom_id: "glimmer1",
+        avatar_url: "",
+      },
+    ];
+    window.__supabaseRows.posts = [];
     activateAppView("view-explore");
     openExploreSearch();
   });
 
   await page.locator("#searchInput").focus();
-  await page.locator("#searchInput").evaluate((input) => {
-    input.value = "ㄱ";
+  const composingSearchCallCount = await page.locator("#searchInput").evaluate((input) => {
+    input.value = "글";
     input.dispatchEvent(
       new InputEvent("input", {
         bubbles: true,
-        data: "ㄱ",
+        data: "글",
         inputType: "insertCompositionText",
         isComposing: true,
       }),
     );
+    return window.__supabaseCalls.filter(({ name }) => name.endsWith(".ilike")).length;
   });
-  await page.waitForTimeout(350);
-  const composingSearchCalls = await page.evaluate(() =>
-    window.__supabaseCalls.filter(({ name }) => name.endsWith(".ilike")),
+  expect(composingSearchCallCount).toBeGreaterThan(0);
+  const profileSearchPatterns = await page.evaluate(() =>
+    window.__supabaseCalls
+      .filter(({ name }) => name === "profiles.ilike")
+      .map(({ detail }) => detail[1]),
   );
-  expect(composingSearchCalls).toHaveLength(0);
-
-  await page.locator("#searchInput").evaluate((input) => {
-    input.value = "글리";
-    input.dispatchEvent(new CompositionEvent("compositionend", {
-      bubbles: true,
-      data: "글리",
-    }));
-  });
+  expect(profileSearchPatterns).toContain("글%");
+  expect(profileSearchPatterns).toContain("%글%");
   await expect(page.locator("#exploreSearchSummary")).toContainText(
-    "‘글리’ 검색 결과",
+    "‘글’ 검색 결과",
     { timeout: 2_000 },
   );
-  await expect(page.locator("#exploreUserResults")).toContainText("글리머");
-  await expect(page.locator("#explorePostResults")).toContainText(
-    "글림에서 문장을 찾는 중",
+  await expect(page.locator("#exploreUserResults .explore-user-result-name").first()).toHaveText(
+    "글리머1",
   );
+  await expect(page.locator("#exploreSearchEmptyAll")).toBeHidden();
+  await expect(page.locator("#explorePostResultGroup")).toBeVisible();
+  await expect(page.locator("#explorePostResults")).toHaveText(
+    "게시물 검색 결과 없음",
+  );
+  await expect(page.locator("#exploreSearchResults > .explore-search-result-group")).toHaveCount(2);
+  expect(
+    await page.locator("#exploreSearchResults > .explore-search-result-group").evaluateAll(
+      (groups) => groups.map(({ id }) => id),
+    ),
+  ).toEqual(["exploreUserResultGroup", "explorePostResultGroup"]);
+
+  await page.locator("#searchInput").evaluate((input) => {
+    window.__supabaseRows.profiles = [];
+    window.__supabaseRows.posts = [
+      {
+        id: "post-only-search-result",
+        content: "보고 싶은 글",
+        author: "글쓴이",
+        mood: "calm",
+        likes_count: 2,
+        user_id: "post-only-author",
+        created_at: "2026-07-23T00:00:00Z",
+      },
+    ];
+    input.value = "보고";
+    input.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        data: "고",
+        inputType: "insertText",
+      }),
+    );
+  });
+  await expect(page.locator("#exploreSearchSummary")).toContainText(
+    "‘보고’ 검색 결과",
+    { timeout: 2_000 },
+  );
+  await expect(page.locator("#explorePostResults .explore-search-post")).toHaveText(
+    /보고 싶은 글/,
+  );
+  await expect(page.locator("#exploreSearchEmptyAll")).toBeHidden();
+  await expect(page.locator("#exploreUserResultGroup")).toBeVisible();
+  await expect(page.locator("#exploreUserResults")).toHaveText(
+    "유저 검색 결과 없음",
+  );
+  expect(
+    await page.locator("#exploreSearchResults > .explore-search-result-group").evaluateAll(
+      (groups) => groups.map(({ id }) => id),
+    ),
+  ).toEqual(["explorePostResultGroup", "exploreUserResultGroup"]);
 });
 
 test("pinch zooms the profile photo with two touch pointers", async ({ page }) => {
