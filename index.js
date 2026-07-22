@@ -971,7 +971,10 @@ function setupBgmPicker() {
 }
 
 async function openBgmPicker() {
+  selectedBgmCategory = "전체";
   renderBgmPicker();
+  const categoryList = document.getElementById("bgmPickerCategories");
+  if (categoryList) categoryList.scrollLeft = 0;
   activateAppView("view-bgm-picker");
   await loadBgmTracks();
   if (getActiveViewId() === "view-bgm-picker") renderBgmPicker();
@@ -5715,6 +5718,7 @@ function addInteractiveSwipeBack(
   let previousView = null;
   let isDragging = false;
   let isAnimating = false;
+  let canStartSwipe = true;
 
   const cleanUp = () => {
     view.classList.remove("swipe-back-current");
@@ -5753,6 +5757,11 @@ function addInteractiveSwipeBack(
     "touchstart",
     (event) => {
       if (isAnimating) return;
+      canStartSwipe = !(
+        event.target instanceof Element &&
+        event.target.closest("[data-native-horizontal-scroll]")
+      );
+      if (!canStartSwipe) return;
       touchStartX = event.touches[0].clientX;
       touchStartY = event.touches[0].clientY;
       swipeDistance = 0;
@@ -5763,7 +5772,7 @@ function addInteractiveSwipeBack(
   view.addEventListener(
     "touchmove",
     (event) => {
-      if (isAnimating) return;
+      if (isAnimating || !canStartSwipe) return;
       const deltaX = event.touches[0].clientX - touchStartX;
       const deltaY = event.touches[0].clientY - touchStartY;
 
@@ -5794,6 +5803,10 @@ function addInteractiveSwipeBack(
   view.addEventListener(
     "touchend",
     (event) => {
+      if (!canStartSwipe) {
+        canStartSwipe = true;
+        return;
+      }
       if (!isDragging || isAnimating) return;
       swipeDistance = Math.max(
         0,
@@ -5826,6 +5839,10 @@ function addInteractiveSwipeBack(
   view.addEventListener(
     "touchcancel",
     () => {
+      if (!canStartSwipe) {
+        canStartSwipe = true;
+        return;
+      }
       if (isDragging) {
         cancelSwipe();
       } else {

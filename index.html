@@ -40,7 +40,7 @@
       crossorigin="anonymous"
     ></script>
     <script src="push-config.js?v=3"></script>
-    <script src="index.js?v=137" defer></script>
+    <script src="index.js?v=138" defer></script>
     <style>
       * {
         box-sizing: border-box;
@@ -1599,10 +1599,14 @@
       .bgm-picker-categories {
         display: flex;
         gap: 8px;
+        max-width: 100%;
         overflow-x: auto;
+        overscroll-behavior-x: contain;
         padding: 12px 18px 0;
         scrollbar-width: none;
         scroll-snap-type: x proximity;
+        touch-action: pan-x;
+        -webkit-overflow-scrolling: touch;
       }
       .bgm-picker-categories::-webkit-scrollbar {
         display: none;
@@ -4882,6 +4886,7 @@
         id="bgmPickerCategories"
         role="group"
         aria-label="BGM 카테고리"
+        data-native-horizontal-scroll
       ></div>
       <div class="bgm-picker-list" id="bgmPickerList"></div>
     </div>

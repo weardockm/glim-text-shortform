@@ -1768,9 +1768,9 @@ test("mobile BGM picker filters uploaded tracks by category", async ({ page }) =
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     document.getElementById("appSplash").style.display = "none";
-    replaceBgmTracks([
+    const tracks = [
       {
         url: "https://qdnpeliqtxdglqewbvgg.supabase.co/storage/v1/object/public/bgm/calm.mp3",
         title: "고요한 새벽",
@@ -1783,8 +1783,11 @@ test("mobile BGM picker filters uploaded tracks by category", async ({ page }) =
         artist: "GLIM",
         category: "신나는",
       },
-    ]);
-    activateAppView("view-bgm-picker");
+    ];
+    replaceBgmTracks(tracks);
+    selectBgmCategory("집중");
+    await openBgmPicker();
+    replaceBgmTracks(tracks);
     renderBgmPicker();
   });
 
@@ -1796,6 +1799,50 @@ test("mobile BGM picker filters uploaded tracks by category", async ({ page }) =
   );
   await expect(page.locator("#bgmPickerList")).toContainText("고요한 새벽");
   await expect(page.locator("#bgmPickerList")).toContainText("빛나는 아침");
+
+  await categories.hover();
+  await page.mouse.wheel(260, 0);
+  await expect
+    .poll(() => categories.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+
+  const viewTransformAfterCategorySwipe = await page.evaluate(() => {
+    const strip = document.getElementById("bgmPickerCategories");
+    const target = strip.querySelector("button");
+    const createTouch = (clientX) =>
+      new Touch({
+        identifier: 1,
+        target,
+        clientX,
+        clientY: 120,
+        pageX: clientX,
+        pageY: 120,
+        screenX: clientX,
+        screenY: 120,
+      });
+    target.dispatchEvent(
+      new TouchEvent("touchstart", {
+        bubbles: true,
+        cancelable: true,
+        touches: [createTouch(40)],
+      }),
+    );
+    target.dispatchEvent(
+      new TouchEvent("touchmove", {
+        bubbles: true,
+        cancelable: true,
+        touches: [createTouch(180)],
+      }),
+    );
+    target.dispatchEvent(
+      new TouchEvent("touchend", {
+        bubbles: true,
+        changedTouches: [createTouch(180)],
+      }),
+    );
+    return document.getElementById("view-bgm-picker").style.transform;
+  });
+  expect(viewTransformAfterCategorySwipe).toBe("");
 
   await categories.getByRole("button", { name: "신나는" }).click();
   await expect(categories.getByRole("button", { name: "신나는" })).toHaveAttribute(
