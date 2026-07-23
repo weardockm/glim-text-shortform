@@ -1756,7 +1756,7 @@ test("pinch zooms the profile photo with two touch pointers", async ({ page }) =
   expect(result.sliderValue).toBeCloseTo(result.scale);
 });
 
-test("mobile BGM picker filters uploaded tracks by category", async ({ page }) => {
+test("mobile BGM picker stays at the left edge and filters uploaded tracks", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(supabaseBrowserStub);
   await page.route("**/*", (route) => {
@@ -1799,6 +1799,23 @@ test("mobile BGM picker filters uploaded tracks by category", async ({ page }) =
   );
   await expect(page.locator("#bgmPickerList")).toContainText("고요한 새벽");
   await expect(page.locator("#bgmPickerList")).toContainText("빛나는 아침");
+
+  const leftEdgeState = await categories.evaluate(async (element) => {
+    element.scrollLeft = element.scrollWidth;
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    element.scrollLeft = 0;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return {
+      scrollLeft: element.scrollLeft,
+      scrollSnapType: getComputedStyle(element).scrollSnapType,
+      viewTransform: document.getElementById("view-bgm-picker").style.transform,
+    };
+  });
+  expect(leftEdgeState).toEqual({
+    scrollLeft: 0,
+    scrollSnapType: "none",
+    viewTransform: "",
+  });
 
   await categories.hover();
   await page.mouse.wheel(260, 0);
